@@ -1,6 +1,7 @@
 //! This module defines errors returned by the library.
 use core::fmt::Debug;
 use thiserror::Error;
+use crate::nimfs::espresso::errors::ArithErrors;
 
 /// Errors returned by Nova
 #[derive(Clone, Debug, Eq, PartialEq, Error)]
@@ -71,4 +72,13 @@ pub enum NovaError {
   /// Should not arrive to this point
   #[error("ShouldNotArrive")]
   ShouldNotArrive,
+  /// Arithmetic Error: {0}
+  #[error("ArithmeticErrors")]
+  ArithmeticErrors(ArithErrors),
+}
+
+impl From<ArithErrors> for NovaError {
+  fn from(e: ArithErrors) -> Self {
+    Self::ArithmeticErrors(e)
+  }
 }

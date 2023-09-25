@@ -16,6 +16,7 @@ mod bellpepper;
 mod circuit;
 mod constants;
 mod nifs;
+mod nimfs;
 mod r1cs;
 
 // public modules
