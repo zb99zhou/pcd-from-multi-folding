@@ -1,15 +1,17 @@
 use std::ops::Add;
 use std::sync::Arc;
 use ff::{Field, PrimeField};
+use crate::{Commitment, CommitmentKey};
 
 use crate::nimfs::ccs::ccs::{CCSError, CCS};
 use crate::nimfs::ccs::util::compute_sum_Mz;
 
-use crate::nimfs::ccs::pedersen::{Commitment, Params as PedersenParams, Pedersen};
 use crate::nimfs::espresso::virtual_polynomial::VirtualPolynomial;
 use crate::nimfs::util::hypercube::BooleanHypercube;
 use crate::nimfs::util::mle::matrix_to_mle;
 use crate::nimfs::util::mle::vec_to_mle;
+use crate::r1cs::R1CSShape;
+use crate::traits::commitment::CommitmentEngineTrait;
 use crate::traits::Group;
 
 /// Witness for the LCCCS & CCCS, containing the w vector, and the r_w used as randomness in the Pedersen commitment.
@@ -35,12 +37,12 @@ impl<C: Group> CCS<C> {
     pub fn to_cccs(
         &self,
         rng: impl rand_core::RngCore,
-        pedersen_params: &PedersenParams<C>,
+        ck: &<<C as Group>::CE as CommitmentEngineTrait<C>>::CommitmentKey,
         z: &[C::Scalar],
     ) -> (CCCS<C>, Witness<C::Scalar>) {
         let w: Vec<C::Scalar> = z[(1 + self.l)..].to_vec();
         let r_w = C::Scalar::random(rng);
-        let C = Pedersen::<C>::commit(pedersen_params, &w, &r_w);
+        let C = C::CE::commit(ck, &w);
 
         (
             CCCS::<C> {
@@ -54,6 +56,14 @@ impl<C: Group> CCS<C> {
 }
 
 impl<C: Group> CCCS<C> {
+    pub fn new(shape: &R1CSShape<C>, comm_C: Commitment<C>, X: &[C::Scalar]) -> Self {
+        Self{
+            ccs: shape.to_cccs(),
+            C: comm_C,
+            x: X.to_vec(),
+        }
+    }
+
     /// Computes q(x) = \sum^q c_i * \prod_{j \in S_i} ( \sum_{y \in {0,1}^s'} M_j(x, y) * z(y) )
     /// polynomial over x
     pub fn compute_q(&self, z: &Vec<C::Scalar>) -> VirtualPolynomial<C::Scalar> {
@@ -103,12 +113,12 @@ impl<C: Group> CCCS<C> {
     /// Perform the check of the CCCS instance described at section 4.1
     pub fn check_relation(
         &self,
-        pedersen_params: &PedersenParams<C>,
+        ck: &CommitmentKey<C>,
         w: &Witness<C::Scalar>,
     ) -> Result<(), CCSError> {
         // check that C is the commitment of w. Notice that this is not verifying a Pedersen
         // opening, but checking that the Commmitment comes from committing to the witness.
-        assert_eq!(self.C.0, Pedersen::commit(pedersen_params, &w.w, &w.r_w).0);
+        assert_eq!(self.C, C::CE::commit(&ck, &w.w));
 
         // check CCCS relation
         let z: Vec<C::Scalar> =
@@ -140,8 +150,8 @@ pub mod test {
         let ccs = get_test_ccs::<bn256::Point>();
         let z = get_test_z(3);
 
-        let pedersen_params = Pedersen::<bn256::Point>::new_params(OsRng, ccs.n - ccs.l - 1);
-        let (cccs, _) = ccs.to_cccs(OsRng, &pedersen_params, &z);
+        let ck = ccs.commitment_key();
+        let (cccs, _) = ccs.to_cccs(OsRng, &ck, &z);
         let q = cccs.compute_q(&z);
 
         // Evaluate inside the hypercube
@@ -157,12 +167,12 @@ pub mod test {
     /// Perform some sanity checks on Q(x).
     #[test]
     fn test_compute_Q() -> () {
-        let ccs = get_test_ccs();
+        let ccs = get_test_ccs::<bn256::Point>();
         let z = get_test_z(3);
         ccs.check_relation(&z).unwrap();
 
-        let pedersen_params = Pedersen::<bn256::Point>::new_params(OsRng, ccs.n - ccs.l - 1);
-        let (cccs, _) = ccs.to_cccs(&mut OsRng, &pedersen_params, &z);
+        let ck = ccs.commitment_key();
+        let (cccs, _) = ccs.to_cccs(&mut OsRng, &ck, &z);
 
         let beta: Vec<bn256::Scalar> = (0..ccs.s).map(|_| bn256::Scalar::random(OsRng)).collect();
 
@@ -193,12 +203,12 @@ pub mod test {
     /// This test makes sure that G(x) agrees with q(x) inside the hypercube, but not outside
     #[test]
     fn test_Q_against_q() -> () {
-        let ccs = get_test_ccs();
+        let ccs = get_test_ccs::<bn256::Point>();
         let z = get_test_z(3);
         ccs.check_relation(&z).unwrap();
 
-        let pedersen_params = Pedersen::<bn256::Point>::new_params(OsRng, ccs.n - ccs.l - 1);
-        let (cccs, _) = ccs.to_cccs(&mut OsRng, &pedersen_params, &z);
+        let ck = ccs.commitment_key();
+        let (cccs, _) = ccs.to_cccs(&mut OsRng, &ck, &z);
 
         // Now test that if we create Q(x) with eq(d,y) where d is inside the hypercube, \sum Q(x) should be G(d) which
         // should be equal to q(d), since G(x) interpolates q(x) inside the hypercube

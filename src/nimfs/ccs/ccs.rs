@@ -3,14 +3,15 @@ use ff::Field;
 use rand_core::RngCore;
 // XXX use thiserror everywhere? espresso doesnt use it...
 use thiserror::Error;
+use crate::CommitmentKey;
 use crate::nimfs::ccs::cccs::Witness;
 use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::nimfs::ccs::util::compute_all_sum_Mz_evals;
 use crate::nimfs::util::vec::{hadamard, Matrix};
-use crate::nimfs::ccs::pedersen::{Params as PedersenParams, Pedersen};
 
 use crate::nimfs::util::vec::*;
 use crate::spartan::math::Math;
+use crate::traits::commitment::CommitmentEngineTrait;
 use crate::traits::Group;
 
 #[derive(Error, Debug)]
@@ -84,6 +85,11 @@ impl<G: Group> CCS<G> {
         }
     }
 
+    /// Samples public parameters for the specified number of constraints and variables in an R1CS
+    pub fn commitment_key(&self) -> CommitmentKey<G> {
+        G::CE::setup(b"ck", self.n - self.l - 1)
+    }
+
     /// Compute v_j values of the linearized committed CCS form
     /// Given `r`, compute:  \sum_{y \in {0,1}^s'} M_j(r, y) * z(y)
     fn compute_v_j(&self, z: &[G::Scalar], r: &[G::Scalar]) -> Vec<G::Scalar> {
@@ -93,12 +99,12 @@ impl<G: Group> CCS<G> {
     pub fn to_lcccs(
         &self,
         rng: impl RngCore + Clone,
-        pedersen_params: &PedersenParams<G>,
+        ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
         z: &[G::Scalar],
     ) -> (LCCCS<G>, Witness<G::Scalar>) {
         let w: Vec<G::Scalar> = z[(1 + self.l)..].to_vec();
         let r_w = G::Scalar::random(rng.clone());
-        let C = Pedersen::commit(pedersen_params, &w, &r_w);
+        let C = G::CE::commit(ck, &w);
 
         let r_x: Vec<G::Scalar> = (0..self.s).map(|_| G::Scalar::random(rng.clone())).collect();
         let v = self.compute_v_j(z, &r_x);

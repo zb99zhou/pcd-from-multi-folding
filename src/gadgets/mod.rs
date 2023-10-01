@@ -3,3 +3,4 @@ pub mod ecc;
 pub(crate) mod nonnative;
 pub(crate) mod r1cs;
 pub(crate) mod utils;
+pub(crate) mod cccs;

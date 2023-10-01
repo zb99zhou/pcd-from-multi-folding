@@ -209,6 +209,24 @@ pub fn conditionally_select<F: PrimeField, CS: ConstraintSystem<F>>(
   Ok(c)
 }
 
+pub fn vec_conditionally_select<F: PrimeField, CS: ConstraintSystem<F>>(
+  mut cs: CS,
+  this:&[BigNat<F>],
+  other: &[BigNat<F>],
+  condition: &Boolean,
+) -> Result<Vec<BigNat<F>>, SynthesisError> {
+  this.iter()
+      .zip(other.iter())
+      .enumerate()
+      .map(|(i, (X, other_X))| conditionally_select_bignat(
+        cs.namespace(||format!("X[{i}] = cond ? self.X[{i}] : other.X[{i}]")),
+        &X,
+        &other_X,
+        condition,
+      ))
+      .collect::<Result<Vec<_>, SynthesisError>>()
+}
+
 /// If condition return a otherwise b
 pub fn conditionally_select_vec<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,

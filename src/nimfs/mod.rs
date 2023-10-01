@@ -4,6 +4,7 @@
 
 pub mod ccs;
 pub mod multifolding;
+pub mod pcd_circuit;
 
 pub mod espresso;
 pub mod util;

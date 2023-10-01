@@ -17,6 +17,7 @@ use ff::Field;
 
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use crate::nimfs::ccs::ccs::CCS;
 
 /// Public parameters for a given R1CS
 #[derive(Clone, Serialize, Deserialize)]
@@ -360,6 +361,10 @@ impl<G: Group> R1CSShape<G> {
       B: B_padded,
       C: C_padded,
     }
+  }
+
+  pub fn to_cccs(&self) -> CCS<G> {
+    todo!()
   }
 }
 
