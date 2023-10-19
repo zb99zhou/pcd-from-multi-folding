@@ -22,8 +22,8 @@ The following paper provides details and proof of security of this implementatio
 Zibo Zhou, Zongyang Zhang, Jin Dong, and Zhiyu Zhang  
 IACR ePrint 2023/1282
 
-For efficiency, our implementation is instantiated over a cycle of elliptic curves. The structure refers to the following paper:  
+For efficiency, our implementation refers to the following paper:  
 
-[Revisiting the Nova Proof System on a Cycle of Curves](https://eprint.iacr.org/2023/969)  
-Wilson Nguyen, Dan Boneh, and Srinath Setty  
-IACR ePrint 2023/969
+[CycleFold: Folding-scheme-based recursive arguments over a cycle of elliptic curves](https://eprint.iacr.org/2023/1192)  
+Abhiram Kothapalli, Srinath Setty  
+IACR ePrint 2023/1192
