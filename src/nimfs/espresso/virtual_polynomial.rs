@@ -12,7 +12,7 @@ use rayon::prelude::*;
 use std::{cmp::max, collections::HashMap, marker::PhantomData, ops::Add, sync::Arc};
 use ff::PrimeField;
 use crate::spartan::polys::multilinear::MultiLinearPolynomial;
-use crate::traits::Group;
+use crate::traits::{Group, PrimeFieldExt};
 
 #[rustfmt::skip]
 /// A virtual polynomial is a sum of products of multilinear polynomials;
@@ -74,6 +74,18 @@ impl<C: Group, F: PrimeField> crate::traits::TranscriptReprTrait<C> for VPAuxInf
         bytes.extend(bytes1);
         bytes.extend(bytes2);
         bytes
+    }
+
+    fn to_transcript_scalars(&self) -> Vec<C::Scalar> {
+        let bytes1 = self.max_degree.to_be_bytes();
+        let bytes2 = self.num_variables.to_be_bytes();
+        let mut bytes = Vec::with_capacity(bytes1.len() + bytes2.len());
+        bytes.extend(bytes1);
+        bytes.extend(bytes2);
+        bytes
+            .chunks(31)
+            .map(|b| C::Scalar::from_uniform(b))
+            .collect()
     }
 }
 

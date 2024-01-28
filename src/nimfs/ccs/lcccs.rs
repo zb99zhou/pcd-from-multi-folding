@@ -57,7 +57,7 @@ impl<C: Group> LCCCS<C> {
     pub fn check_relation(
         &self,
         ck: &<<C as Group>::CE as CommitmentEngineTrait<C>>::CommitmentKey,
-        w: &Witness<C::Scalar>,
+        w: &Witness<C>,
     ) -> Result<(), CCSError> {
         // check that C is the commitment of w. Notice that this is not verifying a Pedersen
         // opening, but checking that the Commmitment comes from committing to the witness.

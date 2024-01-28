@@ -223,7 +223,8 @@ pub fn interpolate_uni_poly<F: PrimeField>(p_i: &[F], eval_at: F) -> Result<F, N
                 F::from(ratio_numerator as u64)
             };
 
-            res += p_i[i] * prod * F::from(ratio_denominator) * (last_denominator * ratio_numerator_f * evals[i]).invert().unwrap();
+            res += p_i[i] * prod * F::from(ratio_denominator)
+                * (last_denominator * ratio_numerator_f * evals[i]).invert().unwrap();
 
             // compute denom for the next step is current_denom * (len-i)/i
             if i != 0 {
@@ -291,7 +292,7 @@ fn u128_factorial(a: usize) -> u128 {
 
 /// compute the factorial(a) = 1 * 2 * ... * a
 #[inline]
-fn u64_factorial(a: usize) -> u64 {
+pub fn u64_factorial(a: usize) -> u64 {
     let mut res = 1u64;
     for i in 2..=a {
         res *= i as u64;

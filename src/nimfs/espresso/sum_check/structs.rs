@@ -32,6 +32,10 @@ impl<C: Group> TranscriptReprTrait<C> for IOPProverMessage<C> {
             .flat_map(|eval| eval.to_transcript_bytes())
             .collect()
     }
+
+    fn to_transcript_scalars(&self) -> Vec<C::Scalar> {
+        self.evaluations.clone()
+    }
 }
 
 /// Prover State of a PolyIOP.

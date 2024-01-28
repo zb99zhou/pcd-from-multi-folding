@@ -4,7 +4,7 @@ use rand_core::RngCore;
 // XXX use thiserror everywhere? espresso doesnt use it...
 use thiserror::Error;
 use crate::CommitmentKey;
-use crate::nimfs::ccs::cccs::Witness;
+use crate::nimfs::ccs::cccs::{CCCS, Witness};
 use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::nimfs::ccs::util::compute_all_sum_Mz_evals;
 use crate::nimfs::util::vec::{hadamard, Matrix};
@@ -96,12 +96,32 @@ impl<G: Group> CCS<G> {
         compute_all_sum_Mz_evals(&self.M, &z.to_vec(), r, self.s_prime)
     }
 
+    pub fn to_cccs(
+        &self,
+        rng: impl RngCore,
+        ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
+        z: &[G::Scalar],
+    ) -> (CCCS<G>, Witness<G>) {
+        let w: Vec<G::Scalar> = z[(1 + self.l)..].to_vec();
+        let r_w = G::Scalar::random(rng);
+        let C = G::CE::commit(ck, &w);
+
+        (
+            CCCS::<G> {
+                ccs: self.clone(),
+                C,
+                x: z[1..(1 + self.l)].to_vec(),
+            },
+            Witness::<G> { w, r_w },
+        )
+    }
+
     pub fn to_lcccs(
         &self,
         rng: impl RngCore + Clone,
         ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
         z: &[G::Scalar],
-    ) -> (LCCCS<G>, Witness<G::Scalar>) {
+    ) -> (LCCCS<G>, Witness<G>) {
         let w: Vec<G::Scalar> = z[(1 + self.l)..].to_vec();
         let r_w = G::Scalar::random(rng.clone());
         let C = G::CE::commit(ck, &w);
@@ -118,7 +138,7 @@ impl<G: Group> CCS<G> {
                 r_x,
                 v,
             },
-            Witness::<G::Scalar> { w, r_w },
+            Witness::<G> { w, r_w },
         )
     }
 

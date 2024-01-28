@@ -73,6 +73,23 @@ pub fn alloc_one<F: PrimeField, CS: ConstraintSystem<F>>(
 }
 
 /// Allocate a scalar as a base. Only to be used is the scalar fits in base!
+pub fn alloc_vector_numbers<F, CS>(
+  mut cs: CS,
+  inputs: &[F],
+) -> Result<Vec<AllocatedNum<F>>, SynthesisError>
+  where
+      F: PrimeField,
+      CS: ConstraintSystem<F>,
+{
+  inputs
+      .iter()
+      .enumerate()
+      .map(|(i, input)| AllocatedNum::alloc(cs.namespace(|| format!("alloc {i}th input")), || Ok(*input)))
+      .collect::<Result<Vec<_>, SynthesisError>>()
+}
+
+
+/// Allocate a scalar as a base. Only to be used is the scalar fits in base!
 pub fn alloc_scalar_as_base<G, CS>(
   mut cs: CS,
   input: Option<G::Scalar>,
@@ -209,7 +226,7 @@ pub fn conditionally_select<F: PrimeField, CS: ConstraintSystem<F>>(
   Ok(c)
 }
 
-pub fn vec_conditionally_select<F: PrimeField, CS: ConstraintSystem<F>>(
+pub fn vec_conditionally_select_big_nat<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
   this:&[BigNat<F>],
   other: &[BigNat<F>],
@@ -228,7 +245,7 @@ pub fn vec_conditionally_select<F: PrimeField, CS: ConstraintSystem<F>>(
 }
 
 /// If condition return a otherwise b
-pub fn conditionally_select_vec<F: PrimeField, CS: ConstraintSystem<F>>(
+pub fn conditionally_select_vec_allocated_num<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
   a: &[AllocatedNum<F>],
   b: &[AllocatedNum<F>],

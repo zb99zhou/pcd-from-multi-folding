@@ -72,6 +72,11 @@ impl<Scalar: PrimeField> Num<Scalar> {
   pub const fn new(value: Option<Scalar>, num: LinearCombination<Scalar>) -> Self {
     Self { value, num }
   }
+
+  pub const fn zero() -> Self {
+    Self { value: Some(Scalar::ZERO), num: LinearCombination::zero() }
+  }
+
   pub fn alloc<CS, F>(mut cs: CS, value: F) -> Result<Self, SynthesisError>
   where
     CS: ConstraintSystem<Scalar>,
@@ -237,6 +242,23 @@ impl<Scalar: PrimeField> From<AllocatedNum<Scalar>> for Num<Scalar> {
   fn from(a: AllocatedNum<Scalar>) -> Self {
     Self::new(a.get_value(), LinearCombination::zero() + a.get_variable())
   }
+}
+
+pub fn as_allocated_num<Scalar: PrimeField, CS: ConstraintSystem<Scalar>>(
+  mut cs: CS,
+  num: bellpepper_core::num::Num<Scalar>,
+) -> Result<AllocatedNum<Scalar>, SynthesisError> {
+  let new = AllocatedNum::alloc(
+    cs.namespace(|| "alloc num"),
+    || Ok(*num.get_value().grab()?)
+  )?;
+  cs.enforce(
+    || "constraints new num",
+    |_lc| num.lc(Scalar::ONE),
+    |lc| lc + CS::one(),
+    |lc| lc + new.get_variable(),
+  );
+  Ok(new)
 }
 
 fn write_be<F: PrimeField, W: Write>(f: &F, mut writer: W) -> io::Result<()> {
