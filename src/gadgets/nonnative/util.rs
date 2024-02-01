@@ -8,6 +8,8 @@ use ff::PrimeField;
 use num_bigint::{BigInt, Sign};
 use std::convert::From;
 use std::io::{self, Write};
+use bellpepper::gadgets::Assignment;
+use bellpepper_core::boolean::{AllocatedBit, Boolean};
 
 #[derive(Clone)]
 /// A representation of a bit
@@ -75,6 +77,24 @@ impl<Scalar: PrimeField> Num<Scalar> {
 
   pub const fn zero() -> Self {
     Self { value: Some(Scalar::ZERO), num: LinearCombination::zero() }
+  }
+
+  pub fn add_bool_with_coeff(self, one: Variable, bit: &Boolean, coeff: Scalar) -> Self {
+    let newval = match (self.value, bit.get_value()) {
+      (Some(mut curval), Some(bval)) => {
+        if bval {
+          curval.add_assign(&coeff);
+        }
+
+        Some(curval)
+      }
+      _ => None,
+    };
+
+    Num {
+      value: newval,
+      num: self.num + &bit.lc(one, coeff),
+    }
   }
 
   pub fn alloc<CS, F>(mut cs: CS, value: F) -> Result<Self, SynthesisError>
@@ -179,6 +199,45 @@ impl<Scalar: PrimeField> Num<Scalar> {
     let sum_lc = LinearCombination::zero() + &self.num - &sum;
     cs.enforce(|| "sum", |lc| lc + &sum_lc, |lc| lc + CS::one(), |lc| lc);
     Ok(())
+  }
+
+  pub fn equal<CS: ConstraintSystem<Scalar>>(
+    &self,
+    mut cs: CS,
+    other: &Self,
+  ) -> Result<AllocatedBit, SynthesisError> {
+    let r_value = match (self.value, other.value) {
+      (Some(a), Some(b)) => Some(a == b),
+      _ => None,
+    };
+
+    let r = AllocatedBit::alloc(cs.namespace(|| "r"), r_value)?;
+
+    let t = AllocatedNum::alloc(cs.namespace(|| "t"), || {
+      Ok(if *self.value.get()? == *other.value.get()? {
+        Scalar::ONE
+      } else {
+        (*self.value.get()? - *other.value.get()?)
+            .invert()
+            .unwrap()
+      })
+    })?;
+
+    cs.enforce(
+      || "t*(a - b) = 1 - r",
+      |lc| lc + t.get_variable(),
+      |lc| lc + &self.num - &other.num,
+      |lc| lc + CS::one() - r.get_variable(),
+    );
+
+    cs.enforce(
+      || "r*(a - b) = 0",
+      |lc| lc + r.get_variable(),
+      |lc| lc + &self.num - &other.num,
+      |lc| lc,
+    );
+
+    Ok(r)
   }
 
   /// Compute the natural number represented by an array of limbs.

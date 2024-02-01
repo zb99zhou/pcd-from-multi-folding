@@ -4,10 +4,10 @@ use bellpepper_core::boolean::{AllocatedBit, Boolean};
 use bellpepper_core::num::{AllocatedNum, Num};
 use ff::Field;
 use crate::constants::{NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS};
-use crate::gadgets::cccs::{AllocatedCCCSPrimaryPart, AllocatedCCCSSecondPart, AllocatedLCCCSPrimaryPart, multi_folding, multi_folding_with_primary_part};
+use crate::gadgets::cccs::{AllocatedCCCSPrimaryPart, AllocatedLCCCSPrimaryPart, multi_folding_with_primary_part};
 use crate::gadgets::ext_allocated_num::ExtendFunc;
 use crate::gadgets::sumcheck::{AllocatedProof, enforce_compute_c_from_sigmas_and_thetas, enforce_interpolate_uni_poly, sumcheck_verify};
-use crate::gadgets::utils::{alloc_num_equals, alloc_zero, conditionally_select_vec_allocated_num, le_bits_to_num};
+use crate::gadgets::utils::{alloc_num_equals, alloc_zero, conditionally_select_vec_allocated_num, le_bits_to_num, multi_and};
 use crate::nimfs::ccs::cccs::CCCS;
 use crate::nimfs::ccs::ccs::CCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
@@ -325,7 +325,6 @@ impl<'a, G: Group, SC: StepCircuit<G::Scalar>> PCDUnitPrimaryCircuit<'a, G, SC> 
             self.params.limb_width,
             self.params.n_limbs,
         )?;
-        let C = multi_folding_with_second_part();
 
         let check_pass = AllocatedBit::and(
             cs.namespace(|| "check pass 1 and 2"),
@@ -359,7 +358,14 @@ impl<'a, G: Group, SC: StepCircuit<G::Scalar>> PCDUnitPrimaryCircuit<'a, G, SC> 
 
         // Compute variable indicating if this is the base case
         let zero = alloc_zero(cs.namespace(|| "zero"))?;
-        let is_base_case = alloc_num_equals(cs.namespace(|| "Check if base case"), &lcccs[0].C.is_infinity, &zero)?;
+        let mut is_base_case_flags = Vec::new();
+        for (i, l) in lcccs.iter().enumerate() {
+            is_base_case_flags.push(l.is_null(cs.namespace(|| format!("{}th lcccs", i)), &zero)?);
+        }
+        for (i, c) in cccs.iter().enumerate() {
+            is_base_case_flags.push(c.is_null(cs.namespace(|| format!("{}th cccs", i)), &zero)?);
+        }
+        let is_base_case = multi_and(cs.namespace(|| "is base case"), &is_base_case_flags)?;
 
         // Synthesize the circuit for the base case and get the new running instance
         let lcccs_base = self.synthesize_base_case(cs.namespace(|| "base case"), cccs[0].clone())?;

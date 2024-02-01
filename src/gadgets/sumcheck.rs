@@ -1,6 +1,7 @@
 use ff::PrimeField;
 use bellpepper::gadgets::Assignment;
-use bellpepper_core::{ConstraintSystem, LinearCombination, SynthesisError};
+use bellpepper_core::{ConstraintSystem, SynthesisError};
+use bellpepper_core::boolean::Boolean;
 use bellpepper_core::num::{AllocatedNum, Num};
 use crate::gadgets::ext_allocated_num::ExtendFunc;
 use crate::gadgets::nonnative::util::as_allocated_num;
@@ -245,7 +246,7 @@ pub fn enforce_compute_c_from_sigmas_and_thetas<CS: ConstraintSystem<<G as Group
     for (k, thetas) in vec_thetas.iter().enumerate() {
         let mut cs = cs.namespace(|| format!("theta_{k}"));
         // + gamma^{t+1} * e2 * sum c_i * prod theta_j
-        let mut lhs = LinearCombination::zero();
+        let mut lhs = Num::zero();
         for i in 0..ccs_params.q {
             let mut prod = AllocatedNum::one(cs.namespace(|| format!("alloc {i}th one")))?;
             for j in ccs_params.S[i].clone() {
@@ -254,7 +255,7 @@ pub fn enforce_compute_c_from_sigmas_and_thetas<CS: ConstraintSystem<<G as Group
                     &thetas[j]
                 )?;
             }
-            lhs = lhs + (ccs_params.c[i], prod.get_variable());
+            lhs = lhs.add(&Num::from(prod).scale(ccs_params.c[i]));
         }
         let gamma_t1 = gamma.pow_constant(cs.namespace(|| "gamma_t1"), mu * ccs_params.t + k)?;
         let acc = gamma_t1.mul(
@@ -357,11 +358,10 @@ pub fn enforce_eq_eval<CS: ConstraintSystem<F>, F: PrimeField>(
         let xi_yi = xi.mul(cs.namespace(|| "xi * yi"), &yi)?;
         
         // res *= xi_yi + xi_yi - xi - yi + F::ONE;
-        let lc = LinearCombination::zero()
-            + (F::from(2), xi_yi.get_variable())
-            - xi.get_variable() 
-            - yi.get_variable() 
-            + CS::one(); 
+        let lc = Num::from(xi_yi).scale(F::from(2))
+            .add(&Num::from(xi.clone()).scale(-F::ONE))
+            .add(&Num::from(yi.clone()).scale(-F::ONE))
+            .add_bool_with_coeff(CS::one(), &Boolean::Constant(true), F::ONE);
         res = res.mul_lc(
             cs.namespace(|| "update eq eval result"),
             lc

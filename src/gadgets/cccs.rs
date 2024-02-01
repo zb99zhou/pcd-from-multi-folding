@@ -17,11 +17,11 @@ use bellpepper_core::{ConstraintSystem, SynthesisError};
 use bellpepper_core::boolean::AllocatedBit;
 use ff::Field;
 use crate::gadgets::ext_allocated_num::ExtendFunc;
-use crate::gadgets::utils::{conditionally_select_vec_allocated_num, vec_conditionally_select_big_nat};
+use crate::gadgets::utils::{alloc_num_equals, alloc_vec_num_equals_zero, alloc_vec_number_equals_zero, conditionally_select_vec_allocated_num, multi_and, vec_conditionally_select_big_nat};
 use crate::nimfs::ccs::cccs::CCCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::traits::commitment::CommitmentTrait;
-use crate::traits::{TranscriptCircuitEngineTrait, TranscriptEngineTrait};
+use crate::traits::ROCircuitTrait;
 
 /// An Allocated Committed CCS instance
 #[derive(Clone)]
@@ -30,6 +30,10 @@ pub struct AllocatedCCCSPrimaryPart<G: Group> {
 }
 
 impl<G: Group> AllocatedCCCSPrimaryPart<G> {
+    pub fn is_null<CS: ConstraintSystem<G::Scalar>>(&self, mut cs: CS, zero: &AllocatedNum<G::Scalar>) -> Result<Boolean, SynthesisError> {
+        alloc_vec_number_equals_zero(cs.namespace(|| "is Xs zero"), &self.Xs, &zero).map(Into::into)
+    }
+
     /// Takes the CCCS instance and creates a new allocated CCCS instance
     pub fn alloc<CS: ConstraintSystem<<G as Group>::Scalar>>(
         mut cs: CS,
@@ -67,6 +71,17 @@ impl<G: Group> AllocatedCCCSSecondPart<G> {
 
         Ok(AllocatedCCCSSecondPart { C })
     }
+
+    pub fn absorb_in_ro<CS: ConstraintSystem<<G as Group>::Scalar>>(
+        &self,
+        ro: &mut G::ROCircuit,
+    ) -> Result<(), SynthesisError> {
+        ro.absorb(&self.C.is_infinity);
+        ro.absorb(&self.C.x);
+        ro.absorb(&self.C.y);
+
+        Ok(())
+    }
 }
 
 
@@ -80,6 +95,17 @@ pub struct AllocatedLCCCSPrimaryPart<G: Group> {
 }
 
 impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
+    pub fn is_null<CS: ConstraintSystem<G::Scalar>>(&self, mut cs: CS, zero: &AllocatedNum<G::Scalar>) -> Result<Boolean, SynthesisError> {
+        let mut is_u_zero = alloc_num_equals(cs.namespace(|| "alloc is_null"), &self.u, zero)?.into();
+
+        let Xs_num = self.Xs.iter().flat_map(|x| x.as_limbs()).collect::<Vec<_>>();
+        let is_Xs_zero = alloc_vec_num_equals_zero(cs.namespace(|| "is Xs zero"), &Xs_num)?.into();
+        let is_Vs_zero = alloc_vec_number_equals_zero(cs.namespace(|| "is Vs zero"), &self.Vs, &zero)?.into();
+        let is_r_x_zero = alloc_vec_number_equals_zero(cs.namespace(|| "is r_x zero"), &self.r_x, &zero)?.into();
+
+        multi_and(cs.namespace(|| "final result"), &[is_u_zero, is_Xs_zero, is_Vs_zero, is_r_x_zero]).map(Into::into)
+    }
+
     /// Allocates the given `LCCCS` as a witness of the circuit
     pub fn alloc<CS: ConstraintSystem<<G as Group>::Scalar>>(
         mut cs: CS,
@@ -178,7 +204,7 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
     pub fn absorb_in_ro<CS: ConstraintSystem<<G as Group>::Scalar>>(
         &self,
         mut cs: CS,
-        ro: &mut G::TE,
+        ro: &mut G::ROCircuit,
     ) -> Result<(), SynthesisError> {
         ro.absorb(&self.u);
 
@@ -193,6 +219,14 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
             for limb in X_bn {
                 ro.absorb(&limb);
             }
+        }
+
+        for v in self.Vs.iter() {
+            ro.absorb(v);
+        }
+
+        for r in self.r_x.iter() {
+            ro.absorb(r);
         }
 
         Ok(())
@@ -458,6 +492,17 @@ impl<G: Group> AllocatedLCCCSSecondPart<G> {
 
         Ok(())
     }
+
+    pub fn absorb_in_ro<CS: ConstraintSystem<<G as Group>::Scalar>>(
+        &self,
+        ro: &mut G::ROCircuit,
+    ) -> Result<(), SynthesisError> {
+        ro.absorb(&self.C.is_infinity);
+        ro.absorb(&self.C.x);
+        ro.absorb(&self.C.y);
+
+        Ok(())
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -516,7 +561,7 @@ pub fn multi_folding_with_second_part<CS: ConstraintSystem<<G as Group>::Scalar>
     // folding
     for (i, lcccs) in lcccs.iter().enumerate().skip(1) {
         rho_i = rho_i.square(cs.namespace(|| format!("alloc {}th squared rho_i in folding lcccs", i)))?;
-        lcccs_folded.folding_with_cccs_second_part(
+        lcccs_folded.folding_with_lcccs_second_part(
             cs.namespace(|| format!("folding {}th lcccs", i)),
             lcccs,
             &rho_i,

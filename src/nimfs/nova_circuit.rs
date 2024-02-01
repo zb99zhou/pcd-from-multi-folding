@@ -1,11 +1,12 @@
 use bellpepper::gadgets::Assignment;
 use bellpepper_core::{ConstraintSystem, SynthesisError};
-use bellpepper_core::boolean::{AllocatedBit, Boolean};
 use bellpepper_core::num::AllocatedNum;
+use crate::constants::NUM_HASH_BITS;
 use crate::gadgets::cccs::{AllocatedCCCSSecondPart, AllocatedLCCCSSecondPart};
+use crate::gadgets::utils::le_bits_to_num;
 use crate::nimfs::ccs::cccs::CCCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
-use crate::traits::{Group, ROConstantsCircuit, TEConstantsCircuit, TranscriptCircuitEngineTrait};
+use crate::traits::{Group, ROCircuitTrait, ROConstantsCircuit, TEConstantsCircuit};
 
 pub struct NovaAuxiliaryInputs<G: Group> {
     params: G::Scalar, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
@@ -14,6 +15,7 @@ pub struct NovaAuxiliaryInputs<G: Group> {
     zi: Option<Vec<G::Scalar>>,
     lcccs: Option<Vec<LCCCS<G>>>,
     cccs: Option<Vec<CCCS<G>>>,
+    rho: Option<G::Scalar>,
     r: usize
 }
 
@@ -32,6 +34,7 @@ impl<G: Group> NovaAuxiliarySecondCircuit<G> {
         (
             Vec<AllocatedLCCCSSecondPart<G>>,
             Vec<AllocatedCCCSSecondPart<G>>,
+            AllocatedNum<G::Scalar>
         ),
         SynthesisError,
     > {
@@ -40,7 +43,7 @@ impl<G: Group> NovaAuxiliarySecondCircuit<G> {
             .map(|i |AllocatedLCCCSSecondPart::alloc(
                 cs.namespace(|| format!("Allocate {i}th lcccs")),
                 self.inputs.lcccs.get().as_ref().map_or(None, |U| Some(&U[i]))
-            )?)
+            ))
             .collect::<Result<Vec<_>, SynthesisError>>()?;
 
         // Allocate the instance to be folded in
@@ -48,10 +51,15 @@ impl<G: Group> NovaAuxiliarySecondCircuit<G> {
             .map(|i |AllocatedCCCSSecondPart::alloc(
                 cs.namespace(|| format!("Allocate {i}th lcccs")),
                 self.inputs.cccs.get().as_ref().map_or(None, |U| Some(&U[i]))
-            )?)
+            ))
             .collect::<Result<Vec<_>, SynthesisError>>()?;
 
-        Ok((lcccs, cccs))
+        let rho = AllocatedNum::alloc(
+            cs.namespace(|| "alloc rho"),
+            || self.inputs.rho.get().copied()
+        )?;
+
+        Ok((lcccs, cccs, rho))
     }
 }
 
@@ -60,9 +68,9 @@ impl<G: Group> NovaAuxiliarySecondCircuit<G> {
     pub fn synthesize<CS: ConstraintSystem<<G as Group>::Scalar>>(
         self,
         cs: &mut CS,
-    ) -> Result<Vec<AllocatedNum<G::Scalar>>, SynthesisError> {
+    ) -> Result<AllocatedNum<G::Scalar>, SynthesisError> {
         // Allocate all witnesses
-        let (lcccs, cccs)
+        let (lcccs, cccs, rho)
             = self.alloc_witness(cs.namespace(|| "allocate the circuit witness"))?;
 
         let new_lcccs = crate::gadgets::cccs::multi_folding_with_second_part(
@@ -72,29 +80,19 @@ impl<G: Group> NovaAuxiliarySecondCircuit<G> {
             rho
         )?;
 
-        // Compute the new hash H(params, Unew, i+1, z0, z_{i+1})
-        let mut ro = G::TECircuit::new(
-            self.te_consts,
-            cs.namespace(|| "init transcript engine"),
-            b"init transcript engine"
-        );
-        // ro.absorb(&params);
-        for e in &z_0 {
-            ro.absorb(e);
+        let mut ro = G::ROCircuit::new(self.ro_consts, (lcccs.len() + cccs.len() + 1) * 3);
+        for c in lcccs {
+            c.absorb_in_ro(&mut ro)?;
         }
-        for e in &z_next {
-            ro.absorb(e);
+        for c in cccs {
+            c.absorb_in_ro(&mut ro)?;
         }
-        Unew.absorb_in_ro(cs.namespace(|| "absorb U_new"), &mut ro)?;
+        new_lcccs.absorb_in_ro(&mut ro)?;
         let hash_bits = ro.squeeze(cs.namespace(|| "output hash bits"), NUM_HASH_BITS)?;
         let hash = le_bits_to_num(cs.namespace(|| "convert hash to num"), &hash_bits)?;
 
-        // Outputs the computed hash and u.X[1] that corresponds to the hash of the other circuit
-        for X in Xs.into_iter() {
-            X.inputize(cs.namespace(|| "Output unmodified hash of the other circuit"))?; // this circuit's Xs
-        }
         hash.inputize(cs.namespace(|| "output new hash of this circuit"))?; // this circuit's x1
 
-        Ok(z_next)
+        Ok(hash)
     }
 }

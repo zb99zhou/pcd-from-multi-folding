@@ -1,6 +1,6 @@
 use bellpepper::gadgets::Assignment;
-use bellpepper_core::{ConstraintSystem, LinearCombination, SynthesisError};
-use bellpepper_core::num::AllocatedNum;
+use bellpepper_core::{ConstraintSystem, SynthesisError};
+use bellpepper_core::num::{AllocatedNum, Num};
 use ff::PrimeField;
 use crate::spartan::math::Math;
 
@@ -23,7 +23,7 @@ pub trait ExtendFunc<Scalar: PrimeField>{
     fn mul_lc<CS: ConstraintSystem<Scalar>>(
         &self,
         cs: CS,
-        other: LinearCombination<Scalar>,
+        other: Num<Scalar>,
     ) -> Result<AllocatedNum<Scalar>, SynthesisError>;
 
     fn pow_constant<CS: ConstraintSystem<Scalar>>(&self, cs: CS, constant: usize) -> Result<AllocatedNum<Scalar>, SynthesisError>;
@@ -119,18 +119,19 @@ impl<Scalar: PrimeField> ExtendFunc<Scalar> for AllocatedNum<Scalar> {
     fn mul_lc<CS: ConstraintSystem<Scalar>>(
         &self,
         mut cs: CS,
-        other: LinearCombination<Scalar>,
+        other: Num<Scalar>,
     )  -> Result<AllocatedNum<Scalar>, SynthesisError> {
         let tmp = AllocatedNum::alloc(
             cs.namespace(|| "alloc tmp"),
             || self.get_value()
-                .map(|v| other.get_value().map(|o| v  * o))
+                .and_then(|v| other.get_value().map(|o| v * o))
                 .get()
+                .copied()
         )?;
         cs.enforce(
             || "constraints tmp = self * constant * other",
             |lc| lc + self.get_variable(),
-            |_lc| other,
+            |_lc| other.lc(Scalar::ZERO),
             |lc| lc + tmp.get_variable(),
         );
         Ok(tmp)
