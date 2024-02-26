@@ -25,12 +25,12 @@ const LENGTH: usize = 32;
 
 /// All Poseidon Constants that are used in Nova
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct PoseidonConstantsCircuit<Scalar: PrimeField>(PoseidonConstants<Scalar, U24>);
+pub struct PoseidonConstantsCircuit<Base: PrimeField>(PoseidonConstants<Base, U24>);
 
-impl<Scalar: PrimeField> Default for PoseidonConstantsCircuit<Scalar> {
+impl<Base: PrimeField> Default for PoseidonConstantsCircuit<Base> {
   /// Generate Poseidon constants
   fn default() -> Self {
-    Self(Sponge::<Scalar, U24>::api_constants(Strength::Standard))
+    Self(Sponge::<Base, U24>::api_constants(Strength::Standard))
   }
 }
 
@@ -123,26 +123,26 @@ where
 
 /// A Poseidon-based RO gadget to use inside the verifier circuit.
 #[derive(Serialize, Deserialize)]
-pub struct PoseidonROCircuit<Scalar>
+pub struct PoseidonROCircuit<Base>
 where
-  Scalar: PrimeField,
+  Base: PrimeField,
 {
   // Internal state
-  state: Vec<AllocatedNum<Scalar>>,
-  constants: PoseidonConstantsCircuit<Scalar>,
+  state: Vec<AllocatedNum<Base>>,
+  constants: PoseidonConstantsCircuit<Base>,
   num_absorbs: usize,
   squeezed: bool,
 }
 
-impl<Scalar> ROCircuitTrait<Scalar> for PoseidonROCircuit<Scalar>
+impl<Base> ROCircuitTrait<Base> for PoseidonROCircuit<Base>
 where
-  Scalar: PrimeFieldExt + PrimeFieldBits + Serialize + for<'de> Deserialize<'de>,
+  Base: PrimeFieldExt + PrimeFieldBits + Serialize + for<'de> Deserialize<'de>,
 {
-  type NativeRO<T: PrimeField> = PoseidonRO<Scalar, T>;
-  type Constants = PoseidonConstantsCircuit<Scalar>;
+  type NativeRO<T: PrimeField> = PoseidonRO<Base, T>;
+  type Constants = PoseidonConstantsCircuit<Base>;
 
   /// Initialize the internal state and set the poseidon constants
-  fn new(constants: PoseidonConstantsCircuit<Scalar>, num_absorbs: usize) -> Self {
+  fn new(constants: PoseidonConstantsCircuit<Base>, num_absorbs: usize) -> Self {
     Self {
       state: Vec::new(),
       constants,
@@ -152,8 +152,8 @@ where
   }
 
   /// Absorb a new number into the state of the oracle
-  fn absorb_bytes<CS: ConstraintSystem<Scalar>, T: AsRef<[u8]>>(&mut self, mut cs: CS, bytes: T) -> Result<(), SynthesisError>{
-    let bytes_scalar = Scalar::from_uniform(bytes.as_ref());
+  fn absorb_bytes<CS: ConstraintSystem<Base>, T: AsRef<[u8]>>(&mut self, mut cs: CS, bytes: T) -> Result<(), SynthesisError>{
+    let bytes_scalar = Base::from_uniform(bytes.as_ref());
     let num = AllocatedNum::alloc(
       cs.namespace(|| "absorb bytes"),
       || Ok(bytes_scalar)
@@ -170,7 +170,7 @@ where
   }
 
   /// Absorb a new number into the state of the oracle
-  fn absorb(&mut self, e: &AllocatedNum<Scalar>) {
+  fn absorb(&mut self, e: &AllocatedNum<Base>) {
     self.state.push(e.clone());
     self.num_absorbs += 1;
   }
@@ -182,7 +182,7 @@ where
     num_bits: usize,
   ) -> Result<Vec<AllocatedBit>, SynthesisError>
   where
-    CS: ConstraintSystem<Scalar>,
+    CS: ConstraintSystem<Base>,
   {
     self.squeezed = true;
     let parameter = IOPattern(vec![
@@ -202,7 +202,7 @@ where
         self.num_absorbs as u32,
         &(0..self.state.len())
           .map(|i| Elt::Allocated(self.state[i].clone()))
-          .collect::<Vec<Elt<Scalar>>>(),
+          .collect::<Vec<Elt<Base>>>(),
         acc,
       );
 
@@ -227,19 +227,19 @@ where
     )
   }
 
-  fn absorb_bytes_and_squeeze<CS, T: AsRef<[u8]>>(&mut self, mut cs: CS, bytes: T, num_bits: usize) -> Result<Vec<AllocatedBit>, SynthesisError> where CS: ConstraintSystem<Scalar> {
+  fn absorb_bytes_and_squeeze<CS, T: AsRef<[u8]>>(&mut self, mut cs: CS, bytes: T, num_bits: usize) -> Result<Vec<AllocatedBit>, SynthesisError> where CS: ConstraintSystem<Base> {
     // assert!(bytes.as_ref().len() <= LENGTH);
     // let mut input = [0u8; LENGTH];
     // input[0..bytes.len()].copy_from_slice(bytes.as_ref());
     let bytes = AllocatedNum::alloc(
       cs.namespace(|| "absorb bytes"),
-      || Ok(Scalar::from_uniform(bytes.as_ref()))
+      || Ok(Base::from_uniform(bytes.as_ref()))
     )?;
     self.absorb(&bytes);
     self.squeeze(cs.namespace(|| "absorb bytes and squeeze"), num_bits)
   }
 
-  fn batch_squeeze<CS, T: AsRef<[u8]>>(&mut self, mut cs: CS, bytes: T, len: usize, num_bits: usize) -> Result<Vec<Vec<AllocatedBit>>, SynthesisError> where CS: ConstraintSystem<Scalar> {
+  fn batch_squeeze<CS, T: AsRef<[u8]>>(&mut self, mut cs: CS, bytes: T, len: usize, num_bits: usize) -> Result<Vec<Vec<AllocatedBit>>, SynthesisError> where CS: ConstraintSystem<Base> {
     (0..len).map(|i|
         self.absorb_bytes_and_squeeze(cs.namespace(||format!("{}th squeeze", i)), bytes.as_ref(), num_bits)
     ).collect()
@@ -326,18 +326,18 @@ impl<G: Group> TranscriptEngineTrait<G> for PoseidonTranscript<G> {
 pub struct PoseidonTranscriptCircuit<G: Group>{
   // Internal state
   round: u16,
-  state: Vec<AllocatedNum<G::Scalar>>,
-  constants: PoseidonConstantsCircuit<G::Scalar>,
+  state: Vec<AllocatedNum<G::Base>>,
+  constants: PoseidonConstantsCircuit<G::Base>,
   _p: PhantomData<G>,
 }
 
 impl<G: Group> TranscriptCircuitEngineTrait<G> for PoseidonTranscriptCircuit<G> {
-  type Constants = PoseidonConstantsCircuit<G::Scalar>;
+  type Constants = PoseidonConstantsCircuit<G::Base>;
 
-  fn new<CS: ConstraintSystem<G::Scalar>>(constants: Self::Constants, mut cs: CS, label: &'static [u8]) -> Self {
+  fn new<CS: ConstraintSystem<G::Base>>(constants: Self::Constants, mut cs: CS, label: &'static [u8]) -> Self {
     let input = vec![
-      AllocatedNum::alloc(cs.namespace(|| "alloc PERSONA_TAG"), || Ok(G::Scalar::from_uniform(PERSONA_TAG))).unwrap(),
-      AllocatedNum::alloc(cs.namespace(|| "alloc labe"), || Ok(G::Scalar::from_uniform(label))).unwrap()
+      AllocatedNum::alloc(cs.namespace(|| "alloc PERSONA_TAG"), || Ok(G::Base::from_uniform(PERSONA_TAG))).unwrap(),
+      AllocatedNum::alloc(cs.namespace(|| "alloc labe"), || Ok(G::Base::from_uniform(label))).unwrap()
     ];
 
     Self {
@@ -348,13 +348,13 @@ impl<G: Group> TranscriptCircuitEngineTrait<G> for PoseidonTranscriptCircuit<G> 
     }
   }
 
-  fn squeeze<CS: ConstraintSystem<G::Scalar>>(&mut self, mut cs: CS, label: &'static [u8]) -> Result<AllocatedNum<G::Scalar>, SynthesisError> {
+  fn squeeze<CS: ConstraintSystem<G::Base>>(&mut self, mut cs: CS, label: &'static [u8]) -> Result<AllocatedNum<G::Base>, SynthesisError> {
     // we gather the full input from the round, preceded by the current state of the transcript
     let input = [
-      vec![AllocatedNum::alloc(cs.namespace(|| "alloc dom_sep_tag"), || Ok(G::Scalar::from_uniform(DOM_SEP_TAG)))?],
-      vec![AllocatedNum::alloc(cs.namespace(|| "alloc round"), || Ok(G::Scalar::from_uniform(self.round.to_le_bytes().as_ref())))?],
+      vec![AllocatedNum::alloc(cs.namespace(|| "alloc dom_sep_tag"), || Ok(G::Base::from_uniform(DOM_SEP_TAG)))?],
+      vec![AllocatedNum::alloc(cs.namespace(|| "alloc round"), || Ok(G::Base::from_uniform(self.round.to_le_bytes().as_ref())))?],
       self.state.clone(),
-      vec![AllocatedNum::alloc(cs.namespace(|| "alloc label"), || Ok(G::Scalar::from_uniform(label)))?],
+      vec![AllocatedNum::alloc(cs.namespace(|| "alloc label"), || Ok(G::Base::from_uniform(label)))?],
     ]
         .concat();
 
@@ -374,7 +374,7 @@ impl<G: Group> TranscriptCircuitEngineTrait<G> for PoseidonTranscriptCircuit<G> 
         input.len() as u32,
         &(0..input.len())
             .map(|i| Elt::Allocated(input[i].clone()))
-            .collect::<Vec<Elt<G::Scalar>>>(),
+            .collect::<Vec<Elt<G::Base>>>(),
         acc,
       );
 
@@ -392,17 +392,17 @@ impl<G: Group> TranscriptCircuitEngineTrait<G> for PoseidonTranscriptCircuit<G> 
     Ok(output)
   }
 
-  fn batch_squeeze<CS: ConstraintSystem<G::Scalar>>(
+  fn batch_squeeze<CS: ConstraintSystem<G::Base>>(
     &mut self,
     mut cs: CS,
     label: &'static [u8],
     len: usize
-  ) -> Result<Vec<AllocatedNum<G::Scalar>>, SynthesisError> {
+  ) -> Result<Vec<AllocatedNum<G::Base>>, SynthesisError> {
     (0..len).map(|i| self.squeeze(cs.namespace(|| format!("{}th squeeze", i)), label)).collect()
   }
 
-  fn absorb<T: TranscriptReprTrait<G>, CS: ConstraintSystem<G::Scalar>>(&mut self, mut cs: CS, label: &'static [u8], o: &T)  -> Result<(), SynthesisError> {
-    let label_num = AllocatedNum::alloc(cs.namespace(|| "alloc label"), || Ok(G::Scalar::from_uniform(label)))?;
+  fn absorb<T: TranscriptReprTrait<G>, CS: ConstraintSystem<G::Base>>(&mut self, mut cs: CS, label: &'static [u8], o: &T)  -> Result<(), SynthesisError> {
+    let label_num = AllocatedNum::alloc(cs.namespace(|| "alloc label"), || Ok(G::Base::from_uniform(label)))?;
     self.state.push(label_num);
     for struct_num in o.to_transcript_nums() {
       self.state.push(struct_num);
@@ -410,9 +410,9 @@ impl<G: Group> TranscriptCircuitEngineTrait<G> for PoseidonTranscriptCircuit<G> 
     Ok(())
   }
 
-  fn dom_sep<CS: ConstraintSystem<G::Scalar>>(&mut self, mut cs: CS, bytes: &'static [u8])  -> Result<(), SynthesisError> {
-    let tag_num = AllocatedNum::alloc(cs.namespace(|| "alloc label"), || Ok(G::Scalar::from_uniform(DOM_SEP_TAG)))?;
-    let bytes_num = AllocatedNum::alloc(cs.namespace(|| "alloc bytes"), || Ok(G::Scalar::from_uniform(bytes)))?;
+  fn dom_sep<CS: ConstraintSystem<G::Base>>(&mut self, mut cs: CS, bytes: &'static [u8])  -> Result<(), SynthesisError> {
+    let tag_num = AllocatedNum::alloc(cs.namespace(|| "alloc label"), || Ok(G::Base::from_uniform(DOM_SEP_TAG)))?;
+    let bytes_num = AllocatedNum::alloc(cs.namespace(|| "alloc bytes"), || Ok(G::Base::from_uniform(bytes)))?;
     self.state.push(tag_num);
     self.state.push(bytes_num);
     Ok(())
@@ -432,22 +432,22 @@ mod tests {
 
   fn test_poseidon_ro_with<G: Group>()
   where
-    // we can print the field elements we get from G's Base & Scalar fields,
+    // we can print the field elements we get from G's Base & Base fields,
     // and compare their byte representations
     <<G as Group>::Base as PrimeField>::Repr: std::fmt::Debug,
-    <<G as Group>::Scalar as PrimeField>::Repr: std::fmt::Debug,
-    <<G as Group>::Base as PrimeField>::Repr: PartialEq<<<G as Group>::Scalar as PrimeField>::Repr>,
+    <<G as Group>::Base as PrimeField>::Repr: std::fmt::Debug,
+    <<G as Group>::Base as PrimeField>::Repr: PartialEq<<<G as Group>::Base as PrimeField>::Repr>,
   {
     // Check that the number computed inside the circuit is equal to the number computed outside the circuit
     let mut csprng: OsRng = OsRng;
-    let constants = PoseidonConstantsCircuit::<G::Scalar>::default();
+    let constants = PoseidonConstantsCircuit::<G::Base>::default();
     let num_absorbs = 32;
-    let mut ro: PoseidonRO<G::Scalar, G::Base> = PoseidonRO::new(constants.clone(), num_absorbs);
-    let mut ro_gadget: PoseidonROCircuit<G::Scalar> =
+    let mut ro: PoseidonRO<G::Base, G::Base> = PoseidonRO::new(constants.clone(), num_absorbs);
+    let mut ro_gadget: PoseidonROCircuit<G::Base> =
       PoseidonROCircuit::new(constants, num_absorbs);
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
     for i in 0..num_absorbs {
-      let num = G::Scalar::random(&mut csprng);
+      let num = G::Base::random(&mut csprng);
       ro.absorb(num);
       let num_gadget =
         AllocatedNum::alloc(cs.namespace(|| format!("data {i}")), || Ok(num)).unwrap();

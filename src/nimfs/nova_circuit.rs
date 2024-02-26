@@ -9,13 +9,13 @@ use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::traits::{Group, ROCircuitTrait, ROConstantsCircuit, TEConstantsCircuit};
 
 pub struct NovaAuxiliaryInputs<G: Group> {
-    params: G::Scalar, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
-    // i: G::Scalar,
-    z0: Vec<G::Scalar>,
-    zi: Option<Vec<G::Scalar>>,
+    params: G::Base, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
+    // i: G::Base,
+    z0: Vec<G::Base>,
+    zi: Option<Vec<G::Base>>,
     lcccs: Option<Vec<LCCCS<G>>>,
     cccs: Option<Vec<CCCS<G>>>,
-    rho: Option<G::Scalar>,
+    rho: Option<G::Base>,
     r: usize
 }
 
@@ -27,14 +27,14 @@ struct NovaAuxiliarySecondCircuit<G: Group> {
 
 impl<G: Group> NovaAuxiliarySecondCircuit<G> {
     /// Allocate all witnesses and return
-    fn alloc_witness<CS: ConstraintSystem<<G as Group>::Scalar>>(
+    fn alloc_witness<CS: ConstraintSystem<<G as Group>::Base>>(
         &self,
         mut cs: CS,
     ) -> Result<
         (
             Vec<AllocatedLCCCSSecondPart<G>>,
             Vec<AllocatedCCCSSecondPart<G>>,
-            AllocatedNum<G::Scalar>
+            AllocatedNum<G::Base>
         ),
         SynthesisError,
     > {
@@ -65,10 +65,10 @@ impl<G: Group> NovaAuxiliarySecondCircuit<G> {
 
 impl<G: Group> NovaAuxiliarySecondCircuit<G> {
     /// synthesize circuit giving constraint system
-    pub fn synthesize<CS: ConstraintSystem<<G as Group>::Scalar>>(
+    pub fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
         self,
         cs: &mut CS,
-    ) -> Result<AllocatedNum<G::Scalar>, SynthesisError> {
+    ) -> Result<AllocatedNum<G::Base>, SynthesisError> {
         // Allocate all witnesses
         let (lcccs, cccs, rho)
             = self.alloc_witness(cs.namespace(|| "allocate the circuit witness"))?;

@@ -14,12 +14,12 @@ use crate::traits::{Group, TranscriptCircuitEngineTrait, TranscriptReprTrait};
 
 pub struct AllocatedProof<G: Group> {
     pub sum_check_proof: AllocatedIOPProof<G>,
-    pub sigmas: Vec<Vec<AllocatedNum<G::Scalar>>>,
-    pub thetas: Vec<Vec<AllocatedNum<G::Scalar>>>,
+    pub sigmas: Vec<Vec<AllocatedNum<G::Base>>>,
+    pub thetas: Vec<Vec<AllocatedNum<G::Base>>>,
 }
 
 impl<G: Group> AllocatedProof<G> {
-    pub fn from_witness<CS: ConstraintSystem<G::Scalar>>(mut cs: CS, proof_witness: &NIMFSProof<G>) -> Result<Self, SynthesisError> {
+    pub fn from_witness<CS: ConstraintSystem<G::Base>>(mut cs: CS, proof_witness: &NIMFSProof<G>) -> Result<Self, SynthesisError> {
         let point = proof_witness.sum_check_proof.point
             .iter()
             .enumerate()
@@ -52,16 +52,16 @@ impl<G: Group> AllocatedProof<G> {
 }
 
 pub struct AllocatedIOPProof<C: Group> {
-    pub point: Vec<AllocatedNum<C::Scalar>>,
+    pub point: Vec<AllocatedNum<C::Base>>,
     pub proofs: Vec<AllocatedIOPProverMessage<C>>,
 }
 
 pub struct AllocatedIOPProverMessage<C: Group> {
-    pub(crate) evaluations: Vec<AllocatedNum<C::Scalar>>,
+    pub(crate) evaluations: Vec<AllocatedNum<C::Base>>,
 }
 
 impl<C: Group> TranscriptReprTrait<C> for  AllocatedIOPProverMessage<C> {
-    fn to_transcript_nums(&self) -> Vec<AllocatedNum<C::Scalar>> {
+    fn to_transcript_nums(&self) -> Vec<AllocatedNum<C::Base>> {
         self.evaluations.clone()
     }
 }
@@ -73,21 +73,21 @@ pub struct AllocatedIOPVerifierState<G: Group> {
     pub(crate) finished: bool,
     /// a list storing the univariate polynomial in evaluation form sent by the
     /// prover at each round
-    pub(crate) polynomials_received: Vec<Vec<AllocatedNum<G::Scalar>>>,
+    pub(crate) polynomials_received: Vec<Vec<AllocatedNum<G::Base>>>,
     /// a list storing the randomness sampled by the verifier at each round
-    pub(crate) challenges: Vec<AllocatedNum<G::Scalar>>,
+    pub(crate) challenges: Vec<AllocatedNum<G::Base>>,
 }
 
 pub struct AllocatedSumCheckSubClaim<G: Group> {
     /// the multi-dimensional point that this multilinear extension is evaluated
     /// to
-    pub point: Vec<AllocatedNum<G::Scalar>>,
+    pub point: Vec<AllocatedNum<G::Base>>,
     /// the expected evaluation
-    pub expected_evaluation: AllocatedNum<G::Scalar>,
+    pub expected_evaluation: AllocatedNum<G::Base>,
 }
 
 impl<G: Group> AllocatedIOPVerifierState<G> {
-    fn verifier_init(index_info: &VPAuxInfo<G::Scalar>) -> Self {
+    fn verifier_init(index_info: &VPAuxInfo<G::Base>) -> Self {
         let res = Self {
             round: 1,
             num_vars: index_info.num_variables,
@@ -99,12 +99,12 @@ impl<G: Group> AllocatedIOPVerifierState<G> {
         res
     }
 
-    fn verify_round_and_update_state<CS: ConstraintSystem<<G as Group>::Scalar>>(
+    fn verify_round_and_update_state<CS: ConstraintSystem<<G as Group>::Base>>(
         &mut self,
         mut cs: CS,
         prover_msg: &AllocatedIOPProverMessage<G>,
         transcript: &mut G::TECircuit,
-    ) -> Result<AllocatedNum<G::Scalar>, SynthesisError> {
+    ) -> Result<AllocatedNum<G::Base>, SynthesisError> {
         assert!(!self.finished);
 
         // In an interactive protocol, the verifier should
@@ -134,10 +134,10 @@ impl<G: Group> AllocatedIOPVerifierState<G> {
         Ok(challenge)
     }
 
-    fn check_and_generate_subclaim<CS: ConstraintSystem<<G as Group>::Scalar>>(
+    fn check_and_generate_subclaim<CS: ConstraintSystem<<G as Group>::Base>>(
         &mut self,
         mut cs: CS,
-        asserted_sum: &AllocatedNum<G::Scalar>,
+        asserted_sum: &AllocatedNum<G::Base>,
     ) -> Result<AllocatedSumCheckSubClaim<G>, SynthesisError> {
         assert!(self.finished);
         assert_eq!(self.polynomials_received.len(), self.num_vars);
@@ -182,11 +182,11 @@ impl<G: Group> AllocatedIOPVerifierState<G> {
     }
 }
 
-pub fn sumcheck_verify<CS: ConstraintSystem<<G as Group>::Scalar>, G: Group>(
+pub fn sumcheck_verify<CS: ConstraintSystem<<G as Group>::Base>, G: Group>(
     mut cs: CS,
-    claimed_sum: &AllocatedNum<G::Scalar>,
+    claimed_sum: &AllocatedNum<G::Base>,
     proof: &AllocatedIOPProof<G>,
-    aux_info: &VPAuxInfo<G::Scalar>,
+    aux_info: &VPAuxInfo<G::Base>,
     transcript: &mut G::TECircuit,
 ) -> Result<AllocatedSumCheckSubClaim<G>, SynthesisError> {
     transcript.absorb(cs.namespace(|| "absorb num_variables"), b"aux info", aux_info)?;
@@ -205,16 +205,16 @@ pub fn sumcheck_verify<CS: ConstraintSystem<<G as Group>::Scalar>, G: Group>(
     verifier_state.check_and_generate_subclaim(cs.namespace(|| "check_and_generate_subclaim"), &claimed_sum)
 }
 
-pub fn enforce_compute_c_from_sigmas_and_thetas<CS: ConstraintSystem<<G as Group>::Scalar>, G: Group>(
+pub fn enforce_compute_c_from_sigmas_and_thetas<CS: ConstraintSystem<<G as Group>::Base>, G: Group>(
     mut cs: CS,
     ccs_params: &CCS<G>,
-    vec_sigmas: &[Vec<AllocatedNum<G::Scalar>>],
-    vec_thetas: &[Vec<AllocatedNum<G::Scalar>>],
-    gamma: AllocatedNum<G::Scalar>,
-    beta: &[AllocatedNum<G::Scalar>],
-    vec_r_x: Vec<Vec<AllocatedNum<G::Scalar>>>,
-    r_x_prime: &[AllocatedNum<G::Scalar>],
-) -> Result<AllocatedNum<G::Scalar>, SynthesisError> {
+    vec_sigmas: &[Vec<AllocatedNum<G::Base>>],
+    vec_thetas: &[Vec<AllocatedNum<G::Base>>],
+    gamma: AllocatedNum<G::Base>,
+    beta: &[AllocatedNum<G::Base>],
+    vec_r_x: Vec<Vec<AllocatedNum<G::Base>>>,
+    r_x_prime: &[AllocatedNum<G::Base>],
+) -> Result<AllocatedNum<G::Base>, SynthesisError> {
     let mut c_lc = Num::zero();
 
     let mut e_lcccs = Vec::new();

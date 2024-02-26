@@ -229,7 +229,7 @@ pub trait TranscriptReprTrait<G: Group>: Send + Sync {
     unimplemented!()
   }
 
-  fn to_transcript_nums(&self) -> Vec<AllocatedNum<G::Scalar>> {
+  fn to_transcript_nums(&self) -> Vec<AllocatedNum<G::Base>> {
     unimplemented!()
   }
 }
@@ -261,19 +261,19 @@ pub trait TranscriptCircuitEngineTrait<G: Group>: Send + Sync {
   type Constants: Default + Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
 
   /// initializes the transcript
-  fn new<CS: ConstraintSystem<G::Scalar>>(constants: Self::Constants, cs: CS, label: &'static [u8]) -> Self;
+  fn new<CS: ConstraintSystem<G::Base>>(constants: Self::Constants, cs: CS, label: &'static [u8]) -> Self;
 
   /// returns a AllocatedNumber as a challenge
-  fn squeeze<CS: ConstraintSystem<G::Scalar>>(&mut self, cs: CS, label: &'static [u8]) -> Result<AllocatedNum<G::Scalar>, SynthesisError>;
+  fn squeeze<CS: ConstraintSystem<G::Base>>(&mut self, cs: CS, label: &'static [u8]) -> Result<AllocatedNum<G::Base>, SynthesisError>;
 
   /// returns a AllocatedNumber as a challenge
-  fn batch_squeeze<CS: ConstraintSystem<G::Scalar>>(&mut self, cs: CS, label: &'static [u8], len: usize) -> Result<Vec<AllocatedNum<G::Scalar>>, SynthesisError>;
+  fn batch_squeeze<CS: ConstraintSystem<G::Base>>(&mut self, cs: CS, label: &'static [u8], len: usize) -> Result<Vec<AllocatedNum<G::Base>>, SynthesisError>;
 
   /// absorbs any type that implements `TranscriptReprTrait` under a label
-  fn absorb<T: TranscriptReprTrait<G>, CS: ConstraintSystem<G::Scalar>>(&mut self, cs:CS, label: &'static [u8], o: &T) -> Result<(), SynthesisError>;
+  fn absorb<T: TranscriptReprTrait<G>, CS: ConstraintSystem<G::Base>>(&mut self, cs:CS, label: &'static [u8], o: &T) -> Result<(), SynthesisError>;
 
   /// adds a domain separator
-  fn dom_sep<CS: ConstraintSystem<G::Scalar>>(&mut self, cs:CS, bytes: &'static [u8]) -> Result<(), SynthesisError>;
+  fn dom_sep<CS: ConstraintSystem<G::Base>>(&mut self, cs:CS, bytes: &'static [u8]) -> Result<(), SynthesisError>;
 }
 
 /// Defines additional methods on `PrimeField` objects

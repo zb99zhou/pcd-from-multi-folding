@@ -26,16 +26,16 @@ use crate::traits::ROCircuitTrait;
 /// An Allocated Committed CCS instance
 #[derive(Clone)]
 pub struct AllocatedCCCSPrimaryPart<G: Group> {
-    pub(crate) Xs: Vec<AllocatedNum<G::Scalar>>,
+    pub(crate) Xs: Vec<AllocatedNum<G::Base>>,
 }
 
 impl<G: Group> AllocatedCCCSPrimaryPart<G> {
-    pub fn is_null<CS: ConstraintSystem<G::Scalar>>(&self, mut cs: CS, zero: &AllocatedNum<G::Scalar>) -> Result<Boolean, SynthesisError> {
+    pub fn is_null<CS: ConstraintSystem<G::Base>>(&self, mut cs: CS, zero: &AllocatedNum<G::Base>) -> Result<Boolean, SynthesisError> {
         alloc_vec_number_equals_zero(cs.namespace(|| "is Xs zero"), &self.Xs, &zero).map(Into::into)
     }
 
     /// Takes the CCCS instance and creates a new allocated CCCS instance
-    pub fn alloc<CS: ConstraintSystem<<G as Group>::Scalar>>(
+    pub fn alloc<CS: ConstraintSystem<<G as Group>::Base>>(
         mut cs: CS,
         cccs: Option<&CCCS<G>>,
         io_num: usize
@@ -43,7 +43,7 @@ impl<G: Group> AllocatedCCCSPrimaryPart<G> {
         let Xs = (0..io_num).map(|i|{
             AllocatedNum::alloc(
                 cs.namespace(|| format!("allocate X[{}]", i)),
-                || Ok(cccs.get().map_or(G::Scalar::ZERO, |u| u.x[i])),
+                || Ok(cccs.get().map_or(G::Base::ZERO, |u| u.x[i])),
             )
         }).collect::<Result<Vec<_>, SynthesisError>>()?;
 
@@ -59,7 +59,7 @@ pub struct AllocatedCCCSSecondPart<G: Group> {
 
 impl<G: Group> AllocatedCCCSSecondPart<G> {
     /// Takes the CCCS instance and creates a new allocated CCCS instance
-    pub fn alloc<CS: ConstraintSystem<<G as Group>::Scalar>>(
+    pub fn alloc<CS: ConstraintSystem<<G as Group>::Base>>(
         mut cs: CS,
         cccs: Option<&CCCS<G>>,
     ) -> Result<Self, SynthesisError> {
@@ -72,7 +72,7 @@ impl<G: Group> AllocatedCCCSSecondPart<G> {
         Ok(AllocatedCCCSSecondPart { C })
     }
 
-    pub fn absorb_in_ro<CS: ConstraintSystem<<G as Group>::Scalar>>(
+    pub fn absorb_in_ro<CS: ConstraintSystem<<G as Group>::Base>>(
         &self,
         ro: &mut G::ROCircuit,
     ) -> Result<(), SynthesisError> {
@@ -88,14 +88,14 @@ impl<G: Group> AllocatedCCCSSecondPart<G> {
 /// An Allocated Linearized Committed CCS instance
 #[derive(Clone)]
 pub struct AllocatedLCCCSPrimaryPart<G: Group> {
-    pub u: AllocatedNum<G::Scalar>,
-    pub Xs: Vec<BigNat<G::Scalar>>,
-    pub Vs: Vec<AllocatedNum<G::Scalar>>,
-    pub r_x: Vec<AllocatedNum<G::Scalar>>,
+    pub u: AllocatedNum<G::Base>,
+    pub Xs: Vec<BigNat<G::Base>>,
+    pub Vs: Vec<AllocatedNum<G::Base>>,
+    pub r_x: Vec<AllocatedNum<G::Base>>,
 }
 
 impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
-    pub fn is_null<CS: ConstraintSystem<G::Scalar>>(&self, mut cs: CS, zero: &AllocatedNum<G::Scalar>) -> Result<Boolean, SynthesisError> {
+    pub fn is_null<CS: ConstraintSystem<G::Base>>(&self, mut cs: CS, zero: &AllocatedNum<G::Base>) -> Result<Boolean, SynthesisError> {
         let mut is_u_zero = alloc_num_equals(cs.namespace(|| "alloc is_null"), &self.u, zero)?.into();
 
         let Xs_num = self.Xs.iter().flat_map(|x| x.as_limbs()).collect::<Vec<_>>();
@@ -107,25 +107,25 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
     }
 
     /// Allocates the given `LCCCS` as a witness of the circuit
-    pub fn alloc<CS: ConstraintSystem<<G as Group>::Scalar>>(
+    pub fn alloc<CS: ConstraintSystem<<G as Group>::Base>>(
         mut cs: CS,
         inst: Option<&LCCCS<G>>,
         io_num: usize,
         limb_width: usize,
         n_limbs: usize,
     ) -> Result<Self, SynthesisError> {
-        // u << |G::Scalar| despite the fact that u is a scalar.
-        // So we parse all of its bytes as a G::Scalar element
+        // u << |G::Base| despite the fact that u is a scalar.
+        // So we parse all of its bytes as a G::Base element
         let u = AllocatedNum::alloc(
             cs.namespace(|| "allocate u"),
-            || Ok(inst.get().map_or(G::Scalar::ZERO, |inst| inst.u)),
+            || Ok(inst.get().map_or(G::Base::ZERO, |inst| inst.u)),
         )?;
 
         // Allocate X0..Xn. If the input instance is None, then allocate default values 0.
         let Xs = (0..io_num).map(|i|{
             BigNat::alloc_from_nat(
                 cs.namespace(|| format!("allocate x[{}]", i)),
-                || Ok(f_to_nat(&inst.map_or(G::Scalar::ZERO, |inst| inst.x[i]))),
+                || Ok(f_to_nat(&inst.map_or(G::Base::ZERO, |inst| inst.x[i]))),
                 limb_width,
                 n_limbs,
             )
@@ -136,7 +136,7 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
 
     /// Allocates the hardcoded default `RelaxedR1CSInstance` in the circuit.
     /// C = 0, u = 0, X0 = X1 = ... = Xn = 0
-    pub fn default<CS: ConstraintSystem<<G as Group>::Scalar>>(
+    pub fn default<CS: ConstraintSystem<<G as Group>::Base>>(
         mut cs: CS,
         io_num: usize,
         s: usize,
@@ -150,7 +150,7 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
         let Xs = (0..io_num).map(|i|{
             BigNat::alloc_from_nat(
                 cs.namespace(|| format!("allocate x[{}]", i)),
-                || Ok(f_to_nat(&G::Scalar::ZERO)),
+                || Ok(f_to_nat(&G::Base::ZERO)),
                 limb_width,
                 n_limbs,
             )
@@ -158,13 +158,13 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
         let Vs = (0..t).map(|i|{
             AllocatedNum::alloc(
                 cs.namespace(|| format!("allocate v[{}]", i)),
-                || Ok(G::Scalar::ZERO),
+                || Ok(G::Base::ZERO),
             )
         }).collect::<Result<Vec<_>, SynthesisError>>()?;
         let r_x = (0..s).map(|i|{
             AllocatedNum::alloc(
                 cs.namespace(|| format!("allocate v[{}]", i)),
-                || Ok(G::Scalar::ZERO),
+                || Ok(G::Base::ZERO),
             )
         }).collect::<Result<Vec<_>, SynthesisError>>()?;
 
@@ -172,7 +172,7 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
     }
 
     /// Allocates the CCCS Instance as a LCCCS in the circuit.
-    pub fn from_cccs<CS: ConstraintSystem<<G as Group>::Scalar>>(
+    pub fn from_cccs<CS: ConstraintSystem<<G as Group>::Base>>(
         mut cs: CS,
         inst: AllocatedCCCSPrimaryPart<G>,
         limb_width: usize,
@@ -201,7 +201,7 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
     }
 
     /// Absorb the provided instance in the RO
-    pub fn absorb_in_ro<CS: ConstraintSystem<<G as Group>::Scalar>>(
+    pub fn absorb_in_ro<CS: ConstraintSystem<<G as Group>::Base>>(
         &self,
         mut cs: CS,
         ro: &mut G::ROCircuit,
@@ -233,7 +233,7 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
     }
 
     /// If the condition is true then returns this otherwise it returns the other
-    pub fn conditionally_select<CS: ConstraintSystem<<G as Group>::Scalar>>(
+    pub fn conditionally_select<CS: ConstraintSystem<<G as Group>::Base>>(
         &self,
         mut cs: CS,
         other: &AllocatedLCCCSPrimaryPart<G>,
@@ -271,12 +271,12 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn folding_with_lcccs_primary_part<CS: ConstraintSystem<<G as Group>::Scalar>>(
+    pub fn folding_with_lcccs_primary_part<CS: ConstraintSystem<<G as Group>::Base>>(
         &mut self,
         mut cs: CS,
         lcccs: &AllocatedLCCCSPrimaryPart<G>,
-        rho_i: &AllocatedNum<G::Scalar>,
-        sigmas: &[AllocatedNum<G::Scalar>],
+        rho_i: &AllocatedNum<G::Base>,
+        sigmas: &[AllocatedNum<G::Base>],
         limb_width: usize,
         n_limbs: usize,
     ) -> Result<(), SynthesisError> {
@@ -292,16 +292,16 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn folding_with_cccs_primary_part<CS: ConstraintSystem<<G as Group>::Scalar>>(
+    pub fn folding_with_cccs_primary_part<CS: ConstraintSystem<<G as Group>::Base>>(
         &mut self,
         mut cs: CS,
         cccs: &AllocatedCCCSPrimaryPart<G>,
-        rho_i: &AllocatedNum<G::Scalar>,
-        thetas: &[AllocatedNum<G::Scalar>],
+        rho_i: &AllocatedNum<G::Base>,
+        thetas: &[AllocatedNum<G::Base>],
         limb_width: usize,
         n_limbs: usize,
     ) -> Result<(), SynthesisError> {
-        let one = AllocatedNum::alloc(cs.namespace(|| "alloc"), || Ok(G::Scalar::ZERO))?;
+        let one = AllocatedNum::alloc(cs.namespace(|| "alloc"), || Ok(G::Base::ZERO))?;
         let Xs_bn = cccs.Xs
             .iter()
             .enumerate()
@@ -324,13 +324,13 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn folding<CS: ConstraintSystem<<G as Group>::Scalar>>(
+    pub fn folding<CS: ConstraintSystem<<G as Group>::Base>>(
         &mut self,
         mut cs: CS,
-        rho_i: &AllocatedNum<G::Scalar>,
-        u: &AllocatedNum<G::Scalar>,
-        x: &[BigNat<G::Scalar>],
-        v: &[AllocatedNum<G::Scalar>],
+        rho_i: &AllocatedNum<G::Base>,
+        u: &AllocatedNum<G::Base>,
+        x: &[BigNat<G::Base>],
+        v: &[AllocatedNum<G::Base>],
         limb_width: usize,
         n_limbs: usize,
     ) -> Result<(), SynthesisError> {
@@ -397,7 +397,7 @@ pub struct AllocatedLCCCSSecondPart<G: Group> {
 
 impl<G: Group> AllocatedLCCCSSecondPart<G> {
     /// Allocates the given `LCCCS` as a witness of the circuit
-    pub fn alloc<CS: ConstraintSystem<<G as Group>::Scalar>>(
+    pub fn alloc<CS: ConstraintSystem<<G as Group>::Base>>(
         mut cs: CS,
         inst: Option<&LCCCS<G>>,
     ) -> Result<Self, SynthesisError> {
@@ -412,7 +412,7 @@ impl<G: Group> AllocatedLCCCSSecondPart<G> {
 
     /// Allocates the hardcoded default `LCCCS` in the circuit.
     /// C = 0, u = 0, X0 = X1 = ... = Xn = 0
-    pub fn default<CS: ConstraintSystem<<G as Group>::Scalar>>(
+    pub fn default<CS: ConstraintSystem<<G as Group>::Base>>(
         mut cs: CS,
     ) -> Result<Self, SynthesisError> {
         let C = AllocatedPoint::default(cs.namespace(|| "allocate W"))?;
@@ -420,12 +420,12 @@ impl<G: Group> AllocatedLCCCSSecondPart<G> {
     }
 
     /// Allocates the CCCS Instance as a LCCCS in the circuit.
-    pub fn from_cccs<CS: ConstraintSystem<<G as Group>::Scalar>>(inst: AllocatedCCCSSecondPart<G>) -> Result<Self, SynthesisError> {
+    pub fn from_cccs<CS: ConstraintSystem<<G as Group>::Base>>(inst: AllocatedCCCSSecondPart<G>) -> Result<Self, SynthesisError> {
         Ok(AllocatedLCCCSSecondPart { C: inst.C })
     }
 
     /// If the condition is true then returns this otherwise it returns the other
-    pub fn conditionally_select<CS: ConstraintSystem<<G as Group>::Scalar>>(
+    pub fn conditionally_select<CS: ConstraintSystem<<G as Group>::Base>>(
         &self,
         mut cs: CS,
         other: &AllocatedLCCCSSecondPart<G>,
@@ -441,11 +441,11 @@ impl<G: Group> AllocatedLCCCSSecondPart<G> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn folding_with_lcccs_second_part<CS: ConstraintSystem<<G as Group>::Scalar>>(
+    pub fn folding_with_lcccs_second_part<CS: ConstraintSystem<<G as Group>::Base>>(
         &mut self,
         mut cs: CS,
         lcccs: &AllocatedLCCCSSecondPart<G>,
-        rho_i: &AllocatedNum<G::Scalar>,
+        rho_i: &AllocatedNum<G::Base>,
     ) -> Result<(), SynthesisError> {
         self.folding(
             cs.namespace(|| " folding with lcccs"),
@@ -455,11 +455,11 @@ impl<G: Group> AllocatedLCCCSSecondPart<G> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn folding_with_cccs_second_part<CS: ConstraintSystem<<G as Group>::Scalar>>(
+    pub fn folding_with_cccs_second_part<CS: ConstraintSystem<<G as Group>::Base>>(
         &mut self,
         mut cs: CS,
         cccs: &AllocatedCCCSSecondPart<G>,
-        rho_i: &AllocatedNum<G::Scalar>,
+        rho_i: &AllocatedNum<G::Base>,
     ) -> Result<(), SynthesisError> {
         self.folding(
             cs.namespace(|| " folding with cccs"),
@@ -469,11 +469,11 @@ impl<G: Group> AllocatedLCCCSSecondPart<G> {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn folding<CS: ConstraintSystem<<G as Group>::Scalar>>(
+    pub fn folding<CS: ConstraintSystem<<G as Group>::Base>>(
         &mut self,
         mut cs: CS,
         C: &AllocatedPoint<G>,
-        rho_i: &AllocatedNum<G::Scalar>,
+        rho_i: &AllocatedNum<G::Base>,
     ) -> Result<(), SynthesisError> {
         let rho_i_bits = rho_i
             .to_bits_le_strict(cs.namespace(|| "poseidon hash to boolean"))?
@@ -493,7 +493,7 @@ impl<G: Group> AllocatedLCCCSSecondPart<G> {
         Ok(())
     }
 
-    pub fn absorb_in_ro<CS: ConstraintSystem<<G as Group>::Scalar>>(
+    pub fn absorb_in_ro<CS: ConstraintSystem<<G as Group>::Base>>(
         &self,
         ro: &mut G::ROCircuit,
     ) -> Result<(), SynthesisError> {
@@ -506,13 +506,13 @@ impl<G: Group> AllocatedLCCCSSecondPart<G> {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn multi_folding_with_primary_part<CS: ConstraintSystem<<G as Group>::Scalar>, G: Group>(
+pub fn multi_folding_with_primary_part<CS: ConstraintSystem<<G as Group>::Base>, G: Group>(
     mut cs: CS,
     lcccs: &[AllocatedLCCCSPrimaryPart<G>],
     cccs: &[AllocatedCCCSPrimaryPart<G>],
-    rho: AllocatedNum<G::Scalar>,
-    sigmas: &[Vec<AllocatedNum<G::Scalar>>],
-    thetas: &[Vec<AllocatedNum<G::Scalar>>],
+    rho: AllocatedNum<G::Base>,
+    sigmas: &[Vec<AllocatedNum<G::Base>>],
+    thetas: &[Vec<AllocatedNum<G::Base>>],
     limb_width: usize,
     n_limbs: usize,
 ) -> Result<AllocatedLCCCSPrimaryPart<G>, SynthesisError> {
@@ -548,11 +548,11 @@ pub fn multi_folding_with_primary_part<CS: ConstraintSystem<<G as Group>::Scalar
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn multi_folding_with_second_part<CS: ConstraintSystem<<G as Group>::Scalar>, G: Group>(
+pub fn multi_folding_with_second_part<CS: ConstraintSystem<<G as Group>::Base>, G: Group>(
     mut cs: CS,
     lcccs: &[AllocatedLCCCSSecondPart<G>],
     cccs: &[AllocatedCCCSSecondPart<G>],
-    rho: AllocatedNum<G::Scalar>,
+    rho: AllocatedNum<G::Base>,
 ) -> Result<AllocatedLCCCSSecondPart<G>, SynthesisError> {
     // init
     let mut lcccs_folded = lcccs[0].clone();

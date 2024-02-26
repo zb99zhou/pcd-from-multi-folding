@@ -22,9 +22,9 @@ pub struct AllocatedPoint<G>
     where
         G: Group,
 {
-    pub(crate) x: AllocatedNum<G::Scalar>,
-    pub(crate) y: AllocatedNum<G::Scalar>,
-    pub(crate) is_infinity: AllocatedNum<G::Scalar>,
+    pub(crate) x: AllocatedNum<G::Base>,
+    pub(crate) y: AllocatedNum<G::Base>,
+    pub(crate) is_infinity: AllocatedNum<G::Base>,
 }
 
 impl<G> AllocatedPoint<G>
@@ -35,22 +35,22 @@ impl<G> AllocatedPoint<G>
     /// If coords = None, it allocates the default infinity point
     pub fn alloc<CS>(
         mut cs: CS,
-        coords: Option<(G::Scalar, G::Scalar, bool)>,
+        coords: Option<(G::Base, G::Base, bool)>,
     ) -> Result<Self, SynthesisError>
         where
-            CS: ConstraintSystem<G::Scalar>,
+            CS: ConstraintSystem<G::Base>,
     {
         let x = AllocatedNum::alloc(cs.namespace(|| "x"), || {
-            Ok(coords.map_or(G::Scalar::ZERO, |c| c.0))
+            Ok(coords.map_or(G::Base::ZERO, |c| c.0))
         })?;
         let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
-            Ok(coords.map_or(G::Scalar::ZERO, |c| c.1))
+            Ok(coords.map_or(G::Base::ZERO, |c| c.1))
         })?;
         let is_infinity = AllocatedNum::alloc(cs.namespace(|| "is_infinity"), || {
             Ok(if coords.map_or(true, |c| c.2) {
-                G::Scalar::ONE
+                G::Base::ONE
             } else {
-                G::Scalar::ZERO
+                G::Base::ZERO
             })
         })?;
         cs.enforce(
@@ -66,7 +66,7 @@ impl<G> AllocatedPoint<G>
     /// Allocates a default point on the curve.
     pub fn default<CS>(mut cs: CS) -> Result<Self, SynthesisError>
         where
-            CS: ConstraintSystem<G::Scalar>,
+            CS: ConstraintSystem<G::Base>,
     {
         let zero = alloc_zero(cs.namespace(|| "zero"))?;
         let one = alloc_one(cs.namespace(|| "one"))?;
@@ -82,15 +82,15 @@ impl<G> AllocatedPoint<G>
     pub const fn get_coordinates(
         &self,
     ) -> (
-        &AllocatedNum<G::Scalar>,
-        &AllocatedNum<G::Scalar>,
-        &AllocatedNum<G::Scalar>,
+        &AllocatedNum<G::Base>,
+        &AllocatedNum<G::Base>,
+        &AllocatedNum<G::Base>,
     ) {
         (&self.x, &self.y, &self.is_infinity)
     }
 
     /// Negates the provided point
-    pub fn negate<CS: ConstraintSystem<G::Scalar>>(&self, mut cs: CS) -> Result<Self, SynthesisError> {
+    pub fn negate<CS: ConstraintSystem<G::Base>>(&self, mut cs: CS) -> Result<Self, SynthesisError> {
         let y = AllocatedNum::alloc(cs.namespace(|| "y"), || Ok(-*self.y.get_value().get()?))?;
 
         cs.enforce(
@@ -108,7 +108,7 @@ impl<G> AllocatedPoint<G>
     }
 
     /// Add two points (may be equal)
-    pub fn add<CS: ConstraintSystem<G::Scalar>>(
+    pub fn add<CS: ConstraintSystem<G::Base>>(
         &self,
         mut cs: CS,
         other: &AllocatedPoint<G>,
@@ -157,7 +157,7 @@ impl<G> AllocatedPoint<G>
 
     /// Adds other point to this point and returns the result. Assumes that the two points are
     /// different and that both `other.is_infinity` and `this.is_infinty` are bits
-    pub fn add_internal<CS: ConstraintSystem<G::Scalar>>(
+    pub fn add_internal<CS: ConstraintSystem<G::Base>>(
         &self,
         mut cs: CS,
         other: &AllocatedPoint<G>,
@@ -175,9 +175,9 @@ impl<G> AllocatedPoint<G>
         // NOT(NOT(self.is_ifninity) AND NOT(other.is_infinity))
         let at_least_one_inf = AllocatedNum::alloc(cs.namespace(|| "at least one inf"), || {
             Ok(
-                G::Scalar::ONE
-                    - (G::Scalar::ONE - *self.is_infinity.get_value().get()?)
-                    * (G::Scalar::ONE - *other.is_infinity.get_value().get()?),
+                G::Base::ONE
+                    - (G::Base::ONE - *self.is_infinity.get_value().get()?)
+                    * (G::Base::ONE - *other.is_infinity.get_value().get()?),
             )
         })?;
         cs.enforce(
@@ -191,7 +191,7 @@ impl<G> AllocatedPoint<G>
         let x_diff_is_actual =
             AllocatedNum::alloc(cs.namespace(|| "allocate x_diff_is_actual"), || {
                 Ok(if *equal_x.get_value().get()? {
-                    G::Scalar::ONE
+                    G::Base::ONE
                 } else {
                     *at_least_one_inf.get_value().get()?
                 })
@@ -213,9 +213,9 @@ impl<G> AllocatedPoint<G>
         )?;
 
         let lambda = AllocatedNum::alloc(cs.namespace(|| "lambda"), || {
-            let x_diff_inv = if *x_diff_is_actual.get_value().get()? == G::Scalar::ONE {
+            let x_diff_inv = if *x_diff_is_actual.get_value().get()? == G::Base::ONE {
                 // Set to default
-                G::Scalar::ONE
+                G::Base::ONE
             } else {
                 // Set to the actual inverse
                 (*other.x.get_value().get()? - *self.x.get_value().get()?)
@@ -320,13 +320,13 @@ impl<G> AllocatedPoint<G>
     }
 
     /// Doubles the supplied point.
-    pub fn double<CS: ConstraintSystem<G::Scalar>>(&self, mut cs: CS) -> Result<Self, SynthesisError> {
+    pub fn double<CS: ConstraintSystem<G::Base>>(&self, mut cs: CS) -> Result<Self, SynthesisError> {
         //*************************************************************/
-        // lambda = (G::Scalar::from(3) * self.x * self.x + G::A())
-        //  * (G::Scalar::from(2)) * self.y).invert().unwrap();
+        // lambda = (G::Base::from(3) * self.x * self.x + G::A())
+        //  * (G::Base::from(2)) * self.y).invert().unwrap();
         /*************************************************************/
 
-        // Compute tmp = (G::Scalar::ONE + G::Scalar::ONE)* self.y ? self != inf : 1
+        // Compute tmp = (G::Base::ONE + G::Base::ONE)* self.y ? self != inf : 1
         let tmp_actual = AllocatedNum::alloc(cs.namespace(|| "tmp_actual"), || {
             Ok(*self.y.get_value().get()? + *self.y.get_value().get()?)
         })?;
@@ -339,22 +339,22 @@ impl<G> AllocatedPoint<G>
 
         let tmp = select_one_or_num2(cs.namespace(|| "tmp"), &tmp_actual, &self.is_infinity)?;
 
-        // Now compute lambda as (G::Scalar::from(3) * self.x * self.x + G::A()) * tmp_inv
+        // Now compute lambda as (G::Base::from(3) * self.x * self.x + G::A()) * tmp_inv
 
         let prod_1 = AllocatedNum::alloc(cs.namespace(|| "alloc prod 1"), || {
-            Ok(G::Scalar::from(3) * self.x.get_value().get()? * self.x.get_value().get()?)
+            Ok(G::Base::from(3) * self.x.get_value().get()? * self.x.get_value().get()?)
         })?;
         cs.enforce(
             || "Check prod 1",
-            |lc| lc + (G::Scalar::from(3), self.x.get_variable()),
+            |lc| lc + (G::Base::from(3), self.x.get_variable()),
             |lc| lc + self.x.get_variable(),
             |lc| lc + prod_1.get_variable(),
         );
 
         let lambda = AllocatedNum::alloc(cs.namespace(|| "alloc lambda"), || {
-            let tmp_inv = if *self.is_infinity.get_value().get()? == G::Scalar::ONE {
+            let tmp_inv = if *self.is_infinity.get_value().get()? == G::Base::ONE {
                 // Return default value 1
-                G::Scalar::ONE
+                G::Base::ONE
             } else {
                 // Return the actual inverse
                 (*tmp.get_value().get()?).invert().unwrap()
@@ -424,12 +424,12 @@ impl<G> AllocatedPoint<G>
     /// A gadget for scalar multiplication, optimized to use incomplete addition law.
     /// The optimization here is analogous to <https://github.com/arkworks-rs/r1cs-std/blob/6d64f379a27011b3629cf4c9cb38b7b7b695d5a0/src/groups/curves/short_weierstrass/mod.rs#L295>,
     /// except we use complete addition law over affine coordinates instead of projective coordinates for the tail bits
-    pub fn scalar_mul<CS: ConstraintSystem<G::Scalar>>(
+    pub fn scalar_mul<CS: ConstraintSystem<G::Base>>(
         &self,
         mut cs: CS,
         scalar_bits: &[AllocatedBit],
     ) -> Result<Self, SynthesisError> {
-        let split_len = core::cmp::min(scalar_bits.len(), (G::Scalar::NUM_BITS - 2) as usize);
+        let split_len = core::cmp::min(scalar_bits.len(), (G::Base::NUM_BITS - 2) as usize);
         let (incomplete_bits, complete_bits) = scalar_bits.split_at(split_len);
 
         // we convert AllocatedPoint into AllocatedPointNonInfinity; we deal with the case where self.is_infinity = 1 below
@@ -513,7 +513,7 @@ impl<G> AllocatedPoint<G>
     }
 
     /// If condition outputs a otherwise outputs b
-    pub fn conditionally_select<CS: ConstraintSystem<G::Scalar>>(
+    pub fn conditionally_select<CS: ConstraintSystem<G::Base>>(
         mut cs: CS,
         a: &Self,
         b: &Self,
@@ -534,7 +534,7 @@ impl<G> AllocatedPoint<G>
     }
 
     /// If condition outputs a otherwise infinity
-    pub fn select_point_or_infinity<CS: ConstraintSystem<G::Scalar>>(
+    pub fn select_point_or_infinity<CS: ConstraintSystem<G::Base>>(
         mut cs: CS,
         a: &Self,
         condition: &Boolean,
@@ -559,8 +559,8 @@ pub struct AllocatedPointNonInfinity<G>
     where
         G: Group,
 {
-    x: AllocatedNum<G::Scalar>,
-    y: AllocatedNum<G::Scalar>,
+    x: AllocatedNum<G::Base>,
+    y: AllocatedNum<G::Base>,
 }
 
 impl<G> AllocatedPointNonInfinity<G>
@@ -568,14 +568,14 @@ impl<G> AllocatedPointNonInfinity<G>
         G: Group,
 {
     /// Creates a new `AllocatedPointNonInfinity` from the specified coordinates
-    pub const fn new(x: AllocatedNum<G::Scalar>, y: AllocatedNum<G::Scalar>) -> Self {
+    pub const fn new(x: AllocatedNum<G::Base>, y: AllocatedNum<G::Base>) -> Self {
         Self { x, y }
     }
 
     /// Allocates a new point on the curve using coordinates provided by `coords`.
-    pub fn alloc<CS>(mut cs: CS, coords: Option<(G::Scalar, G::Scalar)>) -> Result<Self, SynthesisError>
+    pub fn alloc<CS>(mut cs: CS, coords: Option<(G::Base, G::Base)>) -> Result<Self, SynthesisError>
         where
-            CS: ConstraintSystem<G::Scalar>,
+            CS: ConstraintSystem<G::Base>,
     {
         let x = AllocatedNum::alloc(cs.namespace(|| "x"), || {
             coords.map_or(Err(SynthesisError::AssignmentMissing), |c| Ok(c.0))
@@ -598,7 +598,7 @@ impl<G> AllocatedPointNonInfinity<G>
     /// Returns an `AllocatedPoint` from an `AllocatedPointNonInfinity`
     pub fn to_allocated_point(
         &self,
-        is_infinity: &AllocatedNum<G::Scalar>,
+        is_infinity: &AllocatedNum<G::Base>,
     ) -> Result<AllocatedPoint<G>, SynthesisError> {
         Ok(AllocatedPoint {
             x: self.x.clone(),
@@ -608,19 +608,19 @@ impl<G> AllocatedPointNonInfinity<G>
     }
 
     /// Returns coordinates associated with the point.
-    pub const fn get_coordinates(&self) -> (&AllocatedNum<G::Scalar>, &AllocatedNum<G::Scalar>) {
+    pub const fn get_coordinates(&self) -> (&AllocatedNum<G::Base>, &AllocatedNum<G::Base>) {
         (&self.x, &self.y)
     }
 
     /// Add two points assuming self != +/- other
     pub fn add_incomplete<CS>(&self, mut cs: CS, other: &Self) -> Result<Self, SynthesisError>
         where
-            CS: ConstraintSystem<G::Scalar>,
+            CS: ConstraintSystem<G::Base>,
     {
         // allocate a free variable that an honest prover sets to lambda = (y2-y1)/(x2-x1)
         let lambda = AllocatedNum::alloc(cs.namespace(|| "lambda"), || {
             if *other.x.get_value().get()? == *self.x.get_value().get()? {
-                Ok(G::Scalar::ONE)
+                Ok(G::Base::ONE)
             } else {
                 Ok(
                     (*other.y.get_value().get()? - *self.y.get_value().get()?)
@@ -677,17 +677,17 @@ impl<G> AllocatedPointNonInfinity<G>
     /// doubles the point; since this is called with a point not at infinity, it is guaranteed to be not infinity
     pub fn double_incomplete<CS>(&self, mut cs: CS) -> Result<Self, SynthesisError>
         where
-            CS: ConstraintSystem<G::Scalar>,
+            CS: ConstraintSystem<G::Base>,
     {
         // lambda = (3 x^2 + a) / 2 * y
 
         let x_sq = self.x.square(cs.namespace(|| "x_sq"))?;
 
         let lambda = AllocatedNum::alloc(cs.namespace(|| "lambda"), || {
-            let n = G::Scalar::from(3) * x_sq.get_value().get()? + G::get_curve_params().0;
-            let d = G::Scalar::from(2) * *self.y.get_value().get()?;
-            if d == G::Scalar::ZERO {
-                Ok(G::Scalar::ONE)
+            let n = G::Base::from(3) * x_sq.get_value().get()? + G::get_curve_params().0;
+            let d = G::Base::from(2) * *self.y.get_value().get()?;
+            if d == G::Base::ZERO {
+                Ok(G::Base::ONE)
             } else {
                 Ok(n * d.invert().unwrap())
             }
@@ -695,8 +695,8 @@ impl<G> AllocatedPointNonInfinity<G>
         cs.enforce(
             || "Check that lambda is computed correctly",
             |lc| lc + lambda.get_variable(),
-            |lc| lc + (G::Scalar::from(2), self.y.get_variable()),
-            |lc| lc + (G::Scalar::from(3), x_sq.get_variable()) + (G::get_curve_params().0, CS::one()),
+            |lc| lc + (G::Base::from(2), self.y.get_variable()),
+            |lc| lc + (G::Base::from(3), x_sq.get_variable()) + (G::get_curve_params().0, CS::one()),
         );
 
         let x = AllocatedNum::alloc(cs.namespace(|| "x"), || {
@@ -711,7 +711,7 @@ impl<G> AllocatedPointNonInfinity<G>
             || "check that x is correct",
             |lc| lc + lambda.get_variable(),
             |lc| lc + lambda.get_variable(),
-            |lc| lc + x.get_variable() + (G::Scalar::from(2), self.x.get_variable()),
+            |lc| lc + x.get_variable() + (G::Base::from(2), self.x.get_variable()),
         );
 
         let y = AllocatedNum::alloc(cs.namespace(|| "y"), || {
@@ -732,7 +732,7 @@ impl<G> AllocatedPointNonInfinity<G>
     }
 
     /// If condition outputs a otherwise outputs b
-    pub fn conditionally_select<CS: ConstraintSystem<G::Scalar>>(
+    pub fn conditionally_select<CS: ConstraintSystem<G::Base>>(
         mut cs: CS,
         a: &Self,
         b: &Self,
@@ -765,8 +765,8 @@ mod tests {
         where
             G: Group,
     {
-        x: G::Scalar,
-        y: G::Scalar,
+        x: G::Base,
+        y: G::Base,
         is_infinity: bool,
     }
 
@@ -774,13 +774,13 @@ mod tests {
         where
             G: Group,
     {
-        pub fn new(x: G::Scalar, y: G::Scalar, is_infinity: bool) -> Self {
+        pub fn new(x: G::Base, y: G::Base, is_infinity: bool) -> Self {
             Self { x, y, is_infinity }
         }
 
         pub fn random_vartime() -> Self {
             loop {
-                let x = G::Scalar::random(&mut OsRng);
+                let x = G::Base::random(&mut OsRng);
                 let y = (x.square() * x + G::get_curve_params().1).sqrt();
                 if y.is_some().unwrap_u8() == 1 {
                     return Self {
@@ -801,8 +801,8 @@ mod tests {
                 } else {
                     // if self.x == other.x and self.y != other.y then return infinity
                     Self {
-                        x: G::Scalar::ZERO,
-                        y: G::Scalar::ZERO,
+                        x: G::Base::ZERO,
+                        y: G::Base::ZERO,
                         is_infinity: true,
                     }
                 }
@@ -834,16 +834,16 @@ mod tests {
         pub fn double(&self) -> Self {
             if self.is_infinity {
                 return Self {
-                    x: G::Scalar::ZERO,
-                    y: G::Scalar::ZERO,
+                    x: G::Base::ZERO,
+                    y: G::Base::ZERO,
                     is_infinity: true,
                 };
             }
 
-            let lambda = G::Scalar::from(3)
+            let lambda = G::Base::from(3)
                 * self.x
                 * self.x
-                * ((G::Scalar::ONE + G::Scalar::ONE) * self.y).invert().unwrap();
+                * ((G::Base::ONE + G::Base::ONE) * self.y).invert().unwrap();
             let x = lambda * lambda - self.x - self.x;
             let y = lambda * (self.x - x) - self.y;
             Self {
@@ -853,10 +853,10 @@ mod tests {
             }
         }
 
-        pub fn scalar_mul(&self, scalar: &G::Scalar) -> Self {
+        pub fn scalar_mul(&self, scalar: &G::Base) -> Self {
             let mut res = Self {
-                x: G::Scalar::ZERO,
-                y: G::Scalar::ZERO,
+                x: G::Base::ZERO,
+                y: G::Base::ZERO,
                 is_infinity: true,
             };
 
@@ -872,7 +872,7 @@ mod tests {
     }
 
     // Allocate a random point. Only used for testing
-    pub fn alloc_random_point<G: Group, CS: ConstraintSystem<G::Scalar>>(
+    pub fn alloc_random_point<G: Group, CS: ConstraintSystem<G::Base>>(
         mut cs: CS,
     ) -> Result<AllocatedPoint<G>, SynthesisError> {
         // get a random point
@@ -881,7 +881,7 @@ mod tests {
     }
 
     /// Make the point io
-    pub fn inputize_allocted_point<G: Group, CS: ConstraintSystem<G::Scalar>>(
+    pub fn inputize_allocted_point<G: Group, CS: ConstraintSystem<G::Base>>(
         p: &AllocatedPoint<G>,
         mut cs: CS,
     ) -> Result<(), SynthesisError> {
@@ -907,7 +907,7 @@ mod tests {
 
     fn test_ecc_ops_with<C, G>()
         where
-            C: CurveAffine<Base = G::Scalar, ScalarExt = G::Scalar>,
+            C: CurveAffine<Base = G::Base, ScalarExt = G::Scalar>,
             G: Group,
     {
         // perform some curve arithmetic
@@ -915,7 +915,7 @@ mod tests {
         let b = Point::<G>::random_vartime();
         let c = a.add(&b);
         let d = a.double();
-        let s = <G as Group>::Scalar::random(&mut OsRng);
+        let s = <G as Group>::Base::random(&mut OsRng);
         let e = a.scalar_mul(&s);
 
         // perform the same computation by translating to curve types
@@ -958,15 +958,15 @@ mod tests {
         assert_eq!(e_curve, e_curve_2);
     }
 
-    fn synthesize_smul<G, CS>(mut cs: CS) -> (AllocatedPoint<G>, AllocatedPoint<G>, G::Scalar)
+    fn synthesize_smul<G, CS>(mut cs: CS) -> (AllocatedPoint<G>, AllocatedPoint<G>, G::Base)
         where
             G: Group,
-            CS: ConstraintSystem<G::Scalar>,
+            CS: ConstraintSystem<G::Base>,
     {
         let a = alloc_random_point(cs.namespace(|| "a")).unwrap();
         inputize_allocted_point(&a, cs.namespace(|| "inputize a")).unwrap();
 
-        let s = G::Scalar::random(&mut OsRng);
+        let s = G::Base::random(&mut OsRng);
         // Allocate bits for s
         let bits: Vec<AllocatedBit> = s
             .to_le_bits()
@@ -975,7 +975,7 @@ mod tests {
             .map(|(i, bit)| AllocatedBit::alloc(cs.namespace(|| format!("bit {i}")), Some(bit)))
             .collect::<Result<Vec<AllocatedBit>, SynthesisError>>()
             .unwrap();
-        let e = a.scalar_mul(cs.namespace(|| "Scalar Mul"), &bits).unwrap();
+        let e = a.scalar_mul(cs.namespace(|| "Base Mul"), &bits).unwrap();
         inputize_allocted_point(&e, cs.namespace(|| "inputize e")).unwrap();
         (a, e, s)
     }
@@ -1027,7 +1027,7 @@ mod tests {
     fn synthesize_add_equal<G, CS>(mut cs: CS) -> (AllocatedPoint<G>, AllocatedPoint<G>)
         where
             G: Group,
-            CS: ConstraintSystem<G::Scalar>,
+            CS: ConstraintSystem<G::Base>,
     {
         let a = alloc_random_point(cs.namespace(|| "a")).unwrap();
         inputize_allocted_point(&a, cs.namespace(|| "inputize a")).unwrap();
@@ -1082,13 +1082,13 @@ mod tests {
     fn synthesize_add_negation<G, CS>(mut cs: CS) -> AllocatedPoint<G>
         where
             G: Group,
-            CS: ConstraintSystem<G::Scalar>,
+            CS: ConstraintSystem<G::Base>,
     {
         let a = alloc_random_point(cs.namespace(|| "a")).unwrap();
         inputize_allocted_point(&a, cs.namespace(|| "inputize a")).unwrap();
         let b = &mut a.clone();
         b.y = AllocatedNum::alloc(cs.namespace(|| "allocate negation of a"), || {
-            Ok(G::Scalar::ZERO)
+            Ok(G::Base::ZERO)
         })
             .unwrap();
         inputize_allocted_point(b, cs.namespace(|| "inputize b")).unwrap();

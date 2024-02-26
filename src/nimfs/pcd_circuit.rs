@@ -51,10 +51,10 @@ impl<G: Group> PCDUnitParams<G> {
 // #[derive(Debug, Serialize, Deserialize)]
 // #[serde(bound = "")]
 pub struct PCDUnitInputs<G: Group> {
-    params: G::Scalar, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
-    // i: G::Scalar,
-    z0: Vec<G::Scalar>,
-    zi: Option<Vec<G::Scalar>>,
+    params: G::Base, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
+    // i: G::Base,
+    z0: Vec<G::Base>,
+    zi: Option<Vec<G::Base>>,
     lcccs: Option<Vec<LCCCS<G>>>,
     cccs: Option<Vec<CCCS<G>>>,
     r: usize
@@ -65,9 +65,9 @@ impl<G: Group> PCDUnitInputs<G> {
     /// Create new inputs/witness for the verification circuit
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        params: G::Scalar,
-        z0: Vec<G::Scalar>,
-        zi: Option<Vec<G::Scalar>>,
+        params: G::Base,
+        z0: Vec<G::Base>,
+        zi: Option<Vec<G::Base>>,
         lcccs: Option<Vec<LCCCS<G>>>,
         cccs: Option<Vec<CCCS<G>>>,
         r: usize
@@ -83,7 +83,7 @@ impl<G: Group> PCDUnitInputs<G> {
     }
 }
 
-pub struct PCDUnitPrimaryCircuit<'a, G: Group, SC: StepCircuit<G::Scalar>> {
+pub struct PCDUnitPrimaryCircuit<'a, G: Group, SC: StepCircuit<G::Base>> {
     params: &'a PCDUnitParams<G>,
     ro_consts: ROConstantsCircuit<G>, // random oracle
     te_consts: TEConstantsCircuit<G>, // Transcript Engine
@@ -92,7 +92,7 @@ pub struct PCDUnitPrimaryCircuit<'a, G: Group, SC: StepCircuit<G::Scalar>> {
     step_circuit: &'a SC, // The function that is applied for each step
 }
 
-impl<'a, G: Group, SC: StepCircuit<G::Scalar>> PCDUnitPrimaryCircuit<'a, G, SC> {
+impl<'a, G: Group, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a, G, SC> {
     /// Create a new verification circuit for the input relaxed r1cs instances
     pub const fn new(
         params: &'a PCDUnitParams<G>,
@@ -113,15 +113,15 @@ impl<'a, G: Group, SC: StepCircuit<G::Scalar>> PCDUnitPrimaryCircuit<'a, G, SC> 
     }
 
     /// Allocate all witnesses and return
-    fn alloc_witness<CS: ConstraintSystem<<G as Group>::Scalar>>(
+    fn alloc_witness<CS: ConstraintSystem<<G as Group>::Base>>(
         &self,
         mut cs: CS,
         arity: usize,
     ) -> Result<
         (
             AllocatedProof<G>,
-            Vec<AllocatedNum<G::Scalar>>,
-            Vec<AllocatedNum<G::Scalar>>,
+            Vec<AllocatedNum<G::Base>>,
+            Vec<AllocatedNum<G::Base>>,
             Vec<AllocatedLCCCSPrimaryPart<G>>,
             Vec<AllocatedCCCSPrimaryPart<G>>,
         ),
@@ -143,17 +143,17 @@ impl<'a, G: Group, SC: StepCircuit<G::Scalar>> PCDUnitPrimaryCircuit<'a, G, SC> 
                     Ok(self.inputs.get()?.z0[i])
                 })
             })
-            .collect::<Result<Vec<AllocatedNum<G::Scalar>>, _>>()?;
+            .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
         // Allocate zi. If inputs.zi is not provided (base case) allocate default value 0
-        let zero = vec![G::Scalar::ZERO; arity];
+        let zero = vec![G::Base::ZERO; arity];
         let z_i = (0..arity)
             .map(|i| {
                 AllocatedNum::alloc(cs.namespace(|| format!("zi_{i}")), || {
                     Ok(self.inputs.get()?.zi.as_ref().unwrap_or(&zero)[i])
                 })
             })
-            .collect::<Result<Vec<AllocatedNum<G::Scalar>>, _>>()?;
+            .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
         // Allocate the running instance
         let lcccs: AllocatedLCCCSPrimaryPart<G> = AllocatedLCCCSPrimaryPart::alloc(
@@ -180,7 +180,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Scalar>> PCDUnitPrimaryCircuit<'a, G, SC> 
     }
 
     /// Synthesizes base case and returns the new relaxed `R1CSInstance`
-    fn synthesize_base_case<CS: ConstraintSystem<<G as Group>::Scalar>>(
+    fn synthesize_base_case<CS: ConstraintSystem<<G as Group>::Base>>(
         &self,
         mut cs: CS,
         cccs: AllocatedCCCSPrimaryPart<G>,
@@ -210,12 +210,12 @@ impl<'a, G: Group, SC: StepCircuit<G::Scalar>> PCDUnitPrimaryCircuit<'a, G, SC> 
     /// Synthesizes non base case and returns the new relaxed `R1CSInstance`
     /// And a boolean indicating if all checks pass
     #[allow(clippy::too_many_arguments)]
-    fn synthesize_non_base_case<CS: ConstraintSystem<<G as Group>::Scalar>>(
+    fn synthesize_non_base_case<CS: ConstraintSystem<<G as Group>::Base>>(
         &self,
         mut cs: CS,
         params: &PCDUnitParams<G>,
-        _z_0: &[AllocatedNum<G::Scalar>],
-        _z_i: &[AllocatedNum<G::Scalar>],
+        _z_0: &[AllocatedNum<G::Base>],
+        _z_i: &[AllocatedNum<G::Base>],
         lcccs: Vec<AllocatedLCCCSPrimaryPart<G>>,
         cccs: Vec<AllocatedCCCSPrimaryPart<G>>,
         proof: &AllocatedProof<G>,
@@ -252,15 +252,15 @@ impl<'a, G: Group, SC: StepCircuit<G::Scalar>> PCDUnitPrimaryCircuit<'a, G, SC> 
         )?;
         cs.enforce(
             || "constraints final lc",
-            |_lc| sum_v_j_gamma_lc.lc(G::Scalar::ONE),
+            |_lc| sum_v_j_gamma_lc.lc(G::Base::ONE),
             |lc| lc + CS::one(),
             |lc| lc + sum_v_j_gamma.get_variable(),
         );
 
-        let vp_aux_info = VPAuxInfo::<G::Scalar> {
+        let vp_aux_info = VPAuxInfo::<G::Base> {
             max_degree: params.ccs.d + 1,
             num_variables: params.ccs.s,
-            phantom: std::marker::PhantomData::<G::Scalar>,
+            phantom: std::marker::PhantomData::<G::Base>,
         };
         let sumcheck_subclaim = sumcheck_verify(
             cs.namespace(|| "verify sumcheck proof"),
@@ -341,12 +341,12 @@ impl<'a, G: Group, SC: StepCircuit<G::Scalar>> PCDUnitPrimaryCircuit<'a, G, SC> 
     }
 }
 
-impl<'a, G: Group, SC: StepCircuit<G::Scalar>> PCDUnitPrimaryCircuit<'a, G, SC> {
+impl<'a, G: Group, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a, G, SC> {
     /// synthesize circuit giving constraint system
-    pub fn synthesize<CS: ConstraintSystem<<G as Group>::Scalar>>(
+    pub fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
         self,
         cs: &mut CS,
-    ) -> Result<Vec<AllocatedNum<G::Scalar>>, SynthesisError> {
+    ) -> Result<Vec<AllocatedNum<G::Base>>, SynthesisError> {
         let arity = self.step_circuit.arity();
 
         // Allocate all witnesses
