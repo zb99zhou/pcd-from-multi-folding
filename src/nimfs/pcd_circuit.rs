@@ -133,9 +133,6 @@ impl<'a, G: Group, G1: Group, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a
             &self.proof,
         )?;
 
-        // Allocate i
-        // let i = AllocatedNum::alloc(cs.namespace(|| "i"), || Ok(self.inputs.get()?.i))?;
-
         // Allocate z0
         let z_0 = (0..arity)
             .map(|i| {
@@ -179,8 +176,8 @@ impl<'a, G: Group, G1: Group, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a
         Ok((nimfs_proof, z_0, z_i, vec![lcccs], vec![cccs]))
     }
 
-    /// Synthesizes base case and returns the new relaxed `R1CSInstance`
-    fn synthesize_base_case<CS: ConstraintSystem<<G as Group>::Base>>(
+    /// Synthesizes base case and returns the new `LCCCS`
+    fn synthesize_genesis_based_nimfs<CS: ConstraintSystem<<G as Group>::Base>>(
         &self,
         mut cs: CS,
         cccs: AllocatedCCCSPrimaryPart<G>,
@@ -239,19 +236,23 @@ where
         let is_base_case = multi_and(cs.namespace(|| "is base case"), &is_base_case_flags)?;
 
         // Synthesize the circuit for the base case and get the new running instance
-        let lcccs_base = self.synthesize_base_case(cs.namespace(|| "base case"), cccs[0].clone())?;
+        let lcccs_base = self.synthesize_genesis_based_nimfs(
+            cs.namespace(|| "generate base case based nimfs"),
+            cccs[0].clone()
+        )?;
 
         // Synthesize the circuit for the non-base case and get the new running
         // instance along with a boolean indicating if all checks have passed
-        let (Unew_non_base, check_non_base_pass) = self.synthesize_non_base_case(
-            cs.namespace(|| "synthesize non base case"),
-            &self.params,
-            &z_0,
-            &z_i,
-            lcccs,
-            cccs,
-            &nimfs_proof
-        )?;
+        let (Unew_non_base, check_non_base_pass) = self
+            .synthesize_based_nimfs(
+                cs.namespace(|| "generate non base case based nimfs"),
+                &self.params,
+                &z_0,
+                &z_i,
+                lcccs,
+                cccs,
+                &nimfs_proof
+            )?;
 
         // Either check_non_base_pass=true or we are in the base case
         let should_be_false = AllocatedBit::nor(
@@ -314,10 +315,10 @@ where
     }
 
 
-    /// Synthesizes non-base case and returns the new relaxed `R1CSInstance`
+    /// Synthesizes non-base case and returns the new `LCCCS`
     /// And a boolean indicating if all checks pass
     #[allow(clippy::too_many_arguments)]
-    fn synthesize_non_base_case<CS: ConstraintSystem<<G as Group>::Base>>(
+    fn synthesize_based_nimfs<CS: ConstraintSystem<<G as Group>::Base>>(
         &self,
         mut cs: CS,
         params: &PCDUnitParams<G1>,
