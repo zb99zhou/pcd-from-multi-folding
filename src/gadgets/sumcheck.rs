@@ -211,6 +211,7 @@ pub fn sumcheck_verify<CS: ConstraintSystem<<G as Group>::Base>, G: Group>(
     verifier_state.check_and_generate_subclaim(cs.namespace(|| "check_and_generate_subclaim"), &claimed_sum)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn enforce_compute_c_from_sigmas_and_thetas<CS: ConstraintSystem<<G as Group>::Base>, G, G1>(
     mut cs: CS,
     ccs_params: &CCS<G1>,

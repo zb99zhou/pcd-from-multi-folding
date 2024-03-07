@@ -38,6 +38,7 @@ impl<C: Group> Witness<C> {
 
 /// Committed CCS instance
 #[derive(Debug, Clone)]
+#[allow(clippy::upper_case_acronyms)]
 pub struct CCCS<C: Group> {
     // Underlying CCS structure
     pub ccs: CCS<C>,

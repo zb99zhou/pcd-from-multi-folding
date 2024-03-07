@@ -23,6 +23,7 @@ pub enum CCSError {
 
 /// A CCS structure
 #[derive(Debug, Clone, Eq, PartialEq)]
+#[allow(clippy::upper_case_acronyms)]
 pub struct CCS<G: Group> {
     // m: number of columns in M_i (such that M_i \in F^{m, n})
     pub m: usize,

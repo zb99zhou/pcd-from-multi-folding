@@ -15,6 +15,7 @@ use crate::traits::Group;
 
 /// Linearized Committed CCS instance
 #[derive(Debug, Clone, Eq, PartialEq)]
+#[allow(clippy::upper_case_acronyms)]
 pub struct LCCCS<C: Group> {
     // Underlying CCS structure
     pub ccs: CCS<C>,

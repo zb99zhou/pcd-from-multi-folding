@@ -15,7 +15,9 @@ use crate::nimfs::util::hypercube::BooleanHypercube;
 use crate::traits::{Group, TranscriptEngineTrait};
 use crate::traits::commitment::CommitmentEngineTrait;
 
+#[allow(clippy::upper_case_acronyms)]
 pub type NIMFS<C> = MultiFolding<C>;
+#[allow(clippy::upper_case_acronyms)]
 pub type NIMFSProof<C> = ProofWitness<C>;
 
 /// Proof defines a multi-folding proof
