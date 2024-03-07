@@ -225,10 +225,12 @@ pub trait TranscriptReprTrait<G: Group>: Send + Sync {
     unimplemented!()
   }
 
+  /// returns a scalar representation of self to be added to the transcript
   fn to_transcript_scalars(&self) -> Vec<G::Scalar> {
     unimplemented!()
   }
 
+  /// returns a circuit allocated number representation of self to be added to the transcript
   fn to_transcript_nums(&self) -> Vec<AllocatedNum<G::Base>> {
     unimplemented!()
   }

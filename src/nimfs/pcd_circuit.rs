@@ -83,8 +83,8 @@ impl<G: Group> PCDUnitInputs<G> {
     }
 }
 
-pub struct PCDUnitPrimaryCircuit<'a, G: Group, SC: StepCircuit<G::Base>> {
-    params: &'a PCDUnitParams<G>,
+pub struct PCDUnitPrimaryCircuit<'a, G: Group, G1: Group, SC: StepCircuit<G::Base>> {
+    params: &'a PCDUnitParams<G1>,
     ro_consts: ROConstantsCircuit<G>, // random oracle
     te_consts: TEConstantsCircuit<G>, // Transcript Engine
     inputs: Option<PCDUnitInputs<G>>,
@@ -92,10 +92,10 @@ pub struct PCDUnitPrimaryCircuit<'a, G: Group, SC: StepCircuit<G::Base>> {
     step_circuit: &'a SC, // The function that is applied for each step
 }
 
-impl<'a, G: Group, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a, G, SC> {
+impl<'a, G: Group, G1: Group, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a, G, G1, SC> {
     /// Create a new verification circuit for the input relaxed r1cs instances
     pub const fn new(
-        params: &'a PCDUnitParams<G>,
+        params: &'a PCDUnitParams<G1>,
         inputs: Option<PCDUnitInputs<G>>,
         step_circuit: &'a SC,
         proof: NIMFSProof<G>,
@@ -206,142 +206,13 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a, G, SC> {
         };
         Ok(lcccs_default)
     }
-
-    /// Synthesizes non base case and returns the new relaxed `R1CSInstance`
-    /// And a boolean indicating if all checks pass
-    #[allow(clippy::too_many_arguments)]
-    fn synthesize_non_base_case<CS: ConstraintSystem<<G as Group>::Base>>(
-        &self,
-        mut cs: CS,
-        params: &PCDUnitParams<G>,
-        _z_0: &[AllocatedNum<G::Base>],
-        _z_i: &[AllocatedNum<G::Base>],
-        lcccs: Vec<AllocatedLCCCSPrimaryPart<G>>,
-        cccs: Vec<AllocatedCCCSPrimaryPart<G>>,
-        proof: &AllocatedProof<G>,
-    ) -> Result<(AllocatedLCCCSPrimaryPart<G>, AllocatedBit), SynthesisError> {
-        assert!(!lcccs.is_empty());
-        assert!(!cccs.is_empty());
-
-        let mut transcript = G::TECircuit::new(
-            self.te_consts.clone(),
-            cs.namespace(|| "init NIMFS transcript"),
-            b"multifolding"
-        );
-        // Step 1: Get some challenges
-        let gamma = transcript.squeeze(cs.namespace(|| "alloc gamma"), b"gamma")?;
-        let beta = transcript.batch_squeeze(
-            cs.namespace(|| "alloc beta"),
-            b"beta",
-            params.ccs.s,
-        )?;
-
-        // Step 3: Start verifying the sumcheck
-        // First, compute the expected sumcheck sum: \sum gamma^j v_j
-        let mut sum_v_j_gamma_lc = Num::zero();
-        for (i, running_instance) in lcccs.iter().enumerate() {
-            for j in 0..running_instance.Vs.len() {
-                let gamma_j = gamma.pow_constant(cs.namespace(|| "alloc gamma_j"), i * params.ccs.t + j)?;
-                let res = running_instance.Vs[j].mul(cs.namespace(|| "v * gamma_j"), &gamma_j)?;
-                sum_v_j_gamma_lc = sum_v_j_gamma_lc.add(&res.into());
-            }
-        }
-        let sum_v_j_gamma = AllocatedNum::alloc(
-            cs.namespace(|| "alloc tmp"),
-            || sum_v_j_gamma_lc.get_value().get().copied()
-        )?;
-        cs.enforce(
-            || "constraints final lc",
-            |_lc| sum_v_j_gamma_lc.lc(G::Base::ONE),
-            |lc| lc + CS::one(),
-            |lc| lc + sum_v_j_gamma.get_variable(),
-        );
-
-        let vp_aux_info = VPAuxInfo::<G::Base> {
-            max_degree: params.ccs.d + 1,
-            num_variables: params.ccs.s,
-            phantom: std::marker::PhantomData::<G::Base>,
-        };
-        let sumcheck_subclaim = sumcheck_verify(
-            cs.namespace(|| "verify sumcheck proof"),
-            &sum_v_j_gamma,
-            &proof.sum_check_proof,
-            &vp_aux_info,
-            &mut transcript,
-        )?;
-
-        // Step 2: Dig into the sumcheck claim and extract the randomness used
-        let r_x_prime = sumcheck_subclaim.point.clone();
-
-        // Step 5: Finish verifying sumcheck (verify the claim c)
-        let c = enforce_compute_c_from_sigmas_and_thetas(
-            cs.namespace(|| "calc c"),
-            &params.ccs,
-            &proof.sigmas,
-            &proof.thetas,
-            gamma,
-            &beta,
-            lcccs
-                .iter()
-                .map(|lcccs| lcccs.r_x.clone())
-                .collect(),
-            &r_x_prime,
-        )?;
-        let check_pass1 = alloc_num_equals(
-            cs.namespace(|| "check that the g(r_x') from the sumcheck proof is equal to the computed c from sigmas&thetas"),
-            &c,
-            &sumcheck_subclaim.expected_evaluation
-        )?;
-
-        // Sanity check: we can also compute g(r_x') from the proof last evaluation value, and
-        // should be equal to the previously obtained values.
-        let g_on_rxprime_from_sumcheck_last_eval = enforce_interpolate_uni_poly(
-            cs.namespace(|| "g_on_rxprime_from_sumcheck_last_eval"),
-            r_x_prime.last().unwrap(),
-            &proof.sum_check_proof.proofs.last().unwrap().evaluations,
-        )?;
-        let check_pass2 = alloc_num_equals(
-            cs.namespace(|| "check that the g(r_x') from the sumcheck proof is equal to the computed c from sigmas&thetas"),
-            &c,
-            &g_on_rxprime_from_sumcheck_last_eval
-        )?;
-        let check_pass3 = alloc_num_equals(
-            cs.namespace(|| "check that the g(r_x') from the sumcheck proof is equal to the computed c from sigmas&thetas"),
-            &sumcheck_subclaim.expected_evaluation,
-            &g_on_rxprime_from_sumcheck_last_eval
-        )?;
-
-        // Step 6: Get the folding challenge
-        let rho = transcript.squeeze(cs.namespace(|| "alloc rho"), b"rho")?;
-
-        // Run NIMFS Verifier part 1
-        let new_lcccs = multi_folding_with_primary_part(
-            cs.namespace(|| "compute fold of U and u"),
-            &lcccs,
-            &cccs,
-            rho,
-            &proof.sigmas,
-            &proof.thetas,
-            self.params.limb_width,
-            self.params.n_limbs,
-        )?;
-
-        let check_pass = AllocatedBit::and(
-            cs.namespace(|| "check pass 1 and 2"),
-            &check_pass1,
-            &check_pass2,
-        )?;
-        let check_pass = AllocatedBit::and(
-            cs.namespace(|| "check pass 1 and 2 and 3"),
-            &check_pass,
-            &check_pass3,
-        )?;
-
-        Ok((new_lcccs, check_pass))
-    }
 }
 
-impl<'a, G: Group, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a, G, SC> {
+impl<'a, G, G1, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a, G, G1, SC>
+where
+    G: Group<Base = <G1 as Group>::Scalar>,
+    G1: Group<Base = <G as Group>::Scalar>,
+{
     /// synthesize circuit giving constraint system
     pub fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
         self,
@@ -440,5 +311,139 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a, G, SC> {
         hash.inputize(cs.namespace(|| "output new hash of this circuit"))?; // this circuit's x1
 
         Ok(z_next)
+    }
+
+
+    /// Synthesizes non-base case and returns the new relaxed `R1CSInstance`
+    /// And a boolean indicating if all checks pass
+    #[allow(clippy::too_many_arguments)]
+    fn synthesize_non_base_case<CS: ConstraintSystem<<G as Group>::Base>>(
+        &self,
+        mut cs: CS,
+        params: &PCDUnitParams<G1>,
+        _z_0: &[AllocatedNum<G::Base>],
+        _z_i: &[AllocatedNum<G::Base>],
+        lcccs: Vec<AllocatedLCCCSPrimaryPart<G>>,
+        cccs: Vec<AllocatedCCCSPrimaryPart<G>>,
+        proof: &AllocatedProof<G>,
+    ) -> Result<(AllocatedLCCCSPrimaryPart<G>, AllocatedBit), SynthesisError> {
+        assert!(!lcccs.is_empty());
+        assert!(!cccs.is_empty());
+
+        let mut transcript = G::TECircuit::new(
+            self.te_consts.clone(),
+            cs.namespace(|| "init NIMFS transcript"),
+            b"multifolding"
+        );
+        // Step 1: Get some challenges
+        let gamma = transcript.squeeze(cs.namespace(|| "alloc gamma"), b"gamma")?;
+        let beta = transcript.batch_squeeze(
+            cs.namespace(|| "alloc beta"),
+            b"beta",
+            params.ccs.s,
+        )?;
+
+        // Step 3: Start verifying the sumcheck
+        // First, compute the expected sumcheck sum: \sum gamma^j v_j
+        let mut sum_v_j_gamma_lc = Num::zero();
+        for (i, running_instance) in lcccs.iter().enumerate() {
+            for j in 0..running_instance.Vs.len() {
+                let gamma_j = gamma.pow_constant(cs.namespace(|| "alloc gamma_j"), i * params.ccs.t + j)?;
+                let res = running_instance.Vs[j].mul(cs.namespace(|| "v * gamma_j"), &gamma_j)?;
+                sum_v_j_gamma_lc = sum_v_j_gamma_lc.add(&res.into());
+            }
+        }
+        let sum_v_j_gamma = AllocatedNum::alloc(
+            cs.namespace(|| "alloc tmp"),
+            || sum_v_j_gamma_lc.get_value().get().copied()
+        )?;
+        cs.enforce(
+            || "constraints final lc",
+            |_lc| sum_v_j_gamma_lc.lc(G::Base::ONE),
+            |lc| lc + CS::one(),
+            |lc| lc + sum_v_j_gamma.get_variable(),
+        );
+
+        let vp_aux_info = VPAuxInfo::<G::Base> {
+            max_degree: params.ccs.d + 1,
+            num_variables: params.ccs.s,
+            phantom: std::marker::PhantomData::<G::Base>,
+        };
+        let sumcheck_subclaim = sumcheck_verify(
+            cs.namespace(|| "verify sumcheck proof"),
+            &sum_v_j_gamma,
+            &proof.sum_check_proof,
+            &vp_aux_info,
+            &mut transcript,
+        )?;
+
+        // Step 2: Dig into the sumcheck claim and extract the randomness used
+        let r_x_prime = sumcheck_subclaim.point.clone();
+
+        // Step 5: Finish verifying sumcheck (verify the claim c)
+        let c = enforce_compute_c_from_sigmas_and_thetas::<_, G, G1>(
+            cs.namespace(|| "calc c"),
+            &params.ccs,
+            &proof.sigmas,
+            &proof.thetas,
+            gamma,
+            &beta,
+            lcccs
+                .iter()
+                .map(|lcccs| lcccs.r_x.clone())
+                .collect(),
+            &r_x_prime,
+        )?;
+        let check_pass1 = alloc_num_equals(
+            cs.namespace(|| "check that the g(r_x') from the sumcheck proof is equal to the computed c from sigmas&thetas"),
+            &c,
+            &sumcheck_subclaim.expected_evaluation
+        )?;
+
+        // Sanity check: we can also compute g(r_x') from the proof last evaluation value, and
+        // should be equal to the previously obtained values.
+        let g_on_rxprime_from_sumcheck_last_eval = enforce_interpolate_uni_poly(
+            cs.namespace(|| "g_on_rxprime_from_sumcheck_last_eval"),
+            r_x_prime.last().unwrap(),
+            &proof.sum_check_proof.proofs.last().unwrap().evaluations,
+        )?;
+        let check_pass2 = alloc_num_equals(
+            cs.namespace(|| "check that the g(r_x') from the sumcheck proof is equal to the computed c from sigmas&thetas"),
+            &c,
+            &g_on_rxprime_from_sumcheck_last_eval
+        )?;
+        let check_pass3 = alloc_num_equals(
+            cs.namespace(|| "check that the g(r_x') from the sumcheck proof is equal to the computed c from sigmas&thetas"),
+            &sumcheck_subclaim.expected_evaluation,
+            &g_on_rxprime_from_sumcheck_last_eval
+        )?;
+
+        // Step 6: Get the folding challenge
+        let rho = transcript.squeeze(cs.namespace(|| "alloc rho"), b"rho")?;
+
+        // Run NIMFS Verifier part 1
+        let new_lcccs = multi_folding_with_primary_part(
+            cs.namespace(|| "compute fold of U and u"),
+            &lcccs,
+            &cccs,
+            rho,
+            &proof.sigmas,
+            &proof.thetas,
+            self.params.limb_width,
+            self.params.n_limbs,
+        )?;
+
+        let check_pass = AllocatedBit::and(
+            cs.namespace(|| "check pass 1 and 2"),
+            &check_pass1,
+            &check_pass2,
+        )?;
+        let check_pass = AllocatedBit::and(
+            cs.namespace(|| "check pass 1 and 2 and 3"),
+            &check_pass,
+            &check_pass3,
+        )?;
+
+        Ok((new_lcccs, check_pass))
     }
 }

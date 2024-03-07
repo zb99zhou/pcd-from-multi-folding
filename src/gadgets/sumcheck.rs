@@ -1,8 +1,9 @@
-use ff::PrimeField;
 use bellpepper::gadgets::Assignment;
 use bellpepper_core::{ConstraintSystem, SynthesisError};
 use bellpepper_core::boolean::Boolean;
 use bellpepper_core::num::{AllocatedNum, Num};
+use ff::PrimeField;
+
 use crate::gadgets::ext_allocated_num::ExtendFunc;
 use crate::gadgets::nonnative::util::as_allocated_num;
 use crate::gadgets::utils::alloc_vector_numbers;
@@ -20,17 +21,22 @@ pub struct AllocatedProof<G: Group> {
 
 impl<G: Group> AllocatedProof<G> {
     pub fn from_witness<CS: ConstraintSystem<G::Base>>(mut cs: CS, proof_witness: &NIMFSProof<G>) -> Result<Self, SynthesisError> {
-        let point = proof_witness.sum_check_proof.point
+        let point = proof_witness.point
             .iter()
             .enumerate()
-            .map(|(i, point)| AllocatedNum::alloc(cs.namespace(|| format!("alloc {i}th point")), || Ok(*point)))
+            .map(|(i, point)| {
+                AllocatedNum::alloc(
+                    cs.namespace(|| format!("alloc {i}th point")),
+                    || Ok(*point)
+                )
+            })
             .collect::<Result<Vec<_>, SynthesisError>>()?;
         let mut proofs = Vec::new();
-        for (i, iop_msg) in proof_witness.sum_check_proof.proofs
+        for (i, iop_msg) in proof_witness.proofs
             .iter()
             .enumerate() {
             proofs.push(AllocatedIOPProverMessage {
-                evaluations: alloc_vector_numbers(cs.namespace(|| format!("alloc {i}th iop_msg")), &iop_msg.evaluations)?
+                evaluations: alloc_vector_numbers(cs.namespace(|| format!("alloc {i}th iop_msg")), &iop_msg)?
             });
         }
         let sigmas = proof_witness.sigmas
@@ -158,7 +164,7 @@ impl<G: Group> AllocatedIOPVerifierState<G> {
         // insert the asserted_sum to the first position of the expected vector
         expected_vec.insert(0, asserted_sum.clone());
 
-        for (evaluations, &expected) in self
+        for (evaluations, expected) in self
             .polynomials_received
             .iter()
             .zip(expected_vec.iter())
@@ -205,16 +211,20 @@ pub fn sumcheck_verify<CS: ConstraintSystem<<G as Group>::Base>, G: Group>(
     verifier_state.check_and_generate_subclaim(cs.namespace(|| "check_and_generate_subclaim"), &claimed_sum)
 }
 
-pub fn enforce_compute_c_from_sigmas_and_thetas<CS: ConstraintSystem<<G as Group>::Base>, G: Group>(
+pub fn enforce_compute_c_from_sigmas_and_thetas<CS: ConstraintSystem<<G as Group>::Base>, G, G1>(
     mut cs: CS,
-    ccs_params: &CCS<G>,
+    ccs_params: &CCS<G1>,
     vec_sigmas: &[Vec<AllocatedNum<G::Base>>],
     vec_thetas: &[Vec<AllocatedNum<G::Base>>],
     gamma: AllocatedNum<G::Base>,
     beta: &[AllocatedNum<G::Base>],
     vec_r_x: Vec<Vec<AllocatedNum<G::Base>>>,
     r_x_prime: &[AllocatedNum<G::Base>],
-) -> Result<AllocatedNum<G::Base>, SynthesisError> {
+) -> Result<AllocatedNum<G::Base>, SynthesisError>
+    where
+        G: Group<Base = <G1 as Group>::Scalar>,
+        G1: Group<Base = <G as Group>::Scalar>,
+{
     let mut c_lc = Num::zero();
 
     let mut e_lcccs = Vec::new();
@@ -294,8 +304,8 @@ pub fn enforce_interpolate_uni_poly<CS: ConstraintSystem<F>, F: PrimeField>(
             allocated_j
         )?;
 
-        evals.push(eval_at_sub_j);
         prod = prod.mul(cs.namespace(|| "calc new product"), &eval_at_sub_j)?;
+        evals.push(eval_at_sub_j);
     }
 
     let last_denominator = F::from(u64_factorial(len - 1));
@@ -353,9 +363,9 @@ pub fn enforce_eq_eval<CS: ConstraintSystem<F>, F: PrimeField>(
     assert_eq!(x.len(), y.len());
     
     let mut res = AllocatedNum::alloc(cs.namespace(|| "alloc one"), || Ok(F::ONE))?;
-    for (i, (&xi, &yi)) in x.iter().zip(y.iter()).enumerate() {
+    for (i, (xi, yi)) in x.iter().zip(y.iter()).enumerate() {
         let mut cs = cs.namespace(||format!("calc {}th eq eval", i));
-        let xi_yi = xi.mul(cs.namespace(|| "xi * yi"), &yi)?;
+        let xi_yi = xi.mul(cs.namespace(|| "xi * yi"), yi)?;
         
         // res *= xi_yi + xi_yi - xi - yi + F::ONE;
         let lc = Num::from(xi_yi).scale(F::from(2))

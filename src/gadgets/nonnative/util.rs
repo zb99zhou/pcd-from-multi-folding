@@ -75,8 +75,8 @@ impl<Scalar: PrimeField> Num<Scalar> {
     Self { value, num }
   }
 
-  pub const fn zero() -> Self {
-    Self { value: Some(Scalar::ZERO), num: LinearCombination::zero() }
+  pub fn zero() -> Self {
+    Self { value: Some(Scalar::ZERO), num: LinearCombination::default() }
   }
 
   pub fn add_bool_with_coeff(self, one: Variable, bit: &Boolean, coeff: Scalar) -> Self {

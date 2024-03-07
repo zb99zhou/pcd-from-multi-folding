@@ -1,22 +1,46 @@
+use std::marker::PhantomData;
 use std::ops::{Add, Mul};
 
-use crate::nimfs::ccs::cccs::{Witness, CCCS};
+use ff::Field;
+
+use crate::Commitment;
+use crate::nimfs::ccs::cccs::{CCCS, Witness};
 use crate::nimfs::ccs::ccs::CCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::nimfs::ccs::util::compute_all_sum_Mz_evals;
+use crate::nimfs::espresso::sum_check::{PolyIOP, SumCheck, verifier::interpolate_uni_poly};
 use crate::nimfs::espresso::sum_check::structs::IOPProof as SumCheckProof;
-use crate::nimfs::espresso::sum_check::{verifier::interpolate_uni_poly, SumCheck, PolyIOP};
-use crate::nimfs::espresso::virtual_polynomial::{eq_eval, VPAuxInfo, VirtualPolynomial};
+use crate::nimfs::espresso::virtual_polynomial::{eq_eval, VirtualPolynomial, VPAuxInfo};
 use crate::nimfs::util::hypercube::BooleanHypercube;
-
-use std::marker::PhantomData;
-use ff::Field;
-use crate::Commitment;
 use crate::traits::{Group, TranscriptEngineTrait};
 use crate::traits::commitment::CommitmentEngineTrait;
 
 pub type NIMFS<C> = MultiFolding<C>;
-pub type NIMFSProof<C> = Proof<C>;
+pub type NIMFSProof<C> = ProofWitness<C>;
+
+/// Proof defines a multi-folding proof
+#[derive(Debug)]
+pub struct ProofWitness<C: Group> {
+    pub point: Vec<C::Base>,
+    pub proofs: Vec<Vec<C::Base>>,
+    pub sigmas: Vec<Vec<C::Base>>,
+    pub thetas: Vec<Vec<C::Base>>,
+}
+
+impl<C: Group, G: Group> From<Proof<G>> for ProofWitness<C>
+where
+    C: Group<Base = <G as Group>::Scalar>,
+    G: Group<Base = <C as Group>::Scalar>,
+{
+    fn from(value: Proof<G>) -> Self {
+        Self {
+            point: value.sum_check_proof.point,
+            proofs: value.sum_check_proof.proofs.into_iter().map(|i| i.evaluations).collect(),
+            sigmas: value.sigmas,
+            thetas: value.thetas,
+        }
+    }
+}
 
 /// Proof defines a multi-folding proof
 #[derive(Debug)]
@@ -464,11 +488,12 @@ impl<C: Group> MultiFolding<C> {
 pub mod test {
     use halo2curves::bn256::Fr;
     use rand_core::OsRng;
-    use super::*;
-    use crate::nimfs::ccs::ccs::test::{get_test_ccs, get_test_z};
 
+    use crate::nimfs::ccs::ccs::test::{get_test_ccs, get_test_z};
     use crate::provider::bn256_grumpkin::bn256::Point;
     use crate::provider::poseidon::PoseidonConstantsCircuit;
+
+    use super::*;
 
     // NIMFS: Non Interactive Multi-folding Scheme
     type NIMFS = MultiFolding<Point>;

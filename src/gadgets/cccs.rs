@@ -17,7 +17,7 @@ use bellpepper_core::{ConstraintSystem, SynthesisError};
 use bellpepper_core::boolean::AllocatedBit;
 use ff::Field;
 use crate::gadgets::ext_allocated_num::ExtendFunc;
-use crate::gadgets::utils::{alloc_num_equals, alloc_vec_num_equals_zero, alloc_vec_number_equals_zero, conditionally_select_vec_allocated_num, multi_and, vec_conditionally_select_big_nat};
+use crate::gadgets::utils::{alloc_num_equals, alloc_vec_num_equals_zero, alloc_vec_number_equals_zero, conditionally_select_vec_allocated_num, multi_and, scalar_as_base, vec_conditionally_select_big_nat};
 use crate::nimfs::ccs::cccs::CCCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::traits::commitment::CommitmentTrait;
@@ -43,7 +43,7 @@ impl<G: Group> AllocatedCCCSPrimaryPart<G> {
         let Xs = (0..io_num).map(|i|{
             AllocatedNum::alloc(
                 cs.namespace(|| format!("allocate X[{}]", i)),
-                || Ok(cccs.get().map_or(G::Base::ZERO, |u| u.x[i])),
+                || Ok(cccs.get().map_or(G::Base::ZERO, |u| scalar_as_base::<G>(u.x[i]))),
             )
         }).collect::<Result<Vec<_>, SynthesisError>>()?;
 
@@ -72,7 +72,7 @@ impl<G: Group> AllocatedCCCSSecondPart<G> {
         Ok(AllocatedCCCSSecondPart { C })
     }
 
-    pub fn absorb_in_ro<CS: ConstraintSystem<<G as Group>::Base>>(
+    pub fn absorb_in_ro(
         &self,
         ro: &mut G::ROCircuit,
     ) -> Result<(), SynthesisError> {
@@ -96,7 +96,7 @@ pub struct AllocatedLCCCSPrimaryPart<G: Group> {
 
 impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
     pub fn is_null<CS: ConstraintSystem<G::Base>>(&self, mut cs: CS, zero: &AllocatedNum<G::Base>) -> Result<Boolean, SynthesisError> {
-        let mut is_u_zero = alloc_num_equals(cs.namespace(|| "alloc is_null"), &self.u, zero)?.into();
+        let is_u_zero = alloc_num_equals(cs.namespace(|| "alloc is_null"), &self.u, zero)?.into();
 
         let Xs_num = self.Xs.iter().flat_map(|x| x.as_limbs()).collect::<Vec<_>>();
         let is_Xs_zero = alloc_vec_num_equals_zero(cs.namespace(|| "is Xs zero"), &Xs_num)?.into();
@@ -118,14 +118,14 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
         // So we parse all of its bytes as a G::Base element
         let u = AllocatedNum::alloc(
             cs.namespace(|| "allocate u"),
-            || Ok(inst.get().map_or(G::Base::ZERO, |inst| inst.u)),
+            || Ok(inst.get().map_or(G::Base::ZERO, |inst| scalar_as_base::<G>(inst.u))),
         )?;
 
         // Allocate X0..Xn. If the input instance is None, then allocate default values 0.
         let Xs = (0..io_num).map(|i|{
             BigNat::alloc_from_nat(
                 cs.namespace(|| format!("allocate x[{}]", i)),
-                || Ok(f_to_nat(&inst.map_or(G::Base::ZERO, |inst| inst.x[i]))),
+                || Ok(f_to_nat(&inst.map_or(G::Base::ZERO, |inst| scalar_as_base::<G>(inst.x[i])))),
                 limb_width,
                 n_limbs,
             )
@@ -493,7 +493,7 @@ impl<G: Group> AllocatedLCCCSSecondPart<G> {
         Ok(())
     }
 
-    pub fn absorb_in_ro<CS: ConstraintSystem<<G as Group>::Base>>(
+    pub fn absorb_in_ro(
         &self,
         ro: &mut G::ROCircuit,
     ) -> Result<(), SynthesisError> {
