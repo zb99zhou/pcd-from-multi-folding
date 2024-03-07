@@ -1,5 +1,5 @@
 use std::ops::Neg;
-use ff::Field;
+use ff::{Field, PrimeField};
 use rand_core::RngCore;
 // XXX use thiserror everywhere? espresso doesnt use it...
 use thiserror::Error;
@@ -10,6 +10,7 @@ use crate::nimfs::ccs::util::compute_all_sum_Mz_evals;
 use crate::nimfs::util::vec::{hadamard, Matrix};
 
 use crate::nimfs::util::vec::*;
+use crate::r1cs::R1CSShape;
 use crate::spartan::math::Math;
 use crate::traits::commitment::CommitmentEngineTrait;
 use crate::traits::Group;
@@ -46,6 +47,24 @@ pub struct CCS<G: Group> {
     pub S: Vec<Vec<usize>>,
     // Vector of coefficients
     pub c: Vec<G::Scalar>,
+}
+
+impl<G: Group> From<R1CSShape<G>> for CCS<G> {
+    fn from(value: R1CSShape<G>) -> Self {
+        let mut A = vec![vec![G::Scalar::default(); value.num_vars]; value.num_cons];
+        let mut B = A.clone();
+        let mut C = A.clone();
+        matrix_type_convert(&mut A, value.A);
+        matrix_type_convert(&mut B, value.B);
+        matrix_type_convert(&mut C, value.C);
+        CCS::from_r1cs(A, B, C, value.num_io)
+    }
+}
+
+fn matrix_type_convert<F: PrimeField>(target_matrix: &mut [Vec<F>], absorbed_matrix: Vec<(usize, usize, F)>) {
+    absorbed_matrix
+        .into_iter()
+        .for_each(|(row, col, coff)| target_matrix[row][col] = coff );
 }
 
 impl<G: Group> CCS<G> {
