@@ -10,6 +10,7 @@ pub(crate) mod math;
 pub mod polys;
 pub mod ppsnark;
 pub mod snark;
+pub mod lcccs;
 mod sumcheck;
 
 use crate::{traits::Group, Commitment};
