@@ -1,15 +1,16 @@
 use std::ops::Neg;
-use ff::Field;
+use ff::{Field, PrimeField};
 use rand_core::RngCore;
 // XXX use thiserror everywhere? espresso doesnt use it...
 use thiserror::Error;
 use crate::CommitmentKey;
-use crate::nimfs::ccs::cccs::Witness;
+use crate::nimfs::ccs::cccs::{CCCS, Witness};
 use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::nimfs::ccs::util::compute_all_sum_Mz_evals;
 use crate::nimfs::util::vec::{hadamard, Matrix};
 
 use crate::nimfs::util::vec::*;
+use crate::r1cs::R1CSShape;
 use crate::spartan::math::Math;
 use crate::traits::commitment::CommitmentEngineTrait;
 use crate::traits::Group;
@@ -22,6 +23,7 @@ pub enum CCSError {
 
 /// A CCS structure
 #[derive(Debug, Clone, Eq, PartialEq)]
+#[allow(clippy::upper_case_acronyms)]
 pub struct CCS<G: Group> {
     // m: number of columns in M_i (such that M_i \in F^{m, n})
     pub m: usize,
@@ -46,6 +48,24 @@ pub struct CCS<G: Group> {
     pub S: Vec<Vec<usize>>,
     // Vector of coefficients
     pub c: Vec<G::Scalar>,
+}
+
+impl<G: Group> From<R1CSShape<G>> for CCS<G> {
+    fn from(value: R1CSShape<G>) -> Self {
+        let mut A = vec![vec![G::Scalar::default(); value.num_vars]; value.num_cons];
+        let mut B = A.clone();
+        let mut C = A.clone();
+        matrix_type_convert(&mut A, value.A);
+        matrix_type_convert(&mut B, value.B);
+        matrix_type_convert(&mut C, value.C);
+        CCS::from_r1cs(A, B, C, value.num_io)
+    }
+}
+
+fn matrix_type_convert<F: PrimeField>(target_matrix: &mut [Vec<F>], absorbed_matrix: Vec<(usize, usize, F)>) {
+    absorbed_matrix
+        .into_iter()
+        .for_each(|(row, col, coff)| target_matrix[row][col] = coff );
 }
 
 impl<G: Group> CCS<G> {
@@ -96,12 +116,32 @@ impl<G: Group> CCS<G> {
         compute_all_sum_Mz_evals(&self.M, &z.to_vec(), r, self.s_prime)
     }
 
+    pub fn to_cccs(
+        &self,
+        rng: impl RngCore,
+        ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
+        z: &[G::Scalar],
+    ) -> (CCCS<G>, Witness<G>) {
+        let w: Vec<G::Scalar> = z[(1 + self.l)..].to_vec();
+        let r_w = G::Scalar::random(rng);
+        let C = G::CE::commit(ck, &w);
+
+        (
+            CCCS::<G> {
+                ccs: self.clone(),
+                C,
+                x: z[1..(1 + self.l)].to_vec(),
+            },
+            Witness::<G> { w, r_w },
+        )
+    }
+
     pub fn to_lcccs(
         &self,
         rng: impl RngCore + Clone,
         ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
         z: &[G::Scalar],
-    ) -> (LCCCS<G>, Witness<G::Scalar>) {
+    ) -> (LCCCS<G>, Witness<G>) {
         let w: Vec<G::Scalar> = z[(1 + self.l)..].to_vec();
         let r_w = G::Scalar::random(rng.clone());
         let C = G::CE::commit(ck, &w);
@@ -118,7 +158,7 @@ impl<G: Group> CCS<G> {
                 r_x,
                 v,
             },
-            Witness::<G::Scalar> { w, r_w },
+            Witness::<G> { w, r_w },
         )
     }
 

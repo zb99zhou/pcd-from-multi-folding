@@ -1,7 +1,8 @@
 use std::ops::Add;
 use std::sync::Arc;
-use ff::{Field, PrimeField};
-use crate::{Commitment, CommitmentKey};
+use ff::Field;
+use crate::{CE, Commitment, CommitmentKey};
+use crate::errors::NovaError;
 
 use crate::nimfs::ccs::ccs::{CCSError, CCS};
 use crate::nimfs::ccs::util::compute_sum_Mz;
@@ -16,13 +17,28 @@ use crate::traits::Group;
 
 /// Witness for the LCCCS & CCCS, containing the w vector, and the r_w used as randomness in the Pedersen commitment.
 #[derive(Debug, Clone)]
-pub struct Witness<F: PrimeField> {
-    pub w: Vec<F>,
-    pub r_w: F, // randomness used in the Pedersen commitment of w
+pub struct Witness<C: Group> {
+    pub w: Vec<C::Scalar>,
+    pub r_w: C::Scalar, // randomness used in the Pedersen commitment of w
+}
+
+impl<C: Group> Witness<C> {
+    pub fn new(S: &R1CSShape<C>, W: &[C::Scalar]) -> Result<Self, NovaError> {
+        if S.num_vars != W.len() {
+            Err(NovaError::InvalidWitnessLength)
+        } else {
+            Ok(Self { w: W.to_owned(), r_w: Default::default() })
+        }
+    }
+
+    pub fn commit(&self, ck: &CommitmentKey<C>) -> Commitment<C> {
+        CE::<C>::commit(ck, &self.w)
+    }
 }
 
 /// Committed CCS instance
 #[derive(Debug, Clone)]
+#[allow(clippy::upper_case_acronyms)]
 pub struct CCCS<C: Group> {
     // Underlying CCS structure
     pub ccs: CCS<C>,
@@ -31,28 +47,6 @@ pub struct CCCS<C: Group> {
     pub C: Commitment<C>,
     // Public input/output
     pub x: Vec<C::Scalar>,
-}
-
-impl<C: Group> CCS<C> {
-    pub fn to_cccs(
-        &self,
-        rng: impl rand_core::RngCore,
-        ck: &<<C as Group>::CE as CommitmentEngineTrait<C>>::CommitmentKey,
-        z: &[C::Scalar],
-    ) -> (CCCS<C>, Witness<C::Scalar>) {
-        let w: Vec<C::Scalar> = z[(1 + self.l)..].to_vec();
-        let r_w = C::Scalar::random(rng);
-        let C = C::CE::commit(ck, &w);
-
-        (
-            CCCS::<C> {
-                ccs: self.clone(),
-                C,
-                x: z[1..(1 + self.l)].to_vec(),
-            },
-            Witness::<C::Scalar> { w, r_w },
-        )
-    }
 }
 
 impl<C: Group> CCCS<C> {
@@ -114,7 +108,7 @@ impl<C: Group> CCCS<C> {
     pub fn check_relation(
         &self,
         ck: &CommitmentKey<C>,
-        w: &Witness<C::Scalar>,
+        w: &Witness<C>,
     ) -> Result<(), CCSError> {
         // check that C is the commitment of w. Notice that this is not verifying a Pedersen
         // opening, but checking that the Commmitment comes from committing to the witness.

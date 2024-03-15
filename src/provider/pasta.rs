@@ -2,9 +2,8 @@
 use crate::{
   provider::{
     cpu_best_multiexp,
-    keccak::Keccak256Transcript,
     pedersen::CommitmentEngine,
-    poseidon::{PoseidonRO, PoseidonROCircuit},
+    poseidon::{PoseidonRO, PoseidonROCircuit, PoseidonTranscript, PoseidonTranscriptCircuit},
   },
   traits::{CompressedGroup, Group, PrimeFieldExt, TranscriptReprTrait},
 };
@@ -64,7 +63,8 @@ macro_rules! impl_traits {
       type PreprocessedGroupElement = $name::Affine;
       type RO = PoseidonRO<Self::Base, Self::Scalar>;
       type ROCircuit = PoseidonROCircuit<Self::Base>;
-      type TE = Keccak256Transcript<Self>;
+      type TE = PoseidonTranscript<Self>;
+      type TECircuit = PoseidonTranscriptCircuit<Self>;
       type CE = CommitmentEngine<Self>;
 
       #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]

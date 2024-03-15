@@ -886,7 +886,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
     W: &RelaxedR1CSWitness<G>,
   ) -> Result<Self, NovaError> {
     let W = W.pad(&pk.S); // pad the witness
-    let mut transcript = G::TE::new(b"RelaxedR1CSSNARK");
+    let mut transcript = G::TE::new(Default::default(), b"RelaxedR1CSSNARK");
 
     // a list of polynomial evaluation claims that will be batched
     let mut w_u_vec = Vec::new();
@@ -1490,7 +1490,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
 
   /// verifies a proof of satisfiability of a `RelaxedR1CS` instance
   fn verify(&self, vk: &Self::VerifierKey, U: &RelaxedR1CSInstance<G>) -> Result<(), NovaError> {
-    let mut transcript = G::TE::new(b"RelaxedR1CSSNARK");
+    let mut transcript = G::TE::new(Default::default(), b"RelaxedR1CSSNARK");
     let mut u_vec: Vec<PolyEvalInstance<G>> = Vec::new();
 
     // append the verifier key (including commitment to R1CS matrices) and the RelaxedR1CSInstance to the transcript

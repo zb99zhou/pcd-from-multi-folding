@@ -1,23 +1,50 @@
+use std::marker::PhantomData;
 use std::ops::{Add, Mul};
 
-use crate::nimfs::ccs::cccs::{Witness, CCCS};
+use ff::Field;
+
+use crate::Commitment;
+use crate::nimfs::ccs::cccs::{CCCS, Witness};
 use crate::nimfs::ccs::ccs::CCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::nimfs::ccs::util::compute_all_sum_Mz_evals;
+use crate::nimfs::espresso::sum_check::{PolyIOP, SumCheck, verifier::interpolate_uni_poly};
 use crate::nimfs::espresso::sum_check::structs::IOPProof as SumCheckProof;
-use crate::nimfs::espresso::sum_check::{verifier::interpolate_uni_poly, SumCheck, PolyIOP};
-use crate::nimfs::espresso::virtual_polynomial::{eq_eval, VPAuxInfo, VirtualPolynomial};
+use crate::nimfs::espresso::virtual_polynomial::{eq_eval, VirtualPolynomial, VPAuxInfo};
 use crate::nimfs::util::hypercube::BooleanHypercube;
-
-use std::marker::PhantomData;
-use ff::Field;
-use crate::Commitment;
 use crate::traits::{Group, TranscriptEngineTrait};
 use crate::traits::commitment::CommitmentEngineTrait;
 
-pub type NIMFS<C> = Multifolding<C>;
+#[allow(clippy::upper_case_acronyms)]
+pub type NIMFS<C> = MultiFolding<C>;
+#[allow(clippy::upper_case_acronyms)]
+pub type NIMFSProof<C> = ProofWitness<C>;
 
-/// Proof defines a multifolding proof
+/// Proof defines a multi-folding proof
+#[derive(Debug)]
+pub struct ProofWitness<C: Group> {
+    pub point: Vec<C::Base>,
+    pub proofs: Vec<Vec<C::Base>>,
+    pub sigmas: Vec<Vec<C::Base>>,
+    pub thetas: Vec<Vec<C::Base>>,
+}
+
+impl<C: Group, G: Group> From<Proof<G>> for ProofWitness<C>
+where
+    C: Group<Base = <G as Group>::Scalar>,
+    G: Group<Base = <C as Group>::Scalar>,
+{
+    fn from(value: Proof<G>) -> Self {
+        Self {
+            point: value.sum_check_proof.point,
+            proofs: value.sum_check_proof.proofs.into_iter().map(|i| i.evaluations).collect(),
+            sigmas: value.sigmas,
+            thetas: value.thetas,
+        }
+    }
+}
+
+/// Proof defines a multi-folding proof
 #[derive(Debug)]
 pub struct Proof<C: Group> {
     pub sum_check_proof: SumCheckProof<C>,
@@ -26,11 +53,11 @@ pub struct Proof<C: Group> {
 }
 
 #[derive(Debug)]
-pub struct Multifolding<C: Group> {
+pub struct MultiFolding<C: Group> {
     pub _c: PhantomData<C>,
 }
 
-impl<C: Group> Multifolding<C> {
+impl<C: Group> MultiFolding<C> {
     /// Compute the arrays of sigma_i and theta_i from step 4 corresponding to the LCCCS and CCCS
     /// instances
     pub fn compute_sigmas_and_thetas(
@@ -199,10 +226,10 @@ impl<C: Group> Multifolding<C> {
     }
 
     pub fn fold_witness(
-        w_lcccs: &[Witness<C::Scalar>],
-        w_cccs: &[Witness<C::Scalar>],
+        w_lcccs: &[Witness<C>],
+        w_cccs: &[Witness<C>],
         rho: C::Scalar,
-    ) -> Witness<C::Scalar> {
+    ) -> Witness<C> {
         let mut w_folded: Vec<C::Scalar> = vec![C::Scalar::default(); w_lcccs[0].w.len()];
         let mut r_w_folded = C::Scalar::default();
 
@@ -248,9 +275,9 @@ impl<C: Group> Multifolding<C> {
         transcript: &mut C::TE,
         running_instances: &[LCCCS<C>],
         new_instances: &[CCCS<C>],
-        w_lcccs: &[Witness<C::Scalar>],
-        w_cccs: &[Witness<C::Scalar>],
-    ) -> (Proof<C>, LCCCS<C>, Witness<C::Scalar>) {
+        w_lcccs: &[Witness<C>],
+        w_cccs: &[Witness<C>],
+    ) -> (Proof<C>, LCCCS<C>, Witness<C>) {
         // TODO appends to transcript
 
         assert!(!running_instances.is_empty());
@@ -281,10 +308,9 @@ impl<C: Group> Multifolding<C> {
         }
 
         // Step 1: Get some challenges
-        let gamma: C::Scalar = transcript.squeeze(b"gamma").unwrap();
-        let beta: Vec<C::Scalar> = transcript
-            .batch_squeeze(b"beta", running_instances[0].ccs.s)
-            .unwrap();
+        let gamma = transcript.squeeze(b"gamma").unwrap();
+        let beta = transcript
+            .batch_squeeze(b"beta", running_instances[0].ccs.s).unwrap();
 
         // Compute g(x)
         let g = Self::compute_g(
@@ -340,7 +366,7 @@ impl<C: Group> Multifolding<C> {
         );
 
         // Step 6: Get the folding challenge
-        let rho: C::Scalar = transcript.squeeze(b"rho").unwrap();
+        let rho = transcript.squeeze(b"rho").unwrap();
 
         // Step 7: Create the folded instance
         let folded_lcccs = Self::fold(
@@ -352,7 +378,7 @@ impl<C: Group> Multifolding<C> {
             rho,
         );
 
-        // Step 8: Fold the witnesses
+        // Step 8: Fold the witnessesG::Base
         let folded_witness = Self::fold_witness(w_lcccs, w_cccs, rho);
 
         (
@@ -383,8 +409,8 @@ impl<C: Group> Multifolding<C> {
         assert!(!new_instances.is_empty());
 
         // Step 1: Get some challenges
-        let gamma: C::Scalar = transcript.squeeze(b"gamma").unwrap();
-        let beta: Vec<C::Scalar> = transcript
+        let gamma = transcript.squeeze(b"gamma").unwrap();
+        let beta = transcript
             .batch_squeeze(b"beta", running_instances[0].ccs.s)
             .unwrap();
 
@@ -446,7 +472,7 @@ impl<C: Group> Multifolding<C> {
         );
 
         // Step 6: Get the folding challenge
-        let rho: C::Scalar = transcript.squeeze(b"rho").unwrap();
+        let rho = transcript.squeeze(b"rho").unwrap();
 
         // Step 7: Compute the folded instance
         Self::fold(
@@ -464,14 +490,15 @@ impl<C: Group> Multifolding<C> {
 pub mod test {
     use halo2curves::bn256::Fr;
     use rand_core::OsRng;
-    use super::*;
-    use crate::nimfs::ccs::ccs::test::{get_test_ccs, get_test_z};
 
+    use crate::nimfs::ccs::ccs::test::{get_test_ccs, get_test_z};
     use crate::provider::bn256_grumpkin::bn256::Point;
-    use crate::traits::TranscriptEngineTrait;
+    use crate::provider::poseidon::PoseidonConstantsCircuit;
+
+    use super::*;
 
     // NIMFS: Non Interactive Multi-folding Scheme
-    type NIMFS = Multifolding<Point>;
+    type NIMFS = MultiFolding<Point>;
 
     #[test]
     fn test_compute_sigmas_and_thetas() -> () {
@@ -600,7 +627,7 @@ pub mod test {
         let ck = ccs.commitment_key();
         let (running_instance, _) = ccs.to_lcccs(rng, &ck, &z1);
 
-        let (sigmas, thetas) = Multifolding::<Point>::compute_sigmas_and_thetas(
+        let (sigmas, thetas) = MultiFolding::<Point>::compute_sigmas_and_thetas(
             &running_instance.ccs,
             &vec![z1.clone()],
             &vec![z2.clone()],
@@ -618,7 +645,7 @@ pub mod test {
         let rng = OsRng;
         let rho = Fr::random(rng);
 
-        let folded = Multifolding::<Point>::fold(
+        let folded = MultiFolding::<Point>::fold(
             &vec![lcccs],
             &vec![cccs],
             &sigmas,
@@ -627,7 +654,7 @@ pub mod test {
             rho,
         );
 
-        let w_folded = Multifolding::<Point>::fold_witness(&vec![w1], &vec![w2], rho);
+        let w_folded = MultiFolding::<Point>::fold_witness(&vec![w1], &vec![w2], rho);
 
         // check lcccs relation
         folded.check_relation(&ck, &w_folded).unwrap();
@@ -653,8 +680,11 @@ pub mod test {
         let (new_instance, w2) = ccs.to_cccs(rng, &ck, &z_2);
 
         // Prover's transcript
-        let mut transcript_p = <Point as Group>::TE::new(b"multifolding");
+        let constants = PoseidonConstantsCircuit::<Fr>::default();
+        let mut transcript_p = <Point as Group>::TE::new(constants, b"multifolding");
         transcript_p.squeeze(b"init").unwrap();
+        // Verifier's transcript
+        let mut transcript_v = transcript_p.clone();
 
         // Run the prover side of the multi-folding
         let (proof, folded_lcccs, folded_witness) = NIMFS::prove(
@@ -665,9 +695,6 @@ pub mod test {
             &vec![w2],
         );
 
-        // Verifier's transcript
-        let mut transcript_v = <Point as Group>::TE::new(b"multifolding");
-        transcript_v.squeeze(b"init").unwrap();
 
         // Run the verifier side of the multi-folding
         let folded_lcccs_v = NIMFS::verify(
@@ -697,10 +724,12 @@ pub mod test {
         let z_1 = get_test_z(2);
         let (mut running_instance, mut w1) = ccs.to_lcccs(rng, &ck, &z_1);
 
-        let mut transcript_p = <Point as Group>::TE::new(b"multifolding");
-        let mut transcript_v = <Point as Group>::TE::new(b"multifolding");
+        let constants = PoseidonConstantsCircuit::<Fr>::default();
+        // Prover's transcript
+        let mut transcript_p = <Point as Group>::TE::new(constants, b"multifolding");
         transcript_p.squeeze(b"init").unwrap();
-        transcript_v.squeeze(b"init").unwrap();
+        // Verifier's transcript
+        let mut transcript_v = transcript_p.clone();
 
         let n: usize = 10;
         for i in 3..n {
@@ -783,9 +812,12 @@ pub mod test {
             w_cccs.push(w);
         }
 
+        let constants = PoseidonConstantsCircuit::<Fr>::default();
         // Prover's transcript
-        let mut transcript_p = <Point as Group>::TE::new(b"multifolding");
+        let mut transcript_p = <Point as Group>::TE::new(constants, b"multifolding");
         transcript_p.squeeze(b"init").unwrap();
+        // Verifier's transcript
+        let mut transcript_v = transcript_p.clone();
 
         // Run the prover side of the multi-folding
         let (proof, folded_lcccs, folded_witness) = NIMFS::prove(
@@ -795,10 +827,6 @@ pub mod test {
             &w_lcccs,
             &w_cccs,
         );
-
-        // Verifier's transcript
-        let mut transcript_v = <Point as Group>::TE::new(b"multifolding");
-        transcript_v.squeeze(b"init").unwrap();
 
         // Run the verifier side of the multifolding
         let folded_lcccs_v =
@@ -821,13 +849,12 @@ pub mod test {
         let ccs = get_test_ccs::<Point>();
         let ck = ccs.commitment_key();
 
+        let constants = PoseidonConstantsCircuit::<Fr>::default();
         // Prover's transcript
-        let mut transcript_p = <Point as Group>::TE::new(b"multifolding");
+        let mut transcript_p = <Point as Group>::TE::new(constants, b"multifolding");
         transcript_p.squeeze(b"init").unwrap();
-
         // Verifier's transcript
-        let mut transcript_v = <Point as Group>::TE::new(b"multifolding");
-        transcript_v.squeeze(b"init").unwrap();
+        let mut transcript_v = transcript_p.clone();
 
         let n_steps = 3;
 

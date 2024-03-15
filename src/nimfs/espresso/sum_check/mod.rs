@@ -40,7 +40,7 @@ pub trait SumCheck<C: Group> {
     /// an building block for a more complex protocol, the transcript
     /// may be initialized by this complex protocol, and passed to the
     /// SumCheck prover/verifier.
-    fn init_transcript() -> Self::Transcript;
+    // fn init_transcript() -> Self::Transcript;
 
     /// Generate proof of the sum of polynomial over {0,1}^`num_vars`
     ///
@@ -161,11 +161,6 @@ impl<C: Group> SumCheck<C> for PolyIOP<C::Scalar> {
         res
     }
 
-    fn init_transcript() -> Self::Transcript {
-        let res = C::TE::new(b"Initializing SumCheck transcript");
-        res
-    }
-
     fn prove(
         poly: &Self::VirtualPolynomial,
         transcript: &mut Self::Transcript,
@@ -199,6 +194,7 @@ impl<C: Group> SumCheck<C> for PolyIOP<C::Scalar> {
         transcript: &mut Self::Transcript,
     ) -> Result<Self::SumCheckSubClaim, NovaError> {
         transcript.absorb(b"aux info", aux_info);
+
         let mut verifier_state = IOPVerifierState::verifier_init(aux_info);
         for i in 0..aux_info.num_variables {
             let prover_msg = proof.proofs.get(i).expect("proof is incomplete");
@@ -209,8 +205,6 @@ impl<C: Group> SumCheck<C> for PolyIOP<C::Scalar> {
             )?;
         }
 
-        let res = verifier_state.check_and_generate_subclaim(&claimed_sum);
-
-        res
+        verifier_state.check_and_generate_subclaim(&claimed_sum)
     }
 }

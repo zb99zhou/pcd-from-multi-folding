@@ -11,7 +11,7 @@ use crate::{
 };
 use bellpepper_core::{Index, LinearCombination};
 use ff::PrimeField;
-use crate::nimfs::ccs::cccs::CCCS;
+use crate::nimfs::ccs::cccs::{CCCS, Witness};
 
 /// `NovaWitness` provide a method for acquiring an `R1CSInstance` and `R1CSWitness` from implementers.
 pub trait NovaWitness<G: Group> {
@@ -27,7 +27,7 @@ pub trait NovaWitness<G: Group> {
     &self,
     shape: &R1CSShape<G>,
     ck: &CommitmentKey<G>,
-  ) -> Result<(CCCS<G>, R1CSWitness<G>), NovaError>;
+  ) -> Result<(CCCS<G>, Witness<G>), NovaError>;
 }
 
 impl<G: Group> NovaWitness<G> for SatisfyingAssignment<G> {
@@ -50,8 +50,8 @@ impl<G: Group> NovaWitness<G> for SatisfyingAssignment<G> {
     &self,
     shape: &R1CSShape<G>,
     ck: &CommitmentKey<G>,
-  ) -> Result<(CCCS<G>, R1CSWitness<G>), NovaError> {
-    let C = R1CSWitness::<G>::new(shape, &self.aux_assignment)?;
+  ) -> Result<(CCCS<G>, Witness<G>), NovaError> {
+    let C = Witness::<G>::new(shape, &self.aux_assignment)?;
     let X = &self.input_assignment[1..];
 
     let comm_C = C.commit(ck);

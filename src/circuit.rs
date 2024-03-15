@@ -12,7 +12,7 @@ use crate::{
     ecc::AllocatedPoint,
     r1cs::{AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance},
     utils::{
-      alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select_vec, le_bits_to_num,
+      alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select_vec_allocated_num, le_bits_to_num,
     },
   },
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
@@ -325,7 +325,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
     );
 
     // Compute z_{i+1}
-    let z_input = conditionally_select_vec(
+    let z_input = conditionally_select_vec_allocated_num(
       cs.namespace(|| "select input to F"),
       &z_0,
       &z_i,

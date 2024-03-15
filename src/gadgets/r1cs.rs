@@ -262,9 +262,10 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     let E_fold = self.E.add(cs.namespace(|| "self.E + r * T"), &rT)?;
 
     // u_fold = u_r + r
-    let u_fold = AllocatedNum::alloc(cs.namespace(|| "u_fold"), || {
-      Ok(*self.u.get_value().get()? + r.get_value().get()?)
-    })?;
+    let u_fold = AllocatedNum::alloc(
+      cs.namespace(|| "u_fold"),
+      || Ok(*self.u.get_value().get()? + r.get_value().get()?)
+    )?;
     cs.enforce(
       || "Check u_fold",
       |lc| lc,

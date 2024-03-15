@@ -15,6 +15,7 @@ use crate::traits::Group;
 
 /// Linearized Committed CCS instance
 #[derive(Debug, Clone, Eq, PartialEq)]
+#[allow(clippy::upper_case_acronyms)]
 pub struct LCCCS<C: Group> {
     // Underlying CCS structure
     pub ccs: CCS<C>,
@@ -57,7 +58,7 @@ impl<C: Group> LCCCS<C> {
     pub fn check_relation(
         &self,
         ck: &<<C as Group>::CE as CommitmentEngineTrait<C>>::CommitmentKey,
-        w: &Witness<C::Scalar>,
+        w: &Witness<C>,
     ) -> Result<(), CCSError> {
         // check that C is the commitment of w. Notice that this is not verifying a Pedersen
         // opening, but checking that the Commmitment comes from committing to the witness.

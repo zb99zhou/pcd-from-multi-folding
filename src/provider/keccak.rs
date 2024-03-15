@@ -46,7 +46,9 @@ fn compute_updated_state(keccak_instance: Keccak256, input: &[u8]) -> [u8; KECCA
 }
 
 impl<G: Group> TranscriptEngineTrait<G> for Keccak256Transcript<G> {
-  fn new(label: &'static [u8]) -> Self {
+  type Constants = ();
+
+  fn new(_constants: Self::Constants, label: &'static [u8]) -> Self {
     let keccak_instance = Keccak256::new();
     let input = [PERSONA_TAG, label].concat();
     let output = compute_updated_state(keccak_instance.clone(), &input);
@@ -112,7 +114,7 @@ mod tests {
   use sha3::{Digest, Keccak256};
 
   fn test_keccak_transcript_with<G: Group>(expected_h1: &'static str, expected_h2: &'static str) {
-    let mut transcript: Keccak256Transcript<G> = Keccak256Transcript::new(b"test");
+    let mut transcript: Keccak256Transcript<G> = Keccak256Transcript::new((), b"test");
 
     // two scalars
     let s1 = <G as Group>::Scalar::from(2u64);
@@ -207,7 +209,7 @@ mod tests {
   // the former, which materialized the entirety of the input vector before calling Keccak256 on it.
   fn test_keccak_transcript_incremental_vs_explicit_with<G: Group>() {
     let test_label = b"test";
-    let mut transcript: Keccak256Transcript<G> = Keccak256Transcript::new(test_label);
+    let mut transcript: Keccak256Transcript<G> = Keccak256Transcript::new((), test_label);
     let mut rng = rand::thread_rng();
 
     // ten scalars

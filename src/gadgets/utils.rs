@@ -9,6 +9,7 @@ use bellpepper_core::{
 };
 use ff::{Field, PrimeField, PrimeFieldBits};
 use num_bigint::BigInt;
+use crate::gadgets::nonnative::util::Num;
 
 /// Gets as input the little indian representation of a number and spits out the number
 pub fn le_bits_to_num<Scalar, CS>(
@@ -71,6 +72,23 @@ pub fn alloc_one<F: PrimeField, CS: ConstraintSystem<F>>(
 
   Ok(one)
 }
+
+/// Allocate a scalar as a base. Only to be used is the scalar fits in base!
+pub fn alloc_vector_numbers<F, CS>(
+  mut cs: CS,
+  inputs: &[F],
+) -> Result<Vec<AllocatedNum<F>>, SynthesisError>
+  where
+      F: PrimeField,
+      CS: ConstraintSystem<F>,
+{
+  inputs
+      .iter()
+      .enumerate()
+      .map(|(i, input)| AllocatedNum::alloc(cs.namespace(|| format!("alloc {i}th input")), || Ok(*input)))
+      .collect::<Result<Vec<_>, SynthesisError>>()
+}
+
 
 /// Allocate a scalar as a base. Only to be used is the scalar fits in base!
 pub fn alloc_scalar_as_base<G, CS>(
@@ -182,6 +200,36 @@ pub fn alloc_num_equals<F: PrimeField, CS: ConstraintSystem<F>>(
   Ok(r)
 }
 
+/// Check that all numbers are equal zero
+pub fn alloc_vec_number_equals_zero<F: PrimeField, CS: ConstraintSystem<F>>(
+  mut cs: CS,
+  vec_nums: &[AllocatedNum<F>],
+  zero: &AllocatedNum<F>,
+) -> Result<Boolean, SynthesisError> {
+  let mut is_zero = Boolean::constant(true);
+  for (i, r) in vec_nums.iter().enumerate() {
+    let mut cs = cs.namespace(|| format!("{}th num", i));
+    let is_zero_temp = alloc_num_equals(cs.namespace(|| "alloc is_null"), &r, zero)?;
+    is_zero = Boolean::and(cs.namespace(|| "update is_null"), &is_zero, &is_zero_temp.into())?;
+  }
+
+  Ok(is_zero)
+}
+
+pub fn alloc_vec_num_equals_zero<F: PrimeField, CS: ConstraintSystem<F>>(
+  mut cs: CS,
+  vec_nums: &[Num<F>],
+) -> Result<Boolean, SynthesisError> {
+  let mut is_zero = Boolean::constant(true);
+  for (i, num) in vec_nums.iter().enumerate() {
+    let mut cs = cs.namespace(|| format!("{}th num", i));
+    let is_zero_temp = num.equal(cs.namespace(|| "is zero"), &Num::zero())?;
+    is_zero = Boolean::and(cs.namespace(|| "update is_null"), &is_zero, &is_zero_temp.into())?;
+  }
+
+  Ok(is_zero)
+}
+
 /// If condition return a otherwise b
 pub fn conditionally_select<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
@@ -209,7 +257,7 @@ pub fn conditionally_select<F: PrimeField, CS: ConstraintSystem<F>>(
   Ok(c)
 }
 
-pub fn vec_conditionally_select<F: PrimeField, CS: ConstraintSystem<F>>(
+pub fn vec_conditionally_select_big_nat<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
   this:&[BigNat<F>],
   other: &[BigNat<F>],
@@ -228,7 +276,7 @@ pub fn vec_conditionally_select<F: PrimeField, CS: ConstraintSystem<F>>(
 }
 
 /// If condition return a otherwise b
-pub fn conditionally_select_vec<F: PrimeField, CS: ConstraintSystem<F>>(
+pub fn conditionally_select_vec_allocated_num<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
   a: &[AllocatedNum<F>],
   b: &[AllocatedNum<F>],
@@ -447,4 +495,20 @@ pub fn select_num_or_one<F: PrimeField, CS: ConstraintSystem<F>>(
   );
 
   Ok(c)
+}
+
+pub fn multi_and<F: PrimeField, CS: ConstraintSystem<F>>(
+  mut cs: CS,
+  x: &[Boolean],
+) -> Result<AllocatedBit, SynthesisError> {
+  let mut lc = Num::zero();
+
+  for bool_x in x.iter() {
+    lc = lc.add_bool_with_coeff(CS::one(), bool_x, F::ONE);
+  }
+
+  Ok(lc.equal(
+    cs.namespace(||"asserts whether boolean sum is equal to the Vector constant size"),
+    &Num::new(Some(F::from(x.len() as u64)), LinearCombination::zero())
+  )?)
 }
