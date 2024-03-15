@@ -1,9 +1,11 @@
 use std::ops::Neg;
 use ff::{Field, PrimeField};
 use rand_core::RngCore;
+use serde::{Deserialize, Serialize};
 // XXX use thiserror everywhere? espresso doesnt use it...
 use thiserror::Error;
 use crate::CommitmentKey;
+use crate::errors::NovaError;
 use crate::nimfs::ccs::cccs::{CCCS, Witness};
 use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::nimfs::ccs::util::compute_all_sum_Mz_evals;
@@ -22,12 +24,13 @@ pub enum CCSError {
 }
 
 /// A CCS structure
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[allow(clippy::upper_case_acronyms)]
+#[serde(bound = "")]
 pub struct CCS<G: Group> {
-    // m: number of columns in M_i (such that M_i \in F^{m, n})
+    // m: number of rows in M_i (such that M_i \in F^{m, n})
     pub m: usize,
-    // n = |z|, number of rows in M_i
+    // n = |z|, number of columns in M_i
     pub n: usize,
     // l = |io|, size of public input/output
     pub l: usize,
@@ -160,6 +163,45 @@ impl<G: Group> CCS<G> {
             },
             Witness::<G> { w, r_w },
         )
+    }
+
+    pub fn multiply_vec(
+        &self,
+        z: &[G::Scalar],
+    ) -> Result<(Vec<G::Scalar>, Vec<G::Scalar>, Vec<G::Scalar>), NovaError> {
+        if z.len() != self.l + self.n + 1 {
+            return Err(NovaError::InvalidWitnessLength);
+        }
+
+        // computes a product between a sparse matrix `M` and a vector `z`
+        // This does not perform any validation of entries in M (e.g., if entries in `M` reference indexes outside the range of `z`)
+        // This is safe since we know that `M` is valid
+        let sparse_matrix_vec_product =
+            |M: &Matrix<G::Scalar>, num_rows: usize, z: &[G::Scalar]| -> Vec<G::Scalar> {
+                let mut result = vec![G::Scalar::ZERO; num_rows];
+
+                for (row_index, row) in M.iter().enumerate() {
+                    for (col_index, val) in row.iter().enumerate() {
+                        if val.is_zero_vartime() {
+                            result[row_index] += *val * z[col_index];
+                        }
+                    }
+                }
+
+                result
+            };
+
+        let (Az, (Bz, Cz)) = rayon::join(
+            || sparse_matrix_vec_product(&self.M[0], self.m, z),
+            || {
+                rayon::join(
+                    || sparse_matrix_vec_product(&self.M[1], self.m, z),
+                    || sparse_matrix_vec_product(&self.M[2], self.m, z),
+                )
+            },
+        );
+
+        Ok((Az, Bz, Cz))
     }
 
     /// Check that a CCS structure is satisfied by a z vector.
