@@ -11,7 +11,7 @@ use crate::nimfs::util::mle::matrix_to_mle;
 use crate::nimfs::util::mle::vec_to_mle;
 use crate::spartan::polys::multilinear::MultiLinearPolynomial;
 use crate::traits::commitment::CommitmentEngineTrait;
-use crate::traits::Group;
+use crate::traits::{Group, TranscriptReprTrait};
 
 /// Linearized Committed CCS instance
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -32,6 +32,19 @@ pub struct LCCCS<C: Group> {
     pub r_x: Vec<C::Scalar>,
     // Vector of v_i
     pub v: Vec<C::Scalar>,
+}
+
+impl<C: Group> TranscriptReprTrait<C> for LCCCS<C> {
+    fn to_transcript_bytes(&self) -> Vec<u8> {
+        [
+            self.C.to_transcript_bytes(),
+            self.u.to_transcript_bytes(),
+            self.x.as_slice().to_transcript_bytes(),
+            self.r_x.as_slice().to_transcript_bytes(),
+            self.v.as_slice().to_transcript_bytes(),
+        ]
+            .concat()
+    }
 }
 
 impl<C: Group> LCCCS<C> {
