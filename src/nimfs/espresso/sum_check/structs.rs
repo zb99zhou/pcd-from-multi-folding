@@ -6,7 +6,7 @@
 
 //! This module defines structs that are shared by all sub protocols.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize,Serialize};
 use crate::nimfs::espresso::virtual_polynomial::VirtualPolynomial;
 use crate::traits::{Group, TranscriptReprTrait};
 

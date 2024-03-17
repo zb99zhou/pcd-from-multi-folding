@@ -25,6 +25,7 @@ pub mod gadgets;
 pub mod provider;
 pub mod spartan;
 pub mod traits;
+mod PCDCompressedSnarkNew;
 
 use crate::bellpepper::{
   r1cs::{NovaShape, NovaWitness},

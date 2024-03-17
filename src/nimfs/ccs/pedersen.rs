@@ -114,10 +114,10 @@ mod tests {
         let params = Pedersen::new_params(OsRng, n);
 
         // init Prover's transcript
-        let mut transcript_p = <bn256::Point as Group>::TE::new((), b"pedersen_test");
+        let mut transcript_p = <bn256::Point as Group>::TE::new(Default::default(), b"pedersen_test");
         transcript_p.squeeze(b"init").unwrap();
         // init Verifier's transcript
-        let mut transcript_v = <bn256::Point as Group>::TE::new((), b"pedersen_test");
+        let mut transcript_v = <bn256::Point as Group>::TE::new(Default::default(), b"pedersen_test");
         transcript_v.squeeze(b"init").unwrap();
 
         let v: Vec<bn256::Scalar> = vec![bn256::Scalar::random(OsRng); n];
