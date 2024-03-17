@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 use std::ops::{Add, Mul};
 
 use ff::Field;
+use serde::{Deserialize, Serialize};
 
 use crate::Commitment;
 use crate::nimfs::ccs::cccs::{CCCS, CCSWitness};
@@ -21,7 +22,8 @@ pub type NIMFS<C> = MultiFolding<C>;
 pub type NIMFSProof<C> = ProofWitness<C>;
 
 /// Proof defines a multi-folding proof
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct ProofWitness<C: Group> {
     pub point: Vec<C::Base>,
     pub proofs: Vec<Vec<C::Base>>,
@@ -45,7 +47,8 @@ where
 }
 
 /// Proof defines a multi-folding proof
-#[derive(Debug)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct Proof<C: Group> {
     pub sum_check_proof: SumCheckProof<C>,
     pub sigmas: Vec<Vec<C::Scalar>>,
