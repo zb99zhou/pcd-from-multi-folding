@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use ff::Field;
+use serde::{Deserialize, Serialize};
 use crate::Commitment;
 
 use crate::nimfs::ccs::cccs::CCSWitness;
@@ -14,7 +15,8 @@ use crate::traits::commitment::CommitmentEngineTrait;
 use crate::traits::{Group, TranscriptReprTrait};
 
 /// Linearized Committed CCS instance
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(bound = "")]
 #[allow(clippy::upper_case_acronyms)]
 pub struct LCCCS<C: Group> {
     // Underlying CCS structure
