@@ -2,7 +2,7 @@ use std::sync::Arc;
 use ff::Field;
 use crate::Commitment;
 
-use crate::nimfs::ccs::cccs::Witness;
+use crate::nimfs::ccs::cccs::CCSWitness;
 use crate::nimfs::ccs::ccs::{CCSError, CCS};
 use crate::nimfs::ccs::util::{compute_all_sum_Mz_evals, compute_sum_Mz};
 
@@ -71,7 +71,7 @@ impl<C: Group> LCCCS<C> {
     pub fn check_relation(
         &self,
         ck: &<<C as Group>::CE as CommitmentEngineTrait<C>>::CommitmentKey,
-        w: &Witness<C>,
+        w: &CCSWitness<C>,
     ) -> Result<(), CCSError> {
         // check that C is the commitment of w. Notice that this is not verifying a Pedersen
         // opening, but checking that the Commmitment comes from committing to the witness.

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use crate::CommitmentKey;
 use crate::errors::NovaError;
-use crate::nimfs::ccs::cccs::{CCCS, Witness};
+use crate::nimfs::ccs::cccs::{CCCS, CCSWitness};
 use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::nimfs::ccs::util::compute_all_sum_Mz_evals;
 use crate::nimfs::util::vec::{hadamard, Matrix};
@@ -124,7 +124,7 @@ impl<G: Group> CCS<G> {
         rng: impl RngCore,
         ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
         z: &[G::Scalar],
-    ) -> (CCCS<G>, Witness<G>) {
+    ) -> (CCCS<G>, CCSWitness<G>) {
         let w: Vec<G::Scalar> = z[(1 + self.l)..].to_vec();
         let r_w = G::Scalar::random(rng);
         let C = G::CE::commit(ck, &w);
@@ -135,7 +135,7 @@ impl<G: Group> CCS<G> {
                 C,
                 x: z[1..(1 + self.l)].to_vec(),
             },
-            Witness::<G> { w, r_w },
+            CCSWitness::<G> { w, r_w },
         )
     }
 
@@ -144,7 +144,7 @@ impl<G: Group> CCS<G> {
         rng: impl RngCore + Clone,
         ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
         z: &[G::Scalar],
-    ) -> (LCCCS<G>, Witness<G>) {
+    ) -> (LCCCS<G>, CCSWitness<G>) {
         let w: Vec<G::Scalar> = z[(1 + self.l)..].to_vec();
         let r_w = G::Scalar::random(rng.clone());
         let C = G::CE::commit(ck, &w);
@@ -161,7 +161,7 @@ impl<G: Group> CCS<G> {
                 r_x,
                 v,
             },
-            Witness::<G> { w, r_w },
+            CCSWitness::<G> { w, r_w },
         )
     }
 

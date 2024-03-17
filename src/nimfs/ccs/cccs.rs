@@ -17,12 +17,12 @@ use crate::traits::Group;
 
 /// Witness for the LCCCS & CCCS, containing the w vector, and the r_w used as randomness in the Pedersen commitment.
 #[derive(Debug, Clone)]
-pub struct Witness<C: Group> {
+pub struct CCSWitness<C: Group> {
     pub w: Vec<C::Scalar>,
     pub r_w: C::Scalar, // randomness used in the Pedersen commitment of w
 }
 
-impl<C: Group> Witness<C> {
+impl<C: Group> CCSWitness<C> {
     pub fn new(S: &R1CSShape<C>, W: &[C::Scalar]) -> Result<Self, NovaError> {
         if S.num_vars != W.len() {
             Err(NovaError::InvalidWitnessLength)
@@ -108,7 +108,7 @@ impl<C: Group> CCCS<C> {
     pub fn check_relation(
         &self,
         ck: &CommitmentKey<C>,
-        w: &Witness<C>,
+        w: &CCSWitness<C>,
     ) -> Result<(), CCSError> {
         // check that C is the commitment of w. Notice that this is not verifying a Pedersen
         // opening, but checking that the Commmitment comes from committing to the witness.

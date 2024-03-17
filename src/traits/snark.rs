@@ -7,7 +7,7 @@ use crate::{
 };
 
 use serde::{Deserialize, Serialize};
-use crate::nimfs::ccs::cccs::Witness;
+use crate::nimfs::ccs::cccs::CCSWitness;
 use crate::nimfs::ccs::ccs::CCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
 
@@ -60,7 +60,7 @@ pub trait LinearCommittedCCSTrait<G: Group>:
     ck: &CommitmentKey<G>,
     pk: &Self::ProverKey,
     U: &LCCCS<G>,
-    W: &Witness<G>,
+    W: &CCSWitness<G>,
   ) -> Result<Self, NovaError>;
 
   /// Verifies a SNARK for a LCCCSSnark

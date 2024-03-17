@@ -22,7 +22,7 @@ use ff::Field;
 
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use crate::nimfs::ccs::cccs::Witness;
+use crate::nimfs::ccs::cccs::CCSWitness;
 use crate::nimfs::ccs::ccs::CCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::nimfs::util::vec::Matrix;
@@ -96,7 +96,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
         ck: &CommitmentKey<G>,
         pk: &Self::ProverKey,
         U: &LCCCS<G>,
-        W: &Witness<G>,
+        W: &CCSWitness<G>,
     ) -> Result<Self, NovaError> {
         // let W = W.pad(&pk.S); // pad the witness
         let mut transcript = G::TE::new(Default::default(), b"LCCCSSNARK");

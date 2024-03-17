@@ -4,7 +4,7 @@ use std::ops::{Add, Mul};
 use ff::Field;
 
 use crate::Commitment;
-use crate::nimfs::ccs::cccs::{CCCS, Witness};
+use crate::nimfs::ccs::cccs::{CCCS, CCSWitness};
 use crate::nimfs::ccs::ccs::CCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::nimfs::ccs::util::compute_all_sum_Mz_evals;
@@ -226,10 +226,10 @@ impl<C: Group> MultiFolding<C> {
     }
 
     pub fn fold_witness(
-        w_lcccs: &[Witness<C>],
-        w_cccs: &[Witness<C>],
+        w_lcccs: &[CCSWitness<C>],
+        w_cccs: &[CCSWitness<C>],
         rho: C::Scalar,
-    ) -> Witness<C> {
+    ) -> CCSWitness<C> {
         let mut w_folded: Vec<C::Scalar> = vec![C::Scalar::default(); w_lcccs[0].w.len()];
         let mut r_w_folded = C::Scalar::default();
 
@@ -258,7 +258,7 @@ impl<C: Group> MultiFolding<C> {
 
             r_w_folded += rho_i * r_w;
         }
-        Witness {
+        CCSWitness {
             w: w_folded,
             r_w: r_w_folded,
         }
@@ -275,9 +275,9 @@ impl<C: Group> MultiFolding<C> {
         transcript: &mut C::TE,
         running_instances: &[LCCCS<C>],
         new_instances: &[CCCS<C>],
-        w_lcccs: &[Witness<C>],
-        w_cccs: &[Witness<C>],
-    ) -> (Proof<C>, LCCCS<C>, Witness<C>) {
+        w_lcccs: &[CCSWitness<C>],
+        w_cccs: &[CCSWitness<C>],
+    ) -> (Proof<C>, LCCCS<C>, CCSWitness<C>) {
         // TODO appends to transcript
 
         assert!(!running_instances.is_empty());
