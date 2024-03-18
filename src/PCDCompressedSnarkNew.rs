@@ -8,7 +8,7 @@ use crate::traits::snark::{RelaxedR1CSSNARKTrait, LinearCommittedCCSTrait};
 use crate::nimfs::ccs::cccs::{CCSWitness, CCCS};
 use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::circuit::NovaAugmentedCircuitParams;
-use crate::CommitmentKey;
+use crate::{CommitmentKey, VerifierKey};
 use crate::nimfs::ccs::ccs::CCS;
 use crate::nimfs::multifolding::{MultiFolding, Proof};
 pub struct PCDPublicParams<G1, G2, C1, C2>
@@ -217,6 +217,29 @@ impl<G1, G2, C1, C2, S1, S2> PCDCompressedSNARK<G1, G2, C1, C2, S1, S2>
             _p_c1: Default::default(),
             _p_c2: Default::default(),
         })
+
+    }
+
+    /// Verify the correctness of the `CompressedSNARK`
+    pub fn verify(
+        &self,
+        vk: &PCDVerifierKey<G1, G2, C1, C2, S1, S2>,
+        num_steps: usize,
+        z0_primary: Vec<G1::Scalar>,
+        z0_secondary: Vec<G2::Scalar>,
+    ) -> Result<(Vec<G1::Scalar>, Vec<G2::Scalar>), NovaError> {
+        // number of steps cannot be zero
+        if num_steps == 0 {
+            return Err(NovaError::ProofVerifyError);
+        }
+        // check if the instances have two public outputs
+        if self.r_u_primary.x.len() != 2
+            || self.r_U_primary.x.len() != 2
+            || self.r_U_secondary.X.len() != 2
+        {
+            return Err(NovaError::ProofVerifyError);
+        }
+
 
     }
 
