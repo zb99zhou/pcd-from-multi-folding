@@ -5,7 +5,6 @@
   future_incompatible,
   nonstandard_style,
   rust_2018_idioms,
-  missing_docs
 )]
 #![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]
@@ -25,7 +24,7 @@ pub mod gadgets;
 pub mod provider;
 pub mod spartan;
 pub mod traits;
-mod PCDCompressedSnarkNew;
+pub mod pcd_compressed_snark;
 
 use crate::bellpepper::{
   r1cs::{NovaShape, NovaWitness},

@@ -2,6 +2,10 @@ use std::sync::Arc;
 use ff::Field;
 use serde::{Deserialize, Serialize};
 use crate::Commitment;
+use crate::constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
+use crate::gadgets::nonnative::bignat::nat_to_limbs;
+use crate::gadgets::nonnative::util::f_to_nat;
+use crate::gadgets::utils::scalar_as_base;
 
 use crate::nimfs::ccs::cccs::CCSWitness;
 use crate::nimfs::ccs::ccs::{CCSError, CCS};
@@ -12,7 +16,7 @@ use crate::nimfs::util::mle::matrix_to_mle;
 use crate::nimfs::util::mle::vec_to_mle;
 use crate::spartan::polys::multilinear::MultiLinearPolynomial;
 use crate::traits::commitment::CommitmentEngineTrait;
-use crate::traits::{Group, TranscriptReprTrait};
+use crate::traits::{Group, ROTrait, TranscriptReprTrait};
 
 /// Linearized Committed CCS instance
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -84,6 +88,33 @@ impl<C: Group> LCCCS<C> {
         let computed_v = compute_all_sum_Mz_evals(&self.ccs.M, &z, &self.r_x, self.ccs.s_prime);
         assert_eq!(computed_v, self.v);
         Ok(())
+    }
+}
+
+impl<G1> LCCCS<G1>
+where
+    G1: Group,
+{
+    pub fn absorb_in_ro<G2: Group<Base = <G1 as Group>::Scalar>>(
+        &self,
+        ro: &mut G2::RO,
+    ) {
+        self.C.absorb_in_ro(ro);
+        ro.absorb(self.u);
+
+        for x in &self.x {
+            let limbs: Vec<G2::Scalar> = nat_to_limbs(&f_to_nat(x), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
+            for limb in limbs {
+                ro.absorb(scalar_as_base::<G2>(limb));
+            }
+        }
+        for v in self.v.iter() {
+            ro.absorb(*v);
+        }
+
+        for r in self.r_x.iter() {
+            ro.absorb(*r);
+        }
     }
 }
 

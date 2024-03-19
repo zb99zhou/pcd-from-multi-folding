@@ -1,12 +1,13 @@
 use bellpepper::gadgets::Assignment;
 use bellpepper_core::{ConstraintSystem, SynthesisError};
 use bellpepper_core::num::AllocatedNum;
+
 use crate::constants::NUM_HASH_BITS;
 use crate::gadgets::cccs::{AllocatedCCCSSecondPart, AllocatedLCCCSSecondPart};
 use crate::gadgets::utils::le_bits_to_num;
 use crate::nimfs::ccs::cccs::CCCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
-use crate::traits::{Group, ROCircuitTrait, ROConstantsCircuit, TEConstantsCircuit};
+use crate::traits::{Group, ROCircuitTrait, ROConstantsCircuit};
 
 pub struct NovaAuxiliaryInputs<G: Group> {
     params: G::Base, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
@@ -21,7 +22,6 @@ pub struct NovaAuxiliaryInputs<G: Group> {
 
 struct NovaAuxiliarySecondCircuit<G: Group> {
     ro_consts: ROConstantsCircuit<G>,
-    te_consts: TEConstantsCircuit<G>,
     inputs: NovaAuxiliaryInputs<G>,
 }
 
