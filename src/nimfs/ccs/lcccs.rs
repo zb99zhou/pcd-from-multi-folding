@@ -99,7 +99,7 @@ where
         &self,
         ro: &mut G2::RO,
     ) {
-        self.C.absorb_in_ro(ro);
+        // self.C.absorb_in_ro(ro);
         ro.absorb(self.u);
 
         for x in &self.x {
