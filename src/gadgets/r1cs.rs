@@ -336,6 +336,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     mut cs: CS,
     params: &AllocatedNum<G::Base>, // hash of R1CSShape of F'
     U: &Self,
+    T: &AllocatedPoint<G>,
     ro_consts: ROConstantsCircuit<G>,
     limb_width: usize,
     n_limbs: usize,
@@ -355,9 +356,12 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     let rW = U.W.scalar_mul(cs.namespace(|| "r * u.W"), &r_bits)?;
     let W_fold = self.W.add(cs.namespace(|| "self.W + r * u.W"), &rW)?;
 
-    // E_fold = self.E + r * E
-    let rE = U.E.scalar_mul(cs.namespace(|| "r * T"), &r_bits)?;
-    let E_fold = self.E.add(cs.namespace(|| "self.E + r * T"), &rE)?;
+    // E_fold = self.E + r * T + r^2 * E
+    let rT = T.scalar_mul(cs.namespace(|| "r * T"), &r_bits)?;
+    let r_square_E = U.E.scalar_mul(cs.namespace(|| "r * r * E"), &r_bits)?;
+    let E_fold = self.E
+        .add(cs.namespace(|| "self.E + r * T"), &rT)?
+        .add(cs.namespace(|| "self.E + r * T"), &r_square_E)?;
 
     // u_fold = u_r + r
     let u_fold = AllocatedNum::alloc(

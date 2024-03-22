@@ -2,10 +2,6 @@ use std::sync::Arc;
 use ff::Field;
 use serde::{Deserialize, Serialize};
 use crate::Commitment;
-use crate::constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
-use crate::gadgets::nonnative::bignat::nat_to_limbs;
-use crate::gadgets::nonnative::util::f_to_nat;
-use crate::gadgets::utils::scalar_as_base;
 
 use crate::nimfs::ccs::cccs::CCSWitness;
 use crate::nimfs::ccs::ccs::{CCSError, CCS};
@@ -103,10 +99,7 @@ where
         ro.absorb(self.u);
 
         for x in &self.x {
-            let limbs: Vec<G2::Scalar> = nat_to_limbs(&f_to_nat(x), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
-            for limb in limbs {
-                ro.absorb(scalar_as_base::<G2>(limb));
-            }
+            ro.absorb(*x);
         }
         for v in self.v.iter() {
             ro.absorb(*v);
