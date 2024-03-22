@@ -3,9 +3,11 @@ use bellpepper_core::{ConstraintSystem, SynthesisError};
 use bellpepper_core::boolean::{AllocatedBit, Boolean};
 use bellpepper_core::num::{AllocatedNum, Num};
 use ff::Field;
+
 use crate::constants::{NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS};
 use crate::gadgets::cccs::{AllocatedCCCSPrimaryPart, AllocatedLCCCSPrimaryPart, multi_folding_with_primary_part};
 use crate::gadgets::ext_allocated_num::ExtendFunc;
+use crate::gadgets::r1cs::AllocatedRelaxedR1CSInstance;
 use crate::gadgets::sumcheck::{AllocatedProof, enforce_compute_c_from_sigmas_and_thetas, enforce_interpolate_uni_poly, sumcheck_verify};
 use crate::gadgets::utils::{alloc_num_equals, alloc_zero, conditionally_select_vec_allocated_num, le_bits_to_num, multi_and};
 use crate::nimfs::ccs::cccs::CCCS;
@@ -23,14 +25,12 @@ pub struct PCDUnitParams<G: Group>{
     pub(crate) io_num: usize,
     pub(crate) limb_width: usize,
     pub(crate) n_limbs: usize,
-    pub(crate) is_primary_circuit: bool, // A boolean indicating if this is the primary circuit
 }
 
 impl<G: Group> PCDUnitParams<G> {
     pub const fn new(
         limb_width: usize,
         n_limbs: usize,
-        is_primary_circuit: bool,
         mu: usize,
         nu: usize,
         io_num: usize,
@@ -43,7 +43,6 @@ impl<G: Group> PCDUnitParams<G> {
             io_num,
             limb_width,
             n_limbs,
-            is_primary_circuit,
         }
     }
 }
@@ -52,13 +51,11 @@ impl<G: Group> PCDUnitParams<G> {
 // #[serde(bound = "")]
 pub struct PCDUnitInputs<G: Group> {
     params: G::Base, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
-    // i: G::Base,
     z0: Vec<G::Base>,
     zi: Option<Vec<G::Base>>,
     lcccs: Option<Vec<LCCCS<G>>>,
     cccs: Option<Vec<CCCS<G>>>,
     r: usize
-    // T: Option<Commitment<G>>,
 }
 
 impl<G: Group> PCDUnitInputs<G> {
@@ -180,28 +177,27 @@ impl<'a, G: Group, G1: Group, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a
     fn synthesize_genesis_based_nimfs<CS: ConstraintSystem<<G as Group>::Base>>(
         &self,
         mut cs: CS,
-        cccs: AllocatedCCCSPrimaryPart<G>,
     ) -> Result<AllocatedLCCCSPrimaryPart<G>, SynthesisError> {
-        let lcccs_default = if self.params.is_primary_circuit {
-            // The primary circuit just returns the default R1CS instance
-            AllocatedLCCCSPrimaryPart::default(
-                cs.namespace(|| "Allocate lcccs default"),
-                self.params.io_num,
-                self.params.ccs.s,
-                self.params.ccs.t,
-                self.params.limb_width,
-                self.params.n_limbs,
-            )?
-        } else {
-            // The secondary circuit returns the incoming LCCCS instance
-            AllocatedLCCCSPrimaryPart::from_cccs(
-                cs.namespace(|| "Allocate lcccs default"),
-                cccs,
-                self.params.limb_width,
-                self.params.n_limbs,
-            )?
-        };
-        Ok(lcccs_default)
+        AllocatedLCCCSPrimaryPart::default(
+            cs.namespace(|| "Allocate lcccs default"),
+            self.params.io_num,
+            self.params.ccs.s,
+            self.params.ccs.t,
+            self.params.limb_width,
+            self.params.n_limbs,
+        )
+    }
+
+    /// Synthesizes base case and returns the new `relaxed r1cs instance`
+    fn synthesize_genesis_based_nifs<CS: ConstraintSystem<<G as Group>::Base>>(
+        &self,
+        mut cs: CS,
+    ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
+        AllocatedRelaxedR1CSInstance::default(
+            cs.namespace(|| "Allocate relaxed r1cs instance default"),
+            self.params.limb_width,
+            self.params.n_limbs,
+        )
     }
 }
 
@@ -236,10 +232,7 @@ where
         let is_base_case = multi_and(cs.namespace(|| "is base case"), &is_base_case_flags)?;
 
         // Synthesize the circuit for the base case and get the new running instance
-        let lcccs_base = self.synthesize_genesis_based_nimfs(
-            cs.namespace(|| "generate base case based nimfs"),
-            cccs[0].clone()
-        )?;
+        let lcccs_base = self.synthesize_genesis_based_nimfs(cs.namespace(|| "generate base case based nimfs"))?;
 
         // Synthesize the circuit for the non-base case and get the new running
         // instance along with a boolean indicating if all checks have passed
