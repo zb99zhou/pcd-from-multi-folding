@@ -6,8 +6,9 @@ use ff::Field;
 
 use crate::constants::{NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS};
 use crate::gadgets::cccs::{AllocatedCCCSPrimaryPart, AllocatedLCCCSPrimaryPart, multi_folding_with_primary_part};
+use crate::gadgets::ecc::AllocatedPoint;
 use crate::gadgets::ext_allocated_num::ExtendFunc;
-use crate::gadgets::r1cs::AllocatedRelaxedR1CSInstance;
+use crate::gadgets::r1cs::{AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance};
 use crate::gadgets::sumcheck::{AllocatedProof, enforce_compute_c_from_sigmas_and_thetas, enforce_interpolate_uni_poly, sumcheck_verify};
 use crate::gadgets::utils::{alloc_num_equals, alloc_zero, conditionally_select_vec_allocated_num, le_bits_to_num, multi_and};
 use crate::nimfs::ccs::cccs::CCCS;
@@ -439,5 +440,64 @@ where
         )?;
 
         Ok((new_lcccs, check_pass))
+    }
+
+
+
+    /// Synthesizes non base case and returns the new relaxed `R1CSInstance`
+    /// And a boolean indicating if all checks pass
+    #[allow(clippy::too_many_arguments)]
+    fn synthesize_based_nifs<CS: ConstraintSystem<<G as Group>::Base>>(
+        &self,
+        mut cs: CS,
+        params: &AllocatedNum<G::Base>,
+        U: Vec<AllocatedRelaxedR1CSInstance<G>>,
+        u: &AllocatedR1CSInstance<G>,
+        T: Vec<AllocatedPoint<G>>,
+        arity: usize,
+    ) -> Result<(AllocatedRelaxedR1CSInstance<G>, AllocatedBit), SynthesisError> {
+        assert!(!U.is_empty());
+        // Check that u.x[0] = Hash(params, U)
+        let Len = U.len();
+        let mut ro = G::ROCircuit::new(
+            self.ro_consts.clone(),
+            NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * arity,
+        );
+        ro.absorb(params);
+        for x in 0..Len{
+            U[x].absorb_in_ro(cs.namespace(|| "absorb U"), &mut ro)?;
+        }
+
+        let hash_bits = ro.squeeze(cs.namespace(|| "Input hash"), NUM_HASH_BITS)?;
+        let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), &hash_bits)?;
+        let check_pass = alloc_num_equals(
+            cs.namespace(|| "check consistency of u.X[0] with H(params, U, i)"),
+            &u.X0,
+            &hash,
+        )?;
+
+        // Run NIFS Verifier
+        let mut U_temp = U[0].clone();
+        for x in 1..Len{
+            U_temp = U_temp.fold_with_relaxed_r1cs(
+                cs.namespace(|| "compute fold of U and U"),
+                params,
+                &U[x],
+                &T[x-1],
+                self.ro_consts.clone(),
+                self.params.limb_width,
+                self.params.n_limbs
+            )?;
+        }
+        let U_fold = U_temp.fold_with_r1cs(
+            cs.namespace(|| "compute fold of U and u"),
+            params,
+            u,
+            &T[Len-1],
+            self.ro_consts.clone(),
+            self.params.limb_width,
+            self.params.n_limbs,
+        )?;
+        Ok((U_fold, check_pass))
     }
 }
