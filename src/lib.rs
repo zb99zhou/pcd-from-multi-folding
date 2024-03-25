@@ -5,7 +5,6 @@
   future_incompatible,
   nonstandard_style,
   rust_2018_idioms,
-  missing_docs
 )]
 #![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]
@@ -25,6 +24,7 @@ pub mod gadgets;
 pub mod provider;
 pub mod spartan;
 pub mod traits;
+pub mod pcd_compressed_snark;
 
 use crate::bellpepper::{
   r1cs::{NovaShape, NovaWitness},
@@ -835,7 +835,7 @@ mod tests {
   use ff::PrimeField;
   use rand_core::OsRng;
   use traits::circuit::TrivialTestCircuit;
-  use crate::nimfs::ccs::cccs::{CCCS, Witness};
+  use crate::nimfs::ccs::cccs::CCCS;
   use crate::nimfs::ccs::ccs::CCS;
   use crate::nimfs::ccs::lcccs::LCCCS;
   use crate::nimfs::multifolding::{NIMFS, ProofWitness};

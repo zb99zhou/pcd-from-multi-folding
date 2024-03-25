@@ -1,8 +1,9 @@
 use std::sync::Arc;
 use ff::Field;
+use serde::{Deserialize, Serialize};
 use crate::Commitment;
 
-use crate::nimfs::ccs::cccs::Witness;
+use crate::nimfs::ccs::cccs::CCSWitness;
 use crate::nimfs::ccs::ccs::{CCSError, CCS};
 use crate::nimfs::ccs::util::{compute_all_sum_Mz_evals, compute_sum_Mz};
 
@@ -11,10 +12,11 @@ use crate::nimfs::util::mle::matrix_to_mle;
 use crate::nimfs::util::mle::vec_to_mle;
 use crate::spartan::polys::multilinear::MultiLinearPolynomial;
 use crate::traits::commitment::CommitmentEngineTrait;
-use crate::traits::Group;
+use crate::traits::{Group, ROTrait, TranscriptReprTrait};
 
 /// Linearized Committed CCS instance
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(bound = "")]
 #[allow(clippy::upper_case_acronyms)]
 pub struct LCCCS<C: Group> {
     // Underlying CCS structure
@@ -34,10 +36,10 @@ pub struct LCCCS<C: Group> {
     pub v: Vec<C::Scalar>,
 }
 
-impl<G: Group> LCCCS<G>{
-    pub fn default_for_pcd() -> Self{
+impl<G: Group> LCCCS<G> {
+    pub fn default_for_pcd() -> Self {
         let default_r1cs_ccs = CCS::<G>::default_CCS();
-        Self{
+        Self {
             C: Commitment::<G>::default(),
             u: G::Scalar::ZERO,
             x: vec![G::Scalar::ZERO],
@@ -45,6 +47,19 @@ impl<G: Group> LCCCS<G>{
             v: vec![G::Scalar::ZERO; default_r1cs_ccs.t],
             ccs: default_r1cs_ccs,
         }
+    }
+}
+
+impl<C: Group> TranscriptReprTrait<C> for LCCCS<C> {
+    fn to_transcript_bytes(&self) -> Vec<u8> {
+        [
+            self.C.to_transcript_bytes(),
+            self.u.to_transcript_bytes(),
+            self.x.as_slice().to_transcript_bytes(),
+            self.r_x.as_slice().to_transcript_bytes(),
+            self.v.as_slice().to_transcript_bytes(),
+        ]
+            .concat()
     }
 }
 
@@ -72,7 +87,7 @@ impl<C: Group> LCCCS<C> {
     pub fn check_relation(
         &self,
         ck: &<<C as Group>::CE as CommitmentEngineTrait<C>>::CommitmentKey,
-        w: &Witness<C>,
+        w: &CCSWitness<C>,
     ) -> Result<(), CCSError> {
         // check that C is the commitment of w. Notice that this is not verifying a Pedersen
         // opening, but checking that the Commmitment comes from committing to the witness.
@@ -83,6 +98,30 @@ impl<C: Group> LCCCS<C> {
         let computed_v = compute_all_sum_Mz_evals(&self.ccs.M, &z, &self.r_x, self.ccs.s_prime);
         assert_eq!(computed_v, self.v);
         Ok(())
+    }
+}
+
+impl<G1> LCCCS<G1>
+where
+    G1: Group,
+{
+    pub fn absorb_in_ro<G2: Group<Base = <G1 as Group>::Scalar>>(
+        &self,
+        ro: &mut G2::RO,
+    ) {
+        // self.C.absorb_in_ro(ro);
+        ro.absorb(self.u);
+
+        for x in &self.x {
+            ro.absorb(*x);
+        }
+        for v in self.v.iter() {
+            ro.absorb(*v);
+        }
+
+        for r in self.r_x.iter() {
+            ro.absorb(*r);
+        }
     }
 }
 

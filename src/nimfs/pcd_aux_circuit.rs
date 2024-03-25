@@ -57,7 +57,7 @@ impl<G: Group> NovaAuxiliarySecondCircuit<G> {
             inputs,
         }
     }
-    
+
     /// Allocate all witnesses and return
     fn alloc_witness<CS: ConstraintSystem<<G as Group>::Base>>(
         &self,
