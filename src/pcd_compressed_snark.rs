@@ -1,16 +1,21 @@
 use std::marker::PhantomData;
+
 use serde::{Deserialize, Serialize};
-use crate::errors::NovaError;
-use crate::r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness};
-use crate::traits::circuit::StepCircuit;
-use crate::traits::{Group, ROConstants, ROConstantsCircuit, TranscriptEngineTrait};
-use crate::traits::snark::{RelaxedR1CSSNARKTrait, LinearCommittedCCSTrait};
-use crate::nimfs::ccs::cccs::{CCSWitness, CCCS};
-use crate::nimfs::ccs::lcccs::LCCCS;
+
 use crate::circuit::NovaAugmentedCircuitParams;
 use crate::CommitmentKey;
+use crate::constants::{NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS};
+use crate::errors::NovaError;
+use crate::gadgets::utils::scalar_as_base;
+use crate::nimfs::ccs::cccs::{CCCS, CCSWitness};
 use crate::nimfs::ccs::ccs::CCS;
-use crate::nimfs::multifolding::{MultiFolding, Proof};
+use crate::nimfs::ccs::lcccs::LCCCS;
+use crate::nimfs::multifolding::{MultiFolding, NIMFS, Proof};
+use crate::r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness};
+use crate::traits::{Group, ROConstants, ROConstantsCircuit, ROTrait, TranscriptEngineTrait};
+use crate::traits::circuit::StepCircuit;
+use crate::traits::snark::{LinearCommittedCCSTrait, RelaxedR1CSSNARKTrait};
+
 pub struct PCDPublicParams<G1, G2, C1, C2>
     where
         G1: Group<Base = <G2 as Group>::Scalar>,
@@ -49,7 +54,6 @@ pub struct PCDRecursiveSNARK<G1, G2, C1, C2>
     r_U_secondary: RelaxedR1CSInstance<G2>,
     i: usize,
     zi_primary: Vec<G1::Scalar>,
-    zi_secondary: Vec<G2::Scalar>,
     _p_c1: PhantomData<C1>,
     _p_c2: PhantomData<C2>,
 }
@@ -115,7 +119,6 @@ pub struct PCDCompressedSNARK<G1, G2, C1, C2, S1, S2>
     r_W_snark_secondary: S2,
 
     zn_primary: Vec<G1::Scalar>,
-    zn_secondary: Vec<G2::Scalar>,
 
     _p_c1: PhantomData<C1>,
     _p_c2: PhantomData<C2>,
@@ -165,6 +168,8 @@ impl<G1, G2, C1, C2, S1, S2> PCDCompressedSNARK<G1, G2, C1, C2, S1, S2>
         Ok((pk, vk))
     }
 
+    const TRANSCRIPT_INIT_STR:&'static [u8; 4] = b"init";
+
     /// Create a new `CompressedSNARK`
     pub fn prove(
         pp: &PCDPublicParams<G1, G2, C1, C2>,
@@ -172,8 +177,9 @@ impl<G1, G2, C1, C2, S1, S2> PCDCompressedSNARK<G1, G2, C1, C2, S1, S2>
         recursive_snark: &PCDRecursiveSNARK<G1, G2, C1, C2>,
     ) -> Result<Self, NovaError> {
         // Prover's transcript
-        let mut transcript_p = <G1>::TE::new(Default::default(), b"multifolding");
-        transcript_p.squeeze(b"init").unwrap();
+        let mut transcript_p = G1::TE::new(Default::default(), b"multifolding");
+        transcript_p.squeeze(Self::TRANSCRIPT_INIT_STR).unwrap();
+
         // fold the primary circuit's instance
         let res_primary = MultiFolding::prove(
             &mut transcript_p,
@@ -212,7 +218,6 @@ impl<G1, G2, C1, C2, S1, S2> PCDCompressedSNARK<G1, G2, C1, C2, S1, S2>
             r_W_snark_secondary: r_W_snark_secondary?,
 
             zn_primary: recursive_snark.zi_primary.clone(),
-            zn_secondary: recursive_snark.zi_secondary.clone(),
 
             _p_c1: Default::default(),
             _p_c2: Default::default(),
@@ -220,6 +225,72 @@ impl<G1, G2, C1, C2, S1, S2> PCDCompressedSNARK<G1, G2, C1, C2, S1, S2>
 
     }
 
+    /// Verify the correctness of the `CompressedSNARK`
+    pub fn verify(
+        &self,
+        vk: &PCDVerifierKey<G1, G2, C1, C2, S1, S2>,
+        z0_primary: Vec<G1::Scalar>,
+    ) -> Result<Vec<G1::Scalar>, NovaError> {
+        // check if the instances have two public outputs
+        if self.r_u_primary.x.len() != 1
+            || self.r_U_primary.x.len() != 1
+            || self.r_U_secondary.X.len() != 1
+        {
+            return Err(NovaError::ProofVerifyError);
+        }
 
+        // check if the output hashes in R1CS instances point to the right running instances
+        let hash_primary = {
+            let mut hasher = <G2 as Group>::RO::new(
+                vk.ro_consts_secondary.clone(),
+                NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * vk.F_arity_primary,
+            );
+            hasher.absorb(vk.digest);
+            for e in z0_primary {
+                hasher.absorb(e);
+            }
+            for e in &self.zn_primary {
+                hasher.absorb(*e);
+            }
+            self.r_U_primary.absorb_in_ro::<G2>(&mut hasher);
+
+            hasher.squeeze(NUM_HASH_BITS)
+        };
+
+        if scalar_as_base::<G2>(hash_primary) != self.r_u_primary.x[0] {
+            return Err(NovaError::ProofVerifyError);
+        }
+
+        // Prover's transcript
+        let mut transcript_p = G1::TE::new(Default::default(), b"multifolding");
+        transcript_p.squeeze(Self::TRANSCRIPT_INIT_STR).unwrap();
+
+        // fold the running instance and last instance to get a folded instance
+        let f_U_primary = NIMFS::verify(
+            &mut transcript_p,
+            &[self.r_U_primary.clone()],
+            &[self.r_u_primary.clone()],
+            self.nimfs_proof.clone(),
+        );
+
+        // check the satisfiability of the folded instances using SNARKs proving the knowledge of their satisfying witnesses
+        let (res_primary, res_secondary) = rayon::join(
+            || {
+                self
+                    .f_W_snark_primary
+                    .verify(&vk.vk_primary, &f_U_primary)
+            },
+            || {
+                self
+                    .r_W_snark_secondary
+                    .verify(&vk.vk_secondary, &self.r_U_secondary)
+            },
+        );
+
+        res_primary?;
+        res_secondary?;
+
+        Ok(self.zn_primary.clone())
+    }
 
 }
