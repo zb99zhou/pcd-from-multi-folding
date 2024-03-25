@@ -222,10 +222,10 @@ impl<'a, G: Group, G1: Group, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a
                 )
             })
             .collect::<Result<Vec<AllocatedPoint<G>>, _>>()?;
-        // 
-        // for (i,t) in T.iter().enumerate(){
-        //     t.check_on_curve(cs.namespace(|| format!("check T_{i} on curve")))?;
-        // }
+        
+        for (i,t) in T.iter().enumerate(){
+            t.check_on_curve(cs.namespace(|| format!("check T_{i} on curve")))?;
+        }
 
         Ok((nimfs_proof, z_0, z_i, lcccs, cccs, T))
     }
