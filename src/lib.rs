@@ -833,7 +833,15 @@ mod tests {
   use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use core::marker::PhantomData;
   use ff::PrimeField;
+  use rand_core::OsRng;
   use traits::circuit::TrivialTestCircuit;
+  use crate::nimfs::ccs::cccs::{CCCS, Witness};
+  use crate::nimfs::ccs::ccs::CCS;
+  use crate::nimfs::ccs::lcccs::LCCCS;
+  use crate::nimfs::multifolding::{NIMFS, ProofWitness};
+  use crate::nimfs::pcd_aux_circuit::{NovaAuxiliaryInputs, NovaAuxiliarySecondCircuit};
+  use crate::nimfs::pcd_circuit::{PCDUnitInputs, PCDUnitParams, PCDUnitPrimaryCircuit};
+  use crate::traits::{TEConstantsCircuit, TranscriptEngineTrait};
 
   #[derive(Clone, Debug, Default)]
   struct CubicCircuit<F: PrimeField> {
@@ -1505,5 +1513,127 @@ mod tests {
     test_ivc_base_with::<G1, G2>();
     test_ivc_base_with::<bn256::Point, grumpkin::Point>();
     test_ivc_base_with::<secp256k1::Point, secq256k1::Point>();
+  }
+
+  fn test_pcd_with<G1, G2>() -> Result<(), NovaError>
+  where
+      G1: Group<Base = <G2 as Group>::Scalar>,
+      G2: Group<Base = <G1 as Group>::Scalar>,
+  {
+    let node_1_lcccs: [LCCCS<G1>;2] = [LCCCS::default_for_pcd(),LCCCS::default_for_pcd()];
+    let node_1_cccs: [CCCS<G1>;2] = [CCCS::default_for_pcd(),CCCS::default_for_pcd()];
+    let node_1_relaxed_r1cs_instance: [RelaxedR1CSInstance<G1>;2] = [RelaxedR1CSInstance::default_for_pcd(), RelaxedR1CSInstance::default_for_pcd()];
+    
+    let mut transcript_p = <G1 as Group>::TE::new(Default::default(), b"multifolding");
+    transcript_p.squeeze(b"init").unwrap();
+    let (node_1_folded_proof, node_1_folded_lcccs, _) = NIMFS::prove(
+      &mut transcript_p,
+      &node_1_lcccs,
+      &node_1_cccs,
+      &[],
+      &[],
+    );
+
+    let node_1_default_ccs_aux = CCS::<G2>::default_CCS();
+    let r: usize = 2;
+    let io_num: usize = 1;
+    let pp_aux = PCDUnitParams::<G2>::new(
+      BN_LIMB_WIDTH,
+      BN_N_LIMBS,
+      r,
+      r,
+      io_num,
+      node_1_default_ccs_aux,
+    );
+    let rng = OsRng;
+    let rho = <G2>::Scalar::random(rng);
+
+    let node_1_aux_circuit_input = NovaAuxiliaryInputs::<G1>::new(
+      scalar_as_base::<G2>(pp_aux.digest()),
+      Some(node_1_lcccs.to_vec()),
+      Some(node_1_cccs.to_vec()),
+      Some(rho),
+      r,
+    );
+
+    let ro_consts_circuit_primary: ROConstantsCircuit<G1> = Default::default();
+    let ro_consts_circuit_secondary: ROConstantsCircuit<G2> = Default::default();
+    let te_consts_circuit_primary: TEConstantsCircuit<G1> = Default::default();
+    let te_consts_circuit_secondary: TEConstantsCircuit<G2> = Default::default();
+
+    let node_1_aux_circuit = NovaAuxiliarySecondCircuit::<G2>::new(
+      ro_consts_circuit_secondary,
+      te_consts_circuit_secondary,
+      node_1_aux_circuit_input,
+    );
+
+    let mut node_1_cs_secondary = SatisfyingAssignment::<G2>::new();
+    let zi_secondary = node_1_aux_circuit.synthesize(&mut node_1_cs_secondary)?;
+    let mut node_1_cs_aux_helper: ShapeCS<G2> = ShapeCS::new();
+    let _ = node_1_aux_circuit.clone().synthesize(&mut node_1_cs_aux_helper);
+    let (node_1_aux_r1cs_shape, node_1_aux_commit_key) = node_1_cs_aux_helper.r1cs_shape();
+    let (node_1_aux_r1cs_instance, node_1_aux_r1cs_witness) = node_1_cs_secondary.r1cs_instance_and_witness(&node_1_aux_r1cs_shape, &node_1_aux_commit_key)?;
+
+    let node_1_relaxed_r1cs_witness = vec![RelaxedR1CSWitness::default(&node_1_aux_r1cs_shape); node_1_relaxed_r1cs_instance.len()];
+    let (node_1_folded_nifs,(node_1_folded_relaxed_r1cs_instance,node_1_folded_relaxed_r1cs_witness) ) = 
+        NIFS::prove_with_multi_relaxed(
+      &node_1_aux_commit_key,
+      &ro_consts_circuit_secondary,
+      &scalar_as_base::<G1>(pp_aux.digest()),
+      &node_1_aux_r1cs_shape,
+      &node_1_relaxed_r1cs_instance,
+      &node_1_relaxed_r1cs_witness,
+      &node_1_aux_r1cs_instance,
+      &node_1_aux_r1cs_witness,
+    )?;
+
+    let node_1_default_ccs_pcd = CCS::<G1>::default_CCS();
+    let pp_pcd = PCDUnitParams::<G1>::new(
+      BN_LIMB_WIDTH,
+      BN_N_LIMBS,
+      r,
+      r,
+      io_num,
+      node_1_default_ccs_pcd,
+    );
+    let z0_primary = &[<G1 as Group>::Scalar::ZERO];
+    let node_1_pcd_circuit_input = PCDUnitInputs::<G1>::new(
+      scalar_as_base::<G2>(pp_pcd.digest()),
+      z0_primary.to_vec(),
+      Some(vec![<G1 as Group>::Scalar::default()]),
+      Some(node_1_lcccs.to_vec()),
+      Some(node_1_cccs.to_vec()),
+      r,
+      Some(node_1_folded_nifs),
+    );
+
+    let node_1_test_circuit = TrivialTestCircuit::<<G1 as Group>::Scalar>::default();
+    let node_1_pcd_circuit = PCDUnitPrimaryCircuit::<
+      '_,
+      G1,
+      G2,
+      TrivialTestCircuit<<G1 as Group>::Base>,
+    >::new(
+      &pp_pcd,
+      Some(node_1_pcd_circuit_input),
+      &node_1_test_circuit,
+      ProofWitness::<G1>::from(node_1_folded_proof),
+      ro_consts_circuit_primary,
+      te_consts_circuit_primary,
+    );
+
+    let mut node_1_cs_primary = SatisfyingAssignment::<G1>::new();
+    let mut node_1_cs_helper: ShapeCS<G1> = ShapeCS::new();
+    let _ = node_1_pcd_circuit.clone().synthesize(&mut node_1_cs_helper);
+    let (node_1_r1cs_shape_pcd, node_1_ck_pcd) = node_1_cs_helper.r1cs_shape();
+    let (node_1_folded_cccs, node_1_folded_witness) = node_1_cs_primary.cccs_and_witness(&node_1_r1cs_shape_pcd, &node_1_ck_pcd)?;
+    Ok(())
+  }
+
+  #[test]
+  fn test_pcd(){
+    type G1 = pasta_curves::pallas::Point;
+    type G2 = pasta_curves::vesta::Point;
+    test_pcd_with::<G1, G2>();
   }
 }

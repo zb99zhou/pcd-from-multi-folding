@@ -78,6 +78,18 @@ impl<G: Group> R1CS<G> {
   }
 }
 
+impl<G: Group> RelaxedR1CSInstance<G> {
+  pub fn default_for_pcd() -> Self {
+    Self{
+      comm_W: Commitment::<G>::default(),
+      comm_E: Commitment::<G>::default(),
+      X: vec![G::Scalar::ZERO],
+      u: G::Scalar::ZERO,
+    }
+  }
+}
+
+
 impl<G: Group> R1CSShape<G> {
   /// Create an object of type `R1CSShape` from the explicitly specified R1CS matrices
   pub fn new(
@@ -306,6 +318,56 @@ impl<G: Group> R1CSShape<G> {
     Ok((T, comm_T))
   }
 
+
+  pub fn commit_T_from_multi_U(
+    &self,
+    ck: &CommitmentKey<G>,
+    U1: &RelaxedR1CSInstance<G>,
+    W1: &RelaxedR1CSWitness<G>,
+    U2: &RelaxedR1CSInstance<G>,
+    W2: &RelaxedR1CSWitness<G>,
+  ) -> Result<(Vec<G::Scalar>, Commitment<G>), NovaError> {
+    let (AZ_1, BZ_1, CZ_1) = {
+      let Z1 = [W1.W.clone(), vec![U1.u], U1.X.clone()].concat();
+      self.multiply_vec(&Z1)?
+    };
+
+    let (AZ_2, BZ_2, CZ_2) = {
+      let Z2 = [W2.W.clone(), vec![U2.u], U2.X.clone()].concat();
+      self.multiply_vec(&Z2)?
+    };
+
+    let AZ_1_circ_BZ_2 = (0..AZ_1.len())
+        .into_par_iter()
+        .map(|i| AZ_1[i] * BZ_2[i])
+        .collect::<Vec<G::Scalar>>();
+    let AZ_2_circ_BZ_1 = (0..AZ_2.len())
+        .into_par_iter()
+        .map(|i| AZ_2[i] * BZ_1[i])
+        .collect::<Vec<G::Scalar>>();
+    let u_1_cdot_CZ_2 = (0..CZ_2.len())
+        .into_par_iter()
+        .map(|i| U1.u * CZ_2[i])
+        .collect::<Vec<G::Scalar>>();
+    let u_2_cdot_CZ_1 = (0..CZ_1.len())
+        .into_par_iter()
+        .map(|i| U2.u * CZ_1[i])
+        .collect::<Vec<G::Scalar>>();
+
+    let T = AZ_1_circ_BZ_2
+        .par_iter()
+        .zip(&AZ_2_circ_BZ_1)
+        .zip(&u_1_cdot_CZ_2)
+        .zip(&u_2_cdot_CZ_1)
+        .map(|(((a, b), c), d)| *a + *b - *c - *d)
+        .collect::<Vec<G::Scalar>>();
+
+    let comm_T = CE::<G>::commit(ck, &T);
+
+    Ok((T, comm_T))
+  }
+  
+  
   /// Pads the `R1CSShape` so that the number of variables is a power of two
   /// Renumbers variables to accomodate padded variables
   pub fn pad(&self) -> Self {
@@ -420,6 +482,13 @@ impl<G: Group> RelaxedR1CSWitness<G> {
     }
   }
 
+  pub fn default_for_ccs(ccs: &CCS<G>) -> Self{
+    Self{
+      W: vec![G::Scalar::ZERO; ccs.n],
+      E: vec![G::Scalar::ZERO; ccs.m],
+    }
+  }
+
   /// Initializes a new `RelaxedR1CSWitness` from an `R1CSWitness`
   pub fn from_r1cs_witness(S: &R1CSShape<G>, witness: &R1CSWitness<G>) -> RelaxedR1CSWitness<G> {
     RelaxedR1CSWitness {
@@ -457,6 +526,32 @@ impl<G: Group> RelaxedR1CSWitness<G> {
       .zip(T)
       .map(|(a, b)| *a + *r * *b)
       .collect::<Vec<G::Scalar>>();
+    Ok(RelaxedR1CSWitness { W, E })
+  }
+  
+  /// Folds a coming `RelaxedR1CSWitness` into RelaxedR1CSWitness
+  pub fn fold_with_relaxed_r1cs(
+    &self,
+    W2: &RelaxedR1CSWitness<G>,
+    T: &Vec<G::Scalar>,
+    r: &G::Scalar,
+  ) -> Result<RelaxedR1CSWitness<G>, NovaError> {
+    let (W1, E1) = (&self.W, &self.E);
+    let (W2, E2) = (&W2.W, &W2.E);
+    
+    let W = W1
+        .par_iter()
+        .zip(W2)
+        .map(|(a, b)| *a + *r * *b)
+        .collect::<Vec<G::Scalar>>();
+    let E = E1
+        .par_iter()
+        .zip(E2)
+        .zip(T)
+        .map(|((a, b),c)| *a + *r * *c + *r * *r * *b)
+        .collect::<Vec<G::Scalar>>();
+     
+    
     Ok(RelaxedR1CSWitness { W, E })
   }
 
@@ -536,6 +631,37 @@ impl<G: Group> RelaxedR1CSInstance<G> {
     let comm_W = *comm_W_1 + *comm_W_2 * *r;
     let comm_E = *comm_E_1 + *comm_T * *r;
     let u = *u1 + *r;
+
+    Ok(RelaxedR1CSInstance {
+      comm_W,
+      comm_E,
+      X,
+      u,
+    })
+  }
+
+  /// Folds a coming `RelaxedR1CSInstance` into RelaxedR1CSInstance
+  pub fn fold_with_relaxed_r1cs(
+    &self,
+    U2: &RelaxedR1CSInstance<G>,
+    comm_T: &Commitment<G>,
+    r: &G::Scalar
+  ) -> Result<RelaxedR1CSInstance<G>, NovaError>{
+    let (X1, u1, comm_W_1, comm_E_1) =
+        (&self.X, &self.u, &self.comm_W.clone(), &self.comm_E.clone());
+    let (X2, u2, comm_W_2, comm_E_2) =
+        (&U2.X, &U2.u, &U2.comm_W.clone(), &U2.comm_E.clone());
+    
+    let X = X1
+        .par_iter()
+        .zip(X2)
+        .map(|(a, b)| *a + *r * *b)
+        .collect::<Vec<G::Scalar>>();
+    
+    let comm_W = *comm_W_1 + *comm_W_2 * *r;
+    let comm_E = *comm_E_1 + *comm_E_2 * *r * *r + *comm_T * *r;
+    let u = *u1 + *u2 * *r; 
+    
 
     Ok(RelaxedR1CSInstance {
       comm_W,

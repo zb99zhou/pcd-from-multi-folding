@@ -1,8 +1,12 @@
+use std::io;
+use once_cell::sync::OnceCell;
 use bellpepper::gadgets::Assignment;
 use bellpepper_core::{ConstraintSystem, SynthesisError};
 use bellpepper_core::boolean::{AllocatedBit, Boolean};
 use bellpepper_core::num::{AllocatedNum, Num};
+use digest::Digest;
 use ff::Field;
+use sha3::Sha3_256;
 use crate::constants::{NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS};
 use crate::gadgets::cccs::{AllocatedCCCSPrimaryPart, AllocatedLCCCSPrimaryPart, multi_folding_with_primary_part};
 use crate::gadgets::ext_allocated_num::ExtendFunc;
@@ -15,6 +19,9 @@ use crate::nimfs::espresso::virtual_polynomial::VPAuxInfo;
 use crate::nimfs::multifolding::NIMFSProof;
 use crate::traits::{Group, ROCircuitTrait, ROConstantsCircuit, TEConstantsCircuit, TranscriptCircuitEngineTrait};
 use crate::traits::circuit::StepCircuit;
+use crate::{Commitment, compute_digest};
+use crate::gadgets::ecc::AllocatedPoint;
+use crate::traits::commitment::CommitmentTrait;
 
 pub struct PCDUnitParams<G: Group>{
     pub(crate) mu: usize,
@@ -23,14 +30,13 @@ pub struct PCDUnitParams<G: Group>{
     pub(crate) io_num: usize,
     pub(crate) limb_width: usize,
     pub(crate) n_limbs: usize,
-    pub(crate) is_primary_circuit: bool, // A boolean indicating if this is the primary circuit
+    pub(crate) digest: OnceCell<G>,
 }
 
 impl<G: Group> PCDUnitParams<G> {
     pub const fn new(
         limb_width: usize,
         n_limbs: usize,
-        is_primary_circuit: bool,
         mu: usize,
         nu: usize,
         io_num: usize,
@@ -43,13 +49,28 @@ impl<G: Group> PCDUnitParams<G> {
             io_num,
             limb_width,
             n_limbs,
-            is_primary_circuit,
+            digest: OnceCell::new(),
         }
+    }
+    
+    fn for_digest() -> Result<G, io::Error>{
+        let mut hasher = Sha3_256::new();
+        let bytes: [u8; 32] = hasher.finalize().into();
+        Ok(compute_digest::<G, [u8; 32]>(&bytes))
+    }
+    
+    pub fn digest(&self) -> G::Scalar{
+        self
+            .digest
+            .get_or_try_init(Self::for_digest)
+            .cloned()
+            .expect("Failure in retrieving digest")
     }
 }
 
 // #[derive(Debug, Serialize, Deserialize)]
 // #[serde(bound = "")]
+#[derive(Clone)]
 pub struct PCDUnitInputs<G: Group> {
     params: G::Base, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
     // i: G::Base,
@@ -57,8 +78,8 @@ pub struct PCDUnitInputs<G: Group> {
     zi: Option<Vec<G::Base>>,
     lcccs: Option<Vec<LCCCS<G>>>,
     cccs: Option<Vec<CCCS<G>>>,
-    r: usize
-    // T: Option<Commitment<G>>,
+    r: usize,
+    T: Option<Vec<Commitment<G>>>,
 }
 
 impl<G: Group> PCDUnitInputs<G> {
@@ -70,7 +91,8 @@ impl<G: Group> PCDUnitInputs<G> {
         zi: Option<Vec<G::Base>>,
         lcccs: Option<Vec<LCCCS<G>>>,
         cccs: Option<Vec<CCCS<G>>>,
-        r: usize
+        r: usize,
+        T: Option<Vec<Commitment<G>>>,
     ) -> Self {
         Self {
             params,
@@ -79,10 +101,12 @@ impl<G: Group> PCDUnitInputs<G> {
             lcccs,
             cccs,
             r,
+            T,
         }
     }
 }
 
+#[derive(Clone)]
 pub struct PCDUnitPrimaryCircuit<'a, G: Group, G1: Group, SC: StepCircuit<G::Base>> {
     params: &'a PCDUnitParams<G1>,
     ro_consts: ROConstantsCircuit<G>, // random oracle
@@ -124,6 +148,7 @@ impl<'a, G: Group, G1: Group, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a
             Vec<AllocatedNum<G::Base>>,
             Vec<AllocatedLCCCSPrimaryPart<G>>,
             Vec<AllocatedCCCSPrimaryPart<G>>,
+            Vec<AllocatedPoint<G>>,
         ),
         SynthesisError,
     > {
@@ -156,27 +181,53 @@ impl<'a, G: Group, G1: Group, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a
             .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
         // Allocate the running instance
-        let lcccs: AllocatedLCCCSPrimaryPart<G> = AllocatedLCCCSPrimaryPart::alloc(
-            cs.namespace(|| "Allocate lcccs"),
-            self.inputs.get().as_ref().map_or(None, |inputs| {
-                inputs.lcccs.get().as_ref().map_or(None, |U| Some(&U[0])) // TODO: deal multi lcccs
-            }),
-            self.params.io_num,
-            self.params.limb_width,
-            self.params.n_limbs,
-        )?;
+
+        let lcccs = (0..self.params.mu)
+            .map(|i| {
+                AllocatedLCCCSPrimaryPart::alloc(
+                    cs.namespace(|| format!("allocate instance lcccs_{i} to fold")),
+                    self
+                        .inputs
+                        .as_ref()
+                        .and_then(|inputs| inputs.lcccs.as_ref().map(|U|&U[i])),
+                    self.params.io_num,
+                    self.params.limb_width,
+                    self.params.n_limbs,
+                )
+            })
+            .collect::<Result<Vec<AllocatedLCCCSPrimaryPart<G>>, _>>()?;
 
         // Allocate the instance to be folded in
-        let cccs = AllocatedCCCSPrimaryPart::alloc(
-            cs.namespace(|| "allocate instance cccs to fold"),
-            self.inputs.get().as_ref().map_or(None, |inputs| {
-                inputs.cccs.get().as_ref().map_or(None, |u| Some(&u[0])) // TODO: deal multi lcccs
-            }),
-            self.params.io_num,
-        )?;
+        let cccs = (0..self.params.mu)
+            .map(|i| {
+                AllocatedCCCSPrimaryPart::alloc(
+                    cs.namespace(|| format!("allocate instance cccs_{i} to fold")),
+                    self
+                        .inputs
+                        .as_ref()
+                        .and_then(|inputs| inputs.cccs.as_ref().map(|u|&u[i])),
+                    self.params.io_num,
+                )
+            })
+            .collect::<Result<Vec<AllocatedCCCSPrimaryPart<G>>, _>>()?;
+        
+        let T = (0..self.params.mu)
+            .map(|i| {
+                AllocatedPoint::alloc(
+                    cs.namespace(|| format!("Allocate T_{i}")),
+                    self
+                        .inputs
+                        .as_ref()
+                        .and_then(|inputs| inputs.T.as_ref().map(|T| T[i].clone().to_coordinates())),
+                )
+            })
+            .collect::<Result<Vec<AllocatedPoint<G>>, _>>()?;
+        // 
+        // for (i,t) in T.iter().enumerate(){
+        //     t.check_on_curve(cs.namespace(|| format!("check T_{i} on curve")))?;
+        // }
 
-
-        Ok((nimfs_proof, z_0, z_i, vec![lcccs], vec![cccs]))
+        Ok((nimfs_proof, z_0, z_i, lcccs, cccs, T))
     }
 
     /// Synthesizes base case and returns the new relaxed `R1CSInstance`

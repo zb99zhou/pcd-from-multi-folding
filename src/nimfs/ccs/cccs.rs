@@ -16,7 +16,7 @@ use crate::traits::commitment::CommitmentEngineTrait;
 use crate::traits::Group;
 
 /// Witness for the LCCCS & CCCS, containing the w vector, and the r_w used as randomness in the Pedersen commitment.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Witness<C: Group> {
     pub w: Vec<C::Scalar>,
     pub r_w: C::Scalar, // randomness used in the Pedersen commitment of w
@@ -55,6 +55,14 @@ impl<C: Group> CCCS<C> {
             ccs: shape.to_cccs(),
             C: comm_C,
             x: X.to_vec(),
+        }
+    }
+
+    pub fn default_for_pcd() -> Self{
+        Self{
+            C: Commitment::<C>::default(),
+            x: vec![C::Scalar::ZERO],
+            ccs: CCS::<C>::default_CCS(),
         }
     }
 

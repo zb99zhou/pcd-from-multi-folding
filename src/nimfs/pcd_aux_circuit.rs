@@ -7,25 +7,57 @@ use crate::gadgets::utils::le_bits_to_num;
 use crate::nimfs::ccs::cccs::CCCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::traits::{Group, ROCircuitTrait, ROConstantsCircuit, TEConstantsCircuit};
-
+#[derive(Clone)]
 pub struct NovaAuxiliaryInputs<G: Group> {
     params: G::Base, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
     // i: G::Base,
-    z0: Vec<G::Base>,
-    zi: Option<Vec<G::Base>>,
+    // z0: Vec<G::Base>,
+    // zi: Option<Vec<G::Base>>,
     lcccs: Option<Vec<LCCCS<G>>>,
     cccs: Option<Vec<CCCS<G>>>,
     rho: Option<G::Base>,
     r: usize
 }
 
-struct NovaAuxiliarySecondCircuit<G: Group> {
+#[derive(Clone)]
+pub struct NovaAuxiliarySecondCircuit<G: Group> {
     ro_consts: ROConstantsCircuit<G>,
     te_consts: TEConstantsCircuit<G>,
     inputs: NovaAuxiliaryInputs<G>,
 }
 
+impl<G: Group> NovaAuxiliaryInputs<G>{
+    pub fn new(
+        params: G::Base,
+        lcccs: Option<Vec<LCCCS<G>>>,
+        cccs: Option<Vec<CCCS<G>>>,
+        rho: Option<G::Base>,
+        r: usize
+    ) -> Self{
+        Self{
+            params,
+            lcccs,
+            cccs,
+            rho,
+            r,
+        }
+    }
+}
+
+
 impl<G: Group> NovaAuxiliarySecondCircuit<G> {
+    pub fn new(
+        ro_consts: ROConstantsCircuit<G>,
+        te_consts: TEConstantsCircuit<G>,
+        inputs: NovaAuxiliaryInputs<G>,
+    ) -> Self{
+        Self{
+            ro_consts,
+            te_consts,
+            inputs,
+        }
+    }
+    
     /// Allocate all witnesses and return
     fn alloc_witness<CS: ConstraintSystem<<G as Group>::Base>>(
         &self,

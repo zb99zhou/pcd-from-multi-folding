@@ -22,7 +22,7 @@ pub enum CCSError {
 }
 
 /// A CCS structure
-#[derive(Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq, Default)]
 #[allow(clippy::upper_case_acronyms)]
 pub struct CCS<G: Group> {
     // m: number of columns in M_i (such that M_i \in F^{m, n})
@@ -69,6 +69,23 @@ fn matrix_type_convert<F: PrimeField>(target_matrix: &mut [Vec<F>], absorbed_mat
 }
 
 impl<G: Group> CCS<G> {
+    /// Create default CCS for R1CS
+    pub fn default_CCS() -> CCS<G>{
+        CCS{
+            m: 0,
+            n: 0,
+            l: 0,
+            s: 0,
+            s_prime: 0,
+            t: 3,
+            q: 2,
+            d: 2,
+
+            S: vec![vec![0, 1], vec![2]],
+            c: vec![G::Scalar::ONE, G::Scalar::ONE.neg()],
+            M: vec![],
+        }
+    }
     /// Converts the R1CS structure to the CCS structure
     fn from_plonk_gate(
         _q_l: Vec<G::Scalar>,

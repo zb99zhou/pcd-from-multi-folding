@@ -21,7 +21,7 @@ pub type NIMFS<C> = MultiFolding<C>;
 pub type NIMFSProof<C> = ProofWitness<C>;
 
 /// Proof defines a multi-folding proof
-#[derive(Debug)]
+#[derive(Debug, Default, Clone)]
 pub struct ProofWitness<C: Group> {
     pub point: Vec<C::Base>,
     pub proofs: Vec<Vec<C::Base>>,

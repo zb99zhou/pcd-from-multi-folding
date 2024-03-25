@@ -74,6 +74,57 @@ impl<G: Group> NIFS<G> {
       (U, W),
     ))
   }
+  
+  pub fn prove_with_multi_relaxed(
+    ck: &CommitmentKey<G>,
+    ro_consts: &ROConstants<G>,
+    pp_digest: &G::Scalar,
+    S: &R1CSShape<G>,
+    U1: &[RelaxedR1CSInstance<G>],
+    W1: &[RelaxedR1CSWitness<G>],
+    U2: &R1CSInstance<G>,
+    W2: &R1CSWitness<G>,
+  ) -> Result<(Vec<NIFS<G>>, (RelaxedR1CSInstance<G>, RelaxedR1CSWitness<G>)), NovaError> {
+    // initialize a new RO
+    let mut ro = G::RO::new(ro_consts.clone(), NUM_FE_FOR_RO);
+
+    // append the digest of pp to the transcript
+    ro.absorb(scalar_as_base::<G>(*pp_digest));
+
+    // append U1 and U2 to transcript
+    for U in U1.iter(){
+      U.absorb_in_ro(&mut ro);
+    }
+    U2.absorb_in_ro(&mut ro);
+
+    let mut U_in_calc = U1[0].clone();
+    let mut W_in_calc = W1[0].clone();
+    let mut NIFS_vec = Vec::new();
+    // compute a commitment to the cross-term
+    for (U_now, W_now) in U1.iter().skip(1).zip(W1){
+      let (T, comm_T) = S.commit_T_from_multi_U(ck, &U_in_calc, &W_in_calc, U_now, W_now)?;
+      NIFS_vec.push(Self{ comm_T: comm_T.compress() });
+      comm_T.absorb_in_ro(&mut ro);
+      let r = ro.squeeze(NUM_CHALLENGE_BITS);
+      U_in_calc = U_in_calc.fold_with_relaxed_r1cs(U_now, &comm_T, &r)?;
+      W_in_calc = W_in_calc.fold_with_relaxed_r1cs(W_now, &T, &r)?;
+    }
+    
+    let (T, comm_T) = S.commit_T(ck, &U_in_calc, &W_in_calc, U2, W2)?;
+    NIFS_vec.push(Self{ comm_T: comm_T.compress() });
+    comm_T.absorb_in_ro(&mut ro);
+    let r = ro.squeeze(NUM_CHALLENGE_BITS);
+    U_in_calc = U_in_calc.fold(U2, &comm_T, &r)?;
+    W_in_calc = W_in_calc.fold(W2, &T, &r)?;
+    let U = U_in_calc.clone();
+    let W = W_in_calc.clone();
+    
+    // return the folded instance and witness
+    Ok((
+      NIFS_vec,
+      (U, W),
+    ))
+  }
 
   /// Takes as input a relaxed R1CS instance `U1` and R1CS instance `U2`
   /// with the same shape and defined with respect to the same parameters,

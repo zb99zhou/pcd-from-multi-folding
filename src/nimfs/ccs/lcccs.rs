@@ -34,6 +34,20 @@ pub struct LCCCS<C: Group> {
     pub v: Vec<C::Scalar>,
 }
 
+impl<G: Group> LCCCS<G>{
+    pub fn default_for_pcd() -> Self{
+        let default_r1cs_ccs = CCS::<G>::default_CCS();
+        Self{
+            C: Commitment::<G>::default(),
+            u: G::Scalar::ZERO,
+            x: vec![G::Scalar::ZERO],
+            r_x: vec![G::Scalar::ZERO; default_r1cs_ccs.s],
+            v: vec![G::Scalar::ZERO; default_r1cs_ccs.t],
+            ccs: default_r1cs_ccs,
+        }
+    }
+}
+
 impl<C: Group> LCCCS<C> {
     /// Compute all L_j(x) polynomials
     pub fn compute_Ls(&self, z: &Vec<C::Scalar>) -> Vec<VirtualPolynomial<C::Scalar>> {
