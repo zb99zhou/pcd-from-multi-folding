@@ -1,15 +1,19 @@
 use bellpepper::gadgets::Assignment;
 use bellpepper_core::{ConstraintSystem, SynthesisError};
 use bellpepper_core::num::AllocatedNum;
+use ff::Field;
+use serde::Serialize;
+use crate::compute_digest;
 use crate::constants::NUM_HASH_BITS;
 use crate::gadgets::cccs::{AllocatedCCCSSecondPart, AllocatedLCCCSSecondPart};
 use crate::gadgets::utils::le_bits_to_num;
 use crate::nimfs::ccs::cccs::CCCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
+use crate::r1cs::R1CSShape;
 use crate::traits::{Group, ROCircuitTrait, ROConstantsCircuit, TEConstantsCircuit};
 #[derive(Clone)]
 pub struct NovaAuxiliaryInputs<G: Group> {
-    params: G::Base, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
+    params: Option<G::Base>, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
     // i: G::Base,
     // z0: Vec<G::Base>,
     // zi: Option<Vec<G::Base>>,
@@ -28,7 +32,7 @@ pub struct NovaAuxiliarySecondCircuit<G: Group> {
 
 impl<G: Group> NovaAuxiliaryInputs<G>{
     pub fn new(
-        params: G::Base,
+        params: Option<G::Base>,
         lcccs: Option<Vec<LCCCS<G>>>,
         cccs: Option<Vec<CCCS<G>>>,
         rho: Option<G::Base>,
@@ -44,6 +48,29 @@ impl<G: Group> NovaAuxiliaryInputs<G>{
     }
 }
 
+#[derive(Serialize)]
+pub struct AUXUnitParams<G: Group>{
+    pub(crate) r1cs_shape: R1CSShape<G>,
+    pub(crate) io_num: usize,
+    pub(crate) digest: G::Scalar,
+}
+
+impl<G: Group> AUXUnitParams<G> {
+    pub fn new(
+        r1cs_shape: R1CSShape<G>,
+        io_num: usize,
+    ) -> Self {
+        let mut pp = Self {
+            r1cs_shape,
+            io_num,
+            digest: G::Scalar::ZERO,
+        };
+        pp.digest = compute_digest::<G, AUXUnitParams<G>>(&pp);
+
+        pp
+    }
+
+}
 
 impl<G: Group> NovaAuxiliarySecondCircuit<G> {
     pub fn new(

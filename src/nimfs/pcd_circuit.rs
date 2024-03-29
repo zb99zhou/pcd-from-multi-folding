@@ -1,11 +1,9 @@
-use std::io;
-use once_cell::sync::OnceCell;
 use bellpepper::gadgets::Assignment;
 use bellpepper_core::{ConstraintSystem, SynthesisError};
 use bellpepper_core::boolean::{AllocatedBit, Boolean};
 use bellpepper_core::num::{AllocatedNum, Num};
 use ff::Field;
-use sha3::{Digest, Sha3_256};
+use serde::Serialize;
 use crate::constants::{NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS};
 use crate::gadgets::cccs::{AllocatedCCCSPrimaryPart, AllocatedLCCCSPrimaryPart, multi_folding_with_primary_part};
 use crate::gadgets::ext_allocated_num::ExtendFunc;
@@ -23,6 +21,7 @@ use crate::{Commitment, compute_digest};
 use crate::gadgets::ecc::AllocatedPoint;
 use crate::traits::commitment::CommitmentTrait;
 
+#[derive(Serialize)]
 pub struct PCDUnitParams<G: Group>{
     pub(crate) mu: usize,
     pub(crate) nu: usize,
@@ -30,11 +29,11 @@ pub struct PCDUnitParams<G: Group>{
     pub(crate) io_num: usize,
     pub(crate) limb_width: usize,
     pub(crate) n_limbs: usize,
-    pub(crate) digest: OnceCell<G>,
+    pub(crate) digest: G::Scalar,
 }
 
 impl<G: Group> PCDUnitParams<G> {
-    pub const fn new(
+    pub fn new(
         limb_width: usize,
         n_limbs: usize,
         mu: usize,
@@ -42,30 +41,20 @@ impl<G: Group> PCDUnitParams<G> {
         io_num: usize,
         ccs: CCS<G>
     ) -> Self {
-        Self {
+        let mut pp = Self {
             mu,
             nu,
             ccs,
             io_num,
             limb_width,
             n_limbs,
-            digest: OnceCell::new(),
-        }
+            digest: G::Scalar::ZERO,
+        };
+        pp.digest = compute_digest::<G, PCDUnitParams<G>>(&pp);
+
+        pp
     }
-    
-    fn for_digest() -> Result<G, io::Error>{
-        let mut hasher = Sha3_256::new();
-        let bytes: [u8; 32] = hasher.finalize().into();
-        Ok(compute_digest::<G, [u8; 32]>(&bytes))
-    }
-    
-    pub fn digest(&self) -> G::Scalar{
-        self
-            .digest
-            .get_or_try_init(Self::for_digest)
-            .cloned()
-            .expect("Failure in retrieving digest")
-    }
+
 }
 
 // #[derive(Debug, Serialize, Deserialize)]
@@ -269,7 +258,7 @@ where
         // Allocate all witnesses
         let (
             nimfs_proof, z_0, z_i,
-            lcccs, cccs, t
+            lcccs, cccs, _t
         ) = self.alloc_witness(cs.namespace(|| "allocate the circuit witness"), arity)?;
         let Xs = cccs.iter().flat_map(|c|c.Xs.to_vec()).collect::<Vec<_>>();
 
