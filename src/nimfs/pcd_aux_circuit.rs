@@ -11,16 +11,14 @@ use crate::nimfs::ccs::cccs::CCCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::r1cs::R1CSShape;
 use crate::traits::{Group, ROCircuitTrait, ROConstantsCircuit, TEConstantsCircuit};
+
 #[derive(Clone)]
 pub struct NovaAuxiliaryInputs<G: Group> {
     params: Option<G::Base>, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
-    // i: G::Base,
-    // z0: Vec<G::Base>,
-    // zi: Option<Vec<G::Base>>,
     lcccs: Option<Vec<LCCCS<G>>>,
     cccs: Option<Vec<CCCS<G>>>,
     rho: Option<G::Base>,
-    r: usize
+    r: usize // the number of multi-folding PCD node at once
 }
 
 #[derive(Clone)]
@@ -49,13 +47,13 @@ impl<G: Group> NovaAuxiliaryInputs<G>{
 }
 
 #[derive(Serialize)]
-pub struct AUXUnitParams<G: Group>{
+pub struct NovaAuxiliaryParams<G: Group>{
     pub(crate) r1cs_shape: R1CSShape<G>,
     pub(crate) io_num: usize,
     pub(crate) digest: G::Scalar,
 }
 
-impl<G: Group> AUXUnitParams<G> {
+impl<G: Group> NovaAuxiliaryParams<G> {
     pub fn new(
         r1cs_shape: R1CSShape<G>,
         io_num: usize,
@@ -65,7 +63,7 @@ impl<G: Group> AUXUnitParams<G> {
             io_num,
             digest: G::Scalar::ZERO,
         };
-        pp.digest = compute_digest::<G, AUXUnitParams<G>>(&pp);
+        pp.digest = compute_digest::<G, NovaAuxiliaryParams<G>>(&pp);
 
         pp
     }

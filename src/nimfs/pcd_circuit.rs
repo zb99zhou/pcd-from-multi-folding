@@ -23,8 +23,7 @@ use crate::traits::commitment::CommitmentTrait;
 
 #[derive(Serialize)]
 pub struct PCDUnitParams<G: Group>{
-    pub(crate) mu: usize,
-    pub(crate) nu: usize,
+    pub(crate) r: usize, // the number of multi-folding PCD node at once
     pub(crate) ccs: CCS<G>,
     pub(crate) io_num: usize,
     pub(crate) limb_width: usize,
@@ -36,14 +35,12 @@ impl<G: Group> PCDUnitParams<G> {
     pub fn new(
         limb_width: usize,
         n_limbs: usize,
-        mu: usize,
-        nu: usize,
+        r: usize,
         io_num: usize,
         ccs: CCS<G>
     ) -> Self {
         let mut pp = Self {
-            mu,
-            nu,
+            r,
             ccs,
             io_num,
             limb_width,
@@ -57,13 +54,11 @@ impl<G: Group> PCDUnitParams<G> {
 
 }
 
-// #[derive(Debug, Serialize, Deserialize)]
-// #[serde(bound = "")]
 #[derive(Clone)]
 pub struct PCDUnitInputs<G: Group> {
     params: G::Base, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
     z0: Vec<G::Base>,
-    zi: Option<Vec<G::Base>>,
+    zi: Option<Vec<Vec<G::Base>>>,
     lcccs: Option<Vec<LCCCS<G>>>,
     cccs: Option<Vec<CCCS<G>>>,
     r: usize,
@@ -76,7 +71,7 @@ impl<G: Group> PCDUnitInputs<G> {
     pub fn new(
         params: G::Base,
         z0: Vec<G::Base>,
-        zi: Option<Vec<G::Base>>,
+        zi: Option<Vec<Vec<G::Base>>>,
         lcccs: Option<Vec<LCCCS<G>>>,
         cccs: Option<Vec<CCCS<G>>>,
         r: usize,
@@ -133,7 +128,7 @@ impl<'a, G: Group, G1: Group, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a
         (
             AllocatedProof<G>,
             Vec<AllocatedNum<G::Base>>,
-            Vec<AllocatedNum<G::Base>>,
+            Vec<Vec<AllocatedNum<G::Base>>>,
             Vec<AllocatedLCCCSPrimaryPart<G>>,
             Vec<AllocatedCCCSPrimaryPart<G>>,
             Vec<AllocatedPoint<G>>,
@@ -156,18 +151,22 @@ impl<'a, G: Group, G1: Group, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a
             .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
         // Allocate zi. If inputs.zi is not provided (base case) allocate default value 0
-        let zero = vec![G::Base::ZERO; arity];
-        let z_i = (0..arity)
-            .map(|i| {
-                AllocatedNum::alloc(cs.namespace(|| format!("zi_{i}")), || {
-                    Ok(self.inputs.get()?.zi.as_ref().unwrap_or(&zero)[i])
-                })
-            })
-            .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
+        let z_i = (0..arity).map(|i|
+                (0..self.params.r).map(|j|
+                    AllocatedNum::alloc(cs.namespace(|| format!("zi is {j}th_io for {i}th lcccs")), || {
+                        Ok(self.inputs.get()?
+                            .zi
+                            .as_ref()
+                            .map(|zs| zs[i][j])
+                            .unwrap_or_default()
+                        )
+                    })
+                ).collect::<Result<Vec<_>, SynthesisError>>()
+            )
+            .collect::<Result<Vec<Vec<AllocatedNum<G::Base>>>, SynthesisError>>()?;
 
         // Allocate the running instance
-
-        let lcccs = (0..self.params.mu)
+        let lcccs = (0..self.params.r)
             .map(|i| {
                 AllocatedLCCCSPrimaryPart::alloc(
                     cs.namespace(|| format!("allocate instance lcccs_{i} to fold")),
@@ -183,7 +182,7 @@ impl<'a, G: Group, G1: Group, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a
             .collect::<Result<Vec<AllocatedLCCCSPrimaryPart<G>>, _>>()?;
 
         // Allocate the instance to be folded in
-        let cccs = (0..self.params.mu)
+        let cccs = (0..self.params.r)
             .map(|i| {
                 AllocatedCCCSPrimaryPart::alloc(
                     cs.namespace(|| format!("allocate instance cccs_{i} to fold")),
@@ -196,7 +195,7 @@ impl<'a, G: Group, G1: Group, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a
             })
             .collect::<Result<Vec<AllocatedCCCSPrimaryPart<G>>, _>>()?;
         
-        let T = (0..self.params.mu)
+        let T = (0..self.params.r)
             .map(|i| {
                 AllocatedPoint::alloc(
                     cs.namespace(|| format!("Allocate T_{i}")),
@@ -283,7 +282,7 @@ where
                 cs.namespace(|| "generate non base case based nimfs"),
                 &self.params,
                 &z_0,
-                &z_i,
+                &z_i.iter().map(|z| &z[..]).collect::<Vec<_>>(),
                 lcccs,
                 cccs,
                 &nimfs_proof
@@ -310,16 +309,22 @@ where
         )?;
 
         // Compute z_{i+1}
-        let z_input = conditionally_select_vec_allocated_num(
-            cs.namespace(|| "select input to F"),
-            &z_0,
-            &z_i,
-            &Boolean::from(is_base_case),
-        )?;
+        let z_input = z_i
+            .into_iter()
+            .enumerate()
+            .map(|(i, z)|
+                conditionally_select_vec_allocated_num(
+                    cs.namespace(|| format!("select {i}th input to F")),
+                    &z_0,
+                    &z,
+                    &Boolean::from(is_base_case),
+                )
+            )
+            .collect::<Result<Vec<Vec<_>>, SynthesisError>>()?;
 
         let z_next = self
             .step_circuit
-            .synthesize(&mut cs.namespace(|| "F"), &z_input)?;
+            .synthesize_for_pcd(&mut cs.namespace(|| "F"), &z_input.iter().map(|z| &z[..]).collect::<Vec<_>>())?;
 
         if z_next.len() != arity {
             return Err(SynthesisError::IncompatibleLengthVector(
@@ -358,7 +363,7 @@ where
         mut cs: CS,
         params: &PCDUnitParams<G1>,
         _z_0: &[AllocatedNum<G::Base>],
-        _z_i: &[AllocatedNum<G::Base>],
+        _z_i: &[&[AllocatedNum<G::Base>]],
         lcccs: Vec<AllocatedLCCCSPrimaryPart<G>>,
         cccs: Vec<AllocatedCCCSPrimaryPart<G>>,
         proof: &AllocatedProof<G>,
