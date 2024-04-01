@@ -100,6 +100,10 @@ impl<G: Group> TranscriptEngineTrait<G> for Keccak256Transcript<G> {
     self.transcript.update(DOM_SEP_TAG);
     self.transcript.update(bytes);
   }
+
+  fn get_last_state(&self) -> G::Scalar {
+    G::Scalar::from_uniform(&self.state)
+  }
 }
 
 #[cfg(test)]

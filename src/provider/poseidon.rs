@@ -19,7 +19,10 @@ use neptune::{
   Strength,
 };
 use serde::{Deserialize, Serialize};
+use crate::constants::NUM_HASH_BITS;
 use crate::errors::NovaError;
+use crate::gadgets::utils::{le_bits_to_num, base_as_scalar};
+use crate::utils::truncate_field_bits;
 
 const LENGTH: usize = 32;
 
@@ -38,8 +41,8 @@ impl<Base: PrimeField> Default for PoseidonConstantsCircuit<Base> {
 #[derive(Serialize, Deserialize)]
 pub struct PoseidonRO<Base, Scalar>
 where
-  Base: PrimeField,
-  Scalar: PrimeField,
+  Base: PrimeFieldBits,
+  Scalar: PrimeFieldBits,
 {
   // Internal State
   state: Vec<Base>,
@@ -52,7 +55,7 @@ where
 impl<Base, Scalar> ROTrait<Base, Scalar> for PoseidonRO<Base, Scalar>
 where
   Base: PrimeFieldExt + PrimeFieldBits + Serialize + for<'de> Deserialize<'de>,
-  Scalar: PrimeField,
+  Scalar: PrimeFieldBits,
 {
   type CircuitRO = PoseidonROCircuit<Base>;
   type Constants = PoseidonConstantsCircuit<Base>;
@@ -97,17 +100,7 @@ where
     let hash = SpongeAPI::squeeze(&mut sponge, 1, acc);
     sponge.finish(acc).unwrap();
 
-    // Only return `num_bits`
-    let bits = hash[0].to_le_bits();
-    let mut res = Scalar::ZERO;
-    let mut coeff = Scalar::ONE;
-    for bit in bits[0..num_bits].into_iter() {
-      if *bit {
-        res += coeff;
-      }
-      coeff += coeff;
-    }
-    res
+    base_as_scalar(truncate_field_bits(hash[0], num_bits))
   }
 
   fn absorb_bytes_and_squeeze<T: AsRef<[u8]>>(&mut self, bytes: T, num_bits: usize) -> Scalar {
@@ -138,7 +131,7 @@ impl<Base> ROCircuitTrait<Base> for PoseidonROCircuit<Base>
 where
   Base: PrimeFieldExt + PrimeFieldBits + Serialize + for<'de> Deserialize<'de>,
 {
-  type NativeRO<T: PrimeField> = PoseidonRO<Base, T>;
+  type NativeRO<T: PrimeFieldBits> = PoseidonRO<Base, T>;
   type Constants = PoseidonConstantsCircuit<Base>;
 
   /// Initialize the internal state and set the poseidon constants
@@ -292,13 +285,13 @@ impl<G: Group> TranscriptEngineTrait<G> for PoseidonTranscript<G> {
     let mut sponge = Sponge::new_with_constants(&self.constants.0, Simplex);
     sponge.start(parameter, None, acc);
     SpongeAPI::absorb(&mut sponge, input.len() as u32, &input, acc);
-    let output = SpongeAPI::squeeze(&mut sponge, POSEIDON_STATE_SIZE as u32, acc);
+    let output = SpongeAPI::squeeze(&mut sponge, POSEIDON_STATE_SIZE, acc);
     sponge.finish(acc).unwrap();
-    let hash = output[0];
+    let hash = truncate_field_bits(output[0], NUM_HASH_BITS);
 
     // update state
     self.round = self.round.checked_add(1).unwrap();
-    self.state = output.to_vec();
+    self.state = vec![hash];
 
     // squeeze out a challenge
     Ok(hash)
@@ -318,6 +311,10 @@ impl<G: Group> TranscriptEngineTrait<G> for PoseidonTranscript<G> {
   fn dom_sep(&mut self, bytes: &'static [u8]) {
     self.state.push(G::Scalar::from_uniform(DOM_SEP_TAG));
     self.state.push(G::Scalar::from_uniform(bytes));
+  }
+
+  fn get_last_state(&self) -> G::Scalar {
+    *self.state.first().unwrap()
   }
 }
 
@@ -384,12 +381,22 @@ impl<G: Group> TranscriptCircuitEngineTrait<G> for PoseidonTranscriptCircuit<G> 
     };
 
     let output = Elt::ensure_allocated(&hash[0], &mut ns.namespace(|| "ensure allocated"), true)?;
+    let output_bits = output
+        .to_bits_le_strict(ns.namespace(|| "poseidon transcript hash to boolean"))?
+        .iter()
+        .map(|boolean| match boolean {
+          Boolean::Is(ref x) => x.clone(),
+          _ => panic!("Wrong type of input. We should have never reached there"),
+        })
+        .collect::<Vec<AllocatedBit>>();
+    let truncated_output = le_bits_to_num(cs.namespace(|| "bits to hash"), &output_bits[..NUM_HASH_BITS])?;
+
     // update state
     self.round = self.round.checked_add(1).unwrap();
-    self.state = vec![output.clone()];
+    self.state = vec![truncated_output.clone()];
 
     // squeeze out a challenge
-    Ok(output)
+    Ok(truncated_output)
   }
 
   fn batch_squeeze<CS: ConstraintSystem<G::Base>>(

@@ -118,7 +118,7 @@ pub trait AbsorbInROTrait<G: Group> {
 }
 
 /// A helper trait that defines the behavior of a hash function that we use as an RO
-pub trait ROTrait<Base: PrimeField, Scalar> {
+pub trait ROTrait<Base: PrimeFieldBits, Scalar> {
   /// The circuit alter ego of this trait impl - this constrains it to use the same constants
   type CircuitRO: ROCircuitTrait<Base, Constants = Self::Constants>;
 
@@ -145,9 +145,9 @@ pub trait ROTrait<Base: PrimeField, Scalar> {
 }
 
 /// A helper trait that defines the behavior of a hash function that we use as an RO in the circuit model
-pub trait ROCircuitTrait<Base: PrimeField> {
+pub trait ROCircuitTrait<Base: PrimeFieldBits> {
   /// the vanilla alter ego of this trait - this constrains it to use the same constants
-  type NativeRO<T: PrimeField>: ROTrait<Base, T, Constants = Self::Constants>;
+  type NativeRO<T: PrimeFieldBits>: ROTrait<Base, T, Constants = Self::Constants>;
 
   /// A type representing constants/parameters associated with the hash function on this Base field
   type Constants: Default + Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
@@ -255,6 +255,9 @@ pub trait TranscriptEngineTrait<G: Group>: Send + Sync {
 
   /// adds a domain separator
   fn dom_sep(&mut self, bytes: &'static [u8]);
+
+  /// get last state
+  fn get_last_state(&self) -> G::Scalar;
 }
 
 /// This trait defines the behavior of a transcript circuit engine compatible with Spartan

@@ -17,6 +17,7 @@ mod constants;
 mod nifs;
 mod nimfs;
 mod r1cs;
+mod utils;
 
 // public modules
 pub mod errors;
@@ -37,7 +38,6 @@ use constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_
 use core::marker::PhantomData;
 use errors::NovaError;
 use ff::Field;
-use rand_core::OsRng;
 use gadgets::utils::scalar_as_base;
 use nifs::NIFS;
 use r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness};
@@ -919,10 +919,7 @@ where
     let (aux_r1cs_setup_shape, _) = cs_aux_helper.r1cs_shape();
 
     let pp_aux = NovaAuxiliaryParams::<G2>::new(aux_r1cs_setup_shape, ARITY);
-
-    let rng = OsRng;
-    let rho = <G1>::Base::random(rng);
-
+    let rho = scalar_as_base::<G1>(transcript_p.get_last_state());
     let aux_circuit_input = NovaAuxiliaryInputs::<G1>::new(
       Some(pp_aux.digest),
       Some(self.lcccs.to_vec()),
