@@ -16,38 +16,32 @@ use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::nimfs::espresso::virtual_polynomial::VPAuxInfo;
 use crate::nimfs::multifolding::NIMFSProof;
 use crate::traits::{Group, ROCircuitTrait, ROConstantsCircuit, TEConstantsCircuit, TranscriptCircuitEngineTrait};
-use crate::traits::circuit::StepCircuit;
+use crate::traits::circuit::PCDStepCircuit;
 use crate::{Commitment, compute_digest};
 use crate::gadgets::ecc::AllocatedPoint;
 use crate::traits::commitment::CommitmentTrait;
 
+// R: the number of multi-folding PCD node
 #[derive(Serialize)]
-pub struct PCDUnitParams<G: Group>{
-    pub(crate) r: usize, // the number of multi-folding PCD node at once
+pub struct PCDUnitParams<G: Group, const ARITY: usize, const R: usize>{
     pub(crate) ccs: CCS<G>,
-    pub(crate) io_num: usize,
     pub(crate) limb_width: usize,
     pub(crate) n_limbs: usize,
     pub(crate) digest: G::Scalar,
 }
 
-impl<G: Group> PCDUnitParams<G> {
+impl<G: Group, const ARITY: usize, const R: usize> PCDUnitParams<G, ARITY, R> {
     pub fn new(
         limb_width: usize,
         n_limbs: usize,
-        r: usize,
-        io_num: usize,
-        ccs: CCS<G>
     ) -> Self {
         let mut pp = Self {
-            r,
-            ccs,
-            io_num,
+            ccs: CCS::default_r1cs(),
             limb_width,
             n_limbs,
             digest: G::Scalar::ZERO,
         };
-        pp.digest = compute_digest::<G, PCDUnitParams<G>>(&pp);
+        pp.digest = compute_digest::<G, PCDUnitParams<G, ARITY, R>>(&pp);
 
         pp
     }
@@ -61,7 +55,6 @@ pub struct PCDUnitInputs<G: Group> {
     zi: Option<Vec<Vec<G::Base>>>,
     lcccs: Option<Vec<LCCCS<G>>>,
     cccs: Option<Vec<CCCS<G>>>,
-    r: usize,
     T: Option<Vec<Commitment<G>>>,
 }
 
@@ -74,7 +67,6 @@ impl<G: Group> PCDUnitInputs<G> {
         zi: Option<Vec<Vec<G::Base>>>,
         lcccs: Option<Vec<LCCCS<G>>>,
         cccs: Option<Vec<CCCS<G>>>,
-        r: usize,
         T: Option<Vec<Commitment<G>>>,
     ) -> Self {
         Self {
@@ -83,15 +75,19 @@ impl<G: Group> PCDUnitInputs<G> {
             zi,
             lcccs,
             cccs,
-            r,
             T,
         }
     }
 }
 
 #[derive(Clone)]
-pub struct PCDUnitPrimaryCircuit<'a, G: Group, G1: Group, SC: StepCircuit<G::Base>> {
-    params: &'a PCDUnitParams<G1>,
+pub struct PCDUnitPrimaryCircuit<'a, G, G1, SC, const ARITY: usize, const R: usize>
+where
+    G: Group,
+    G1: Group,
+    SC: PCDStepCircuit<G::Base, ARITY, R>
+{
+    params: &'a PCDUnitParams<G1, ARITY, R>,
     ro_consts: ROConstantsCircuit<G>, // random oracle
     te_consts: TEConstantsCircuit<G>, // Transcript Engine
     inputs: Option<PCDUnitInputs<G>>,
@@ -99,10 +95,15 @@ pub struct PCDUnitPrimaryCircuit<'a, G: Group, G1: Group, SC: StepCircuit<G::Bas
     step_circuit: &'a SC, // The function that is applied for each step
 }
 
-impl<'a, G: Group, G1: Group, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a, G, G1, SC> {
+impl<'a, G, G1, SC, const ARITY: usize, const R: usize> PCDUnitPrimaryCircuit<'a, G, G1, SC, ARITY, R>
+where
+    G: Group,
+    G1: Group,
+    SC: PCDStepCircuit<G::Base, ARITY, R>
+{
     /// Create a new verification circuit for the input relaxed r1cs instances
     pub const fn new(
-        params: &'a PCDUnitParams<G1>,
+        params: &'a PCDUnitParams<G1, ARITY, R>,
         inputs: Option<PCDUnitInputs<G>>,
         step_circuit: &'a SC,
         proof: NIMFSProof<G>,
@@ -123,7 +124,6 @@ impl<'a, G: Group, G1: Group, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a
     fn alloc_witness<CS: ConstraintSystem<<G as Group>::Base>>(
         &self,
         mut cs: CS,
-        arity: usize,
     ) -> Result<
         (
             AllocatedProof<G>,
@@ -142,7 +142,7 @@ impl<'a, G: Group, G1: Group, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a
         )?;
 
         // Allocate z0
-        let z_0 = (0..arity)
+        let z_0 = (0..ARITY)
             .map(|i| {
                 AllocatedNum::alloc(cs.namespace(|| format!("z0_{i}")), || {
                     Ok(self.inputs.get()?.z0[i])
@@ -151,8 +151,8 @@ impl<'a, G: Group, G1: Group, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a
             .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
         // Allocate zi. If inputs.zi is not provided (base case) allocate default value 0
-        let z_i = (0..arity).map(|i|
-                (0..self.params.r).map(|j|
+        let z_i = (0..ARITY).map(|i|
+                (0..R).map(|j|
                     AllocatedNum::alloc(cs.namespace(|| format!("zi is {j}th_io for {i}th lcccs")), || {
                         Ok(self.inputs.get()?
                             .zi
@@ -166,7 +166,7 @@ impl<'a, G: Group, G1: Group, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a
             .collect::<Result<Vec<Vec<AllocatedNum<G::Base>>>, SynthesisError>>()?;
 
         // Allocate the running instance
-        let lcccs = (0..self.params.r)
+        let lcccs = (0..R)
             .map(|i| {
                 AllocatedLCCCSPrimaryPart::alloc(
                     cs.namespace(|| format!("allocate instance lcccs_{i} to fold")),
@@ -174,7 +174,7 @@ impl<'a, G: Group, G1: Group, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a
                         .inputs
                         .as_ref()
                         .and_then(|inputs| inputs.lcccs.as_ref().map(|U|&U[i])),
-                    self.params.io_num,
+                    ARITY,
                     self.params.limb_width,
                     self.params.n_limbs,
                 )
@@ -182,7 +182,7 @@ impl<'a, G: Group, G1: Group, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a
             .collect::<Result<Vec<AllocatedLCCCSPrimaryPart<G>>, _>>()?;
 
         // Allocate the instance to be folded in
-        let cccs = (0..self.params.r)
+        let cccs = (0..R)
             .map(|i| {
                 AllocatedCCCSPrimaryPart::alloc(
                     cs.namespace(|| format!("allocate instance cccs_{i} to fold")),
@@ -190,12 +190,12 @@ impl<'a, G: Group, G1: Group, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a
                         .inputs
                         .as_ref()
                         .and_then(|inputs| inputs.cccs.as_ref().map(|u|&u[i])),
-                    self.params.io_num,
+                    ARITY,
                 )
             })
             .collect::<Result<Vec<AllocatedCCCSPrimaryPart<G>>, _>>()?;
         
-        let T = (0..self.params.r)
+        let T = (0..R)
             .map(|i| {
                 AllocatedPoint::alloc(
                     cs.namespace(|| format!("Allocate T_{i}")),
@@ -221,7 +221,7 @@ impl<'a, G: Group, G1: Group, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a
     ) -> Result<AllocatedLCCCSPrimaryPart<G>, SynthesisError> {
         AllocatedLCCCSPrimaryPart::default(
             cs.namespace(|| "Allocate lcccs default"),
-            self.params.io_num,
+            ARITY,
             self.params.ccs.s,
             self.params.ccs.t,
             self.params.limb_width,
@@ -242,24 +242,22 @@ impl<'a, G: Group, G1: Group, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a
     }
 }
 
-impl<'a, G, G1, SC: StepCircuit<G::Base>> PCDUnitPrimaryCircuit<'a, G, G1, SC>
+impl<'a, G, G1, SC, const ARITY: usize, const R: usize> PCDUnitPrimaryCircuit<'a, G, G1, SC, ARITY, R>
 where
     G: Group<Base = <G1 as Group>::Scalar>,
     G1: Group<Base = <G as Group>::Scalar>,
+    SC: PCDStepCircuit<G::Base, ARITY, R>
 {
     /// synthesize circuit giving constraint system
     pub fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
         self,
         cs: &mut CS,
     ) -> Result<Vec<AllocatedNum<G::Base>>, SynthesisError> {
-        let arity = self.step_circuit.arity();
-
         // Allocate all witnesses
         let (
             nimfs_proof, z_0, z_i,
             lcccs, cccs, _t
-        ) = self.alloc_witness(cs.namespace(|| "allocate the circuit witness"), arity)?;
-        let Xs = cccs.iter().flat_map(|c|c.Xs.to_vec()).collect::<Vec<_>>();
+        ) = self.alloc_witness(cs.namespace(|| "allocate the circuit witness"))?;
 
         // Compute variable indicating if this is the base case
         let zero = alloc_zero(cs.namespace(|| "zero"))?;
@@ -308,7 +306,7 @@ where
             &Boolean::from(is_base_case.clone()),
         )?;
 
-        // Compute z_{i+1}
+        // select correct z
         let z_input = z_i
             .into_iter()
             .enumerate()
@@ -322,36 +320,33 @@ where
             )
             .collect::<Result<Vec<Vec<_>>, SynthesisError>>()?;
 
-        let z_next = self
+        let updated_z = self
             .step_circuit
-            .synthesize_for_pcd(&mut cs.namespace(|| "F"), &z_input.iter().map(|z| &z[..]).collect::<Vec<_>>())?;
-
-        if z_next.len() != arity {
+            .synthesize(
+                &mut cs.namespace(|| "F"),
+                &z_input.iter().map(|z| &z[..]).collect::<Vec<_>>()
+            )?;
+        if updated_z.len() != ARITY {
             return Err(SynthesisError::IncompatibleLengthVector(
                 "z_next".to_string(),
             ));
         }
 
         // Compute the new hash H(params, Unew, i+1, z0, z_{i+1})
-        let mut ro = G::ROCircuit::new(self.ro_consts, NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * arity);
+        let mut ro = G::ROCircuit::new(self.ro_consts, NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * ARITY);
         // ro.absorb(&params);
         for e in &z_0 {
             ro.absorb(e);
         }
-        for e in &z_next {
+        for e in &updated_z {
             ro.absorb(e);
         }
         lcccs.absorb_in_ro(cs.namespace(|| "absorb U_new"), &mut ro)?;
         let hash_bits = ro.squeeze(cs.namespace(|| "output hash bits"), NUM_HASH_BITS)?;
         let hash = le_bits_to_num(cs.namespace(|| "convert hash to num"), &hash_bits)?;
-
-        // Outputs the computed hash and u.X[1] that corresponds to the hash of the other circuit
-        for X in Xs.into_iter() {
-            X.inputize(cs.namespace(|| "Output unmodified hash of the other circuit"))?; // this circuit's Xs
-        }
         hash.inputize(cs.namespace(|| "output new hash of this circuit"))?; // this circuit's x1
 
-        Ok(z_next)
+        Ok(updated_z)
     }
 
 
@@ -361,7 +356,7 @@ where
     fn synthesize_based_nimfs<CS: ConstraintSystem<<G as Group>::Base>>(
         &self,
         mut cs: CS,
-        params: &PCDUnitParams<G1>,
+        params: &PCDUnitParams<G1, ARITY, R>,
         _z_0: &[AllocatedNum<G::Base>],
         _z_i: &[&[AllocatedNum<G::Base>]],
         lcccs: Vec<AllocatedLCCCSPrimaryPart<G>>,

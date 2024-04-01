@@ -38,7 +38,7 @@ pub struct LCCCS<C: Group> {
 
 impl<G: Group> LCCCS<G> {
     pub fn default_for_pcd() -> Self {
-        let default_r1cs_ccs = CCS::<G>::default_CCS();
+        let default_r1cs_ccs = CCS::<G>::default_r1cs();
         Self {
             C: Commitment::<G>::default(),
             u: G::Scalar::ZERO,

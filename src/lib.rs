@@ -50,7 +50,6 @@ use traits::{
   AbsorbInROTrait, Group, ROConstants, ROConstantsCircuit, ROTrait,
 };
 use crate::nimfs::ccs::cccs::{CCCS, CCSWitness};
-use crate::nimfs::ccs::ccs::CCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::nimfs::multifolding::{NIMFS, ProofWitness};
 use crate::nimfs::pcd_aux_circuit::{NovaAuxiliaryParams, NovaAuxiliaryInputs, NovaAuxiliarySecondCircuit};
@@ -825,7 +824,7 @@ fn compute_digest<G: Group, T: Serialize>(o: &T) -> G::Scalar {
   digest
 }
 
-pub struct PCDNode<G1, G2>
+pub struct PCDNode<G1, G2, const ARITY: usize, const R: usize>
 where
     G1: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G1 as Group>::Scalar>,
@@ -840,7 +839,7 @@ where
   w_relaxed_r1cs: Option<Vec<RelaxedR1CSWitness<G2>>>,
 }
 
-impl<G1, G2> PCDNode<G1, G2>
+impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
 where
     G1: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G1 as Group>::Scalar>,
@@ -867,12 +866,7 @@ where
     }
   }
 
-  // TODO: replace r, io_num with R, IO_NUM etc. const generic
-  pub fn prove_step(
-    &self,
-    r: usize,
-    io_num: usize,
-  ) -> Result<
+  pub fn prove_step(&self) -> Result<
     (
       LCCCS<G1>, CCCS<G1>, RelaxedR1CSInstance<G2>,
       CCSWitness<G1>, CCSWitness<G1>, RelaxedR1CSWitness<G2>,
@@ -884,7 +878,7 @@ where
     transcript_p.squeeze(b"init").unwrap();
 
     // First, handling PCD auxiliary secondary circuit
-    let (nimfs_proof, folded_lcccs, folded_lcccs_witness) =
+    let (nimfs_proof, lcccs, lcccs_witness) =
         if let Some(ref w_lcccs) = self.w_lcccs {
           NIMFS::prove(
             &mut transcript_p,
@@ -903,6 +897,7 @@ where
           )
         };
 
+    // TODO: move these codes into setup and use constants' reference
     let ro_consts_circuit_primary: ROConstantsCircuit<G2> = Default::default();
     let ro_consts_circuit_secondary: ROConstantsCircuit<G1> = Default::default();
     let te_consts_circuit_primary: TEConstantsCircuit<G2> = Default::default();
@@ -912,7 +907,7 @@ where
       None,
       None,
       None,
-      r,
+      R,
     );
     let aux_circuit_setup = NovaAuxiliarySecondCircuit::<G1>::new(
       ro_consts_circuit_secondary,
@@ -923,10 +918,8 @@ where
     let _ = aux_circuit_setup.clone().synthesize(&mut cs_aux_helper);
     let (aux_r1cs_setup_shape, _) = cs_aux_helper.r1cs_shape();
 
-    let pp_aux = NovaAuxiliaryParams::<G2>::new(
-      aux_r1cs_setup_shape,
-      io_num,
-    );
+    let pp_aux = NovaAuxiliaryParams::<G2>::new(aux_r1cs_setup_shape, ARITY);
+
     let rng = OsRng;
     let rho = <G1>::Base::random(rng);
 
@@ -935,10 +928,9 @@ where
       Some(self.lcccs.to_vec()),
       Some(self.cccs.to_vec()),
       Some(rho),
-      r,
+      R,
     );
 
-    let ro_consts_secondary: ROConstants<G2> = Default::default();
     let aux_circuit = NovaAuxiliarySecondCircuit::<G1>::new(
       ro_consts_circuit_secondary,
       te_consts_circuit_secondary,
@@ -948,14 +940,17 @@ where
     let _ = aux_circuit.clone().synthesize(&mut cs_secondary);
 
     // TODO: move these codes into setup
-    let mut cs_aux_helper: ShapeCS<G2> = ShapeCS::new();
-    let _ = aux_circuit.clone().synthesize(&mut cs_aux_helper);
-    let (aux_r1cs_shape, aux_commit_key) = cs_aux_helper.r1cs_shape();
+    let (aux_r1cs_shape, aux_commit_key) = {
+      let mut cs_aux_helper: ShapeCS<G2> = ShapeCS::new();
+      let _ = aux_circuit.clone().synthesize(&mut cs_aux_helper);
+      cs_aux_helper.r1cs_shape()
+    };
 
     let (aux_r1cs_instance, aux_r1cs_witness) = cs_secondary.r1cs_instance_and_witness(&aux_r1cs_shape, &aux_commit_key)?;
 
     // Then, handling the PCD primary circuit
-    let (nifs_proof, (folded_relaxed_r1cs_instance, folded_relaxed_r1cs_witness) ) =
+    let ro_consts_secondary: ROConstants<G2> = Default::default();
+    let (nifs_proof, (relaxed_r1cs_instance, relaxed_r1cs_witness) ) =
         NIFS::prove_with_multi_relaxed(
           &aux_commit_key,
           &ro_consts_secondary,
@@ -967,20 +962,13 @@ where
           &aux_r1cs_witness,
         )?;
 
-    let pp_pcd = PCDUnitParams::<G1>::new(
-      BN_LIMB_WIDTH,
-      BN_N_LIMBS,
-      r,
-      io_num,
-      CCS::default_CCS(),
-    );
+    let pp_pcd = PCDUnitParams::<G1, ARITY, R>::new(BN_LIMB_WIDTH, BN_N_LIMBS);
     let pcd_circuit_input= PCDUnitInputs::<G2>::new(
       pp_pcd.digest,
       self.z0.clone(),
       self.zi.clone(),
       Some(self.lcccs.clone()),
       Some(self.cccs.clone()),
-      r,
       Some(
         nifs_proof
           .iter()
@@ -995,7 +983,7 @@ where
       '_,
       G2,
       G1,
-      TrivialTestCircuit<<G2 as Group>::Base>,
+      TrivialTestCircuit<<G2 as Group>::Base>, ARITY, R,
     >::new(
       &pp_pcd,
       Some(pcd_circuit_input),
@@ -1013,22 +1001,22 @@ where
         .collect::<Result<Vec<<G1 as Group>::Scalar>, NovaError>>()?;
 
     // TODO: move these codes into setup
-    let mut cs_helper: ShapeCS<G1> = ShapeCS::new();
-    let _ = pcd_circuit.clone().synthesize(&mut cs_helper);
-    let (r1cs_shape_pcd, ck_pcd) = cs_helper.r1cs_shape();
+    let (r1cs_shape_pcd, ck_pcd) = {
+      let mut cs_helper: ShapeCS<G1> = ShapeCS::new();
+      let _ = pcd_circuit.clone().synthesize(&mut cs_helper);
+      cs_helper.r1cs_shape()
+    };
 
-    let (folded_cccs, folded_cccs_witness) = cs_primary.cccs_and_witness(&r1cs_shape_pcd, &ck_pcd)?;
-    Ok(
-      (
-        folded_lcccs,
-        folded_cccs,
-        folded_relaxed_r1cs_instance,
-        folded_lcccs_witness,
-        folded_cccs_witness,
-        folded_relaxed_r1cs_witness,
-        zi_primary,
-      )
-    )
+    let (cccs, cccs_witness) = cs_primary.cccs_and_witness(&r1cs_shape_pcd, &ck_pcd)?;
+    Ok((
+      lcccs,
+      cccs,
+      relaxed_r1cs_instance,
+      lcccs_witness,
+      cccs_witness,
+      relaxed_r1cs_witness,
+      zi_primary,
+    ))
   }
 }
 
@@ -1725,15 +1713,13 @@ mod tests {
     test_ivc_base_with::<secp256k1::Point, secq256k1::Point>();
   }
 
-  const R: usize = 2;
-  const IO_NUM: usize = 1;
-  fn test_pcd_with<G1, G2>() -> Result<(), NovaError>
+  fn test_pcd_with<G1, G2, const R: usize, const IO_NUM: usize>() -> Result<(), NovaError>
   where
       G1: Group<Base = <G2 as Group>::Scalar>,
       G2: Group<Base = <G1 as Group>::Scalar>,
   {
-    let z0 = vec![<G1 as Group>::Scalar::ZERO];
-    let node_1 = PCDNode::<G1, G2>::new(
+    let z0 = vec![<G1 as Group>::Scalar::ZERO; IO_NUM];
+    let node_1 = PCDNode::<G1, G2, IO_NUM, R>::new(
       vec![LCCCS::<G1>::default_for_pcd(),LCCCS::<G1>::default_for_pcd()],
       vec![CCCS::<G1>::default_for_pcd(),CCCS::<G1>::default_for_pcd()],
       z0.clone(),
@@ -1747,9 +1733,9 @@ mod tests {
       node_1_lcccs, node_1_cccs, node_1_relaxed_r1cs_instance,
       node_1_lcccs_witness, node_1_cccs_witness, node_1_relaxed_r1cs_witness,
       node_1_zi
-    ) = node_1.prove_step(R, IO_NUM).map_err(|_| NovaError::SynthesisError)?;
+    ) = node_1.prove_step().map_err(|_| NovaError::SynthesisError)?;
 
-    let node_2 = PCDNode::<G1, G2>::new(
+    let node_2 = PCDNode::<G1, G2, IO_NUM, R>::new(
       vec![LCCCS::<G1>::default_for_pcd(),LCCCS::<G1>::default_for_pcd()],
       vec![CCCS::<G1>::default_for_pcd(),CCCS::<G1>::default_for_pcd()],
       z0.clone(),
@@ -1763,7 +1749,7 @@ mod tests {
       node_2_lcccs, node_2_cccs, node_2_relaxed_r1cs_instance,
       node_2_lcccs_witness, node_2_cccs_witness, node_2_folded_relaxed_r1cs_witness,
       node_2_zi
-    ) = node_1.prove_step(R, IO_NUM).map_err(|_| NovaError::SynthesisError)?;
+    ) = node_1.prove_step().map_err(|_| NovaError::SynthesisError)?;
 
     let node_3_input_lcccs = vec![node_1_lcccs, node_2_lcccs];
     let node_3_input_cccs = vec![node_1_cccs, node_2_cccs];
@@ -1773,7 +1759,7 @@ mod tests {
     let node_3_cccs_witness = vec![node_1_cccs_witness, node_2_cccs_witness];
     let node_3_relaxed_r1cs_witness = vec![node_1_relaxed_r1cs_witness, node_2_folded_relaxed_r1cs_witness];
 
-    let node_3 = PCDNode::<G1, G2>::new(
+    let node_3 = PCDNode::<G1, G2, IO_NUM, R>::new(
       node_3_input_lcccs,
       node_3_input_cccs,
       z0,
@@ -1791,6 +1777,8 @@ mod tests {
   fn test_pcd(){
     type G1 = pasta_curves::pallas::Point;
     type G2 = pasta_curves::vesta::Point;
-    test_pcd_with::<G1, G2>().unwrap();
+    const ARITY: usize = 1;
+    const R: usize = 2;
+    test_pcd_with::<G1, G2, R, ARITY>().unwrap();
   }
 }

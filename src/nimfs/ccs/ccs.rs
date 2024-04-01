@@ -73,7 +73,7 @@ fn matrix_type_convert<F: PrimeField>(target_matrix: &mut [Vec<F>], absorbed_mat
 
 impl<G: Group> CCS<G> {
     /// Create default CCS for R1CS
-    pub fn default_CCS() -> CCS<G>{
+    pub fn default_r1cs() -> CCS<G>{
         CCS{
             m: 0,
             n: 0,

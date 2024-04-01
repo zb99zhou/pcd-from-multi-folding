@@ -65,7 +65,7 @@ impl<C: Group> CCCS<C> {
         Self{
             C: Commitment::<C>::default(),
             x: vec![C::Scalar::ZERO],
-            ccs: CCS::<C>::default_CCS(),
+            ccs: CCS::<C>::default_r1cs(),
         }
     }
 

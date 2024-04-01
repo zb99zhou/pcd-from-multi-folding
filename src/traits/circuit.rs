@@ -18,16 +18,6 @@ pub trait StepCircuit<F: PrimeField>: Send + Sync + Clone {
     cs: &mut CS,
     z: &[AllocatedNum<F>],
   ) -> Result<Vec<AllocatedNum<F>>, SynthesisError>;
-
-  /// Synthesize the circuit for a PCD computation step and return variable
-  /// that corresponds to the output of the step PCD
-  fn synthesize_for_pcd<CS: ConstraintSystem<F>>(
-    &self,
-    _cs: &mut CS,
-    _z: &[&[AllocatedNum<F>]],
-  ) -> Result<Vec<AllocatedNum<F>>, SynthesisError>{
-    unreachable!()
-  }
 }
 
 /// A trivial step circuit that simply returns the input
@@ -51,12 +41,32 @@ where
   ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
     Ok(z.to_vec())
   }
+}
 
-  fn synthesize_for_pcd<CS: ConstraintSystem<F>>(
+/// A helper trait for a step of the PCD (i.e., circuit for F)
+pub trait PCDStepCircuit<F, const ARITY: usize, const R: usize>: Send + Sync + Clone
+  where F: PrimeField
+{
+  /// Synthesize the circuit for a PCD computation step and return variable
+  /// that corresponds to the output of the step PCD
+  fn synthesize<CS: ConstraintSystem<F>>(
+    &self,
+    cs: &mut CS,
+    z: &[&[AllocatedNum<F>]],
+  ) -> Result<Vec<AllocatedNum<F>>, SynthesisError>;
+}
+
+impl<F, const ARITY: usize, const R: usize> PCDStepCircuit<F, ARITY, R> for TrivialTestCircuit<F>
+where
+    F: PrimeField,
+{
+  fn synthesize<CS: ConstraintSystem<F>>(
     &self,
     _cs: &mut CS,
     z: &[&[AllocatedNum<F>]],
-  ) -> Result<Vec<AllocatedNum<F>>, SynthesisError>{
+  ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
+    assert_eq!(z.len(), R);
+    assert_eq!(z[0].len(), ARITY);
     Ok(z[0].to_vec())
   }
 }
