@@ -837,6 +837,13 @@ where
   w_lcccs: Option<Vec<CCSWitness<G1>>>,
   w_cccs: Option<Vec<CCSWitness<G1>>>,
   w_relaxed_r1cs: Option<Vec<RelaxedR1CSWitness<G2>>>,
+  ro_consts_circuit_primary: ROConstantsCircuit<G2>,
+  ro_consts_circuit_secondary: ROConstantsCircuit<G1>,
+  te_consts_circuit_primary: TEConstantsCircuit<G2>,
+  te_consts_circuit_secondary: TEConstantsCircuit<G1>,
+  aux_r1cs_shape: R1CSShape<G2>,
+  ro_consts_secondary: ROConstants<G2>,
+  pp_pcd: PCDUnitParams<G1, ARITY, R>,
 }
 
 impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
@@ -854,6 +861,29 @@ where
     w_cccs: Option<Vec<CCSWitness<G1>>>,
     w_relaxed_r1cs: Option<Vec<RelaxedR1CSWitness<G2>>>,
   ) -> Self {
+    let ro_consts_circuit_primary: ROConstantsCircuit<G2> = Default::default();
+    let ro_consts_circuit_secondary: ROConstantsCircuit<G1> = Default::default();
+    let te_consts_circuit_primary: TEConstantsCircuit<G2> = Default::default();
+    let te_consts_circuit_secondary: TEConstantsCircuit<G1> = Default::default();
+
+    let aux_circuit_setup_input = NovaAuxiliaryInputs::<G1>::new(
+      None,
+      None,
+      None,
+      None,
+      R,
+    );
+    let aux_circuit_setup = NovaAuxiliarySecondCircuit::<G1>::new(
+      ro_consts_circuit_secondary,
+      te_consts_circuit_secondary.clone(),
+      aux_circuit_setup_input,
+    );
+    let mut cs_aux_helper: ShapeCS<G2> = ShapeCS::new();
+    let _ = aux_circuit_setup.clone().synthesize(&mut cs_aux_helper);
+    let (aux_r1cs_shape, _) = cs_aux_helper.r1cs_shape();
+
+    let ro_consts_secondary: ROConstants<G2> = Default::default();
+    let pp_pcd = PCDUnitParams::<G1, ARITY, R>::new(BN_LIMB_WIDTH, BN_N_LIMBS);
     Self{
       lcccs,
       cccs,
@@ -863,6 +893,13 @@ where
       w_lcccs,
       w_cccs,
       w_relaxed_r1cs,
+      ro_consts_circuit_primary,
+      ro_consts_circuit_secondary,
+      te_consts_circuit_primary,
+      te_consts_circuit_secondary,
+      aux_r1cs_shape,
+      ro_consts_secondary,
+      pp_pcd,
     }
   }
 
@@ -870,7 +907,7 @@ where
     (
       LCCCS<G1>, CCCS<G1>, RelaxedR1CSInstance<G2>,
       CCSWitness<G1>, CCSWitness<G1>, RelaxedR1CSWitness<G2>,
-      Vec<<G1 as Group>::Scalar>
+      Vec<<G1 as Group>::Scalar>, CommitmentKey<G1>
     ), NovaError
   > {
 
@@ -898,27 +935,7 @@ where
         };
 
     // TODO: move these codes into setup and use constants' reference
-    let ro_consts_circuit_primary: ROConstantsCircuit<G2> = Default::default();
-    let ro_consts_circuit_secondary: ROConstantsCircuit<G1> = Default::default();
-    let te_consts_circuit_primary: TEConstantsCircuit<G2> = Default::default();
-    let te_consts_circuit_secondary: TEConstantsCircuit<G1> = Default::default();
-    let aux_circuit_setup_input = NovaAuxiliaryInputs::<G1>::new(
-      None,
-      None,
-      None,
-      None,
-      R,
-    );
-    let aux_circuit_setup = NovaAuxiliarySecondCircuit::<G1>::new(
-      ro_consts_circuit_secondary,
-      te_consts_circuit_secondary.clone(),
-      aux_circuit_setup_input,
-    );
-    let mut cs_aux_helper: ShapeCS<G2> = ShapeCS::new();
-    let _ = aux_circuit_setup.clone().synthesize(&mut cs_aux_helper);
-    let (aux_r1cs_setup_shape, _) = cs_aux_helper.r1cs_shape();
-
-    let pp_aux = NovaAuxiliaryParams::<G2>::new(aux_r1cs_setup_shape, ARITY);
+    let pp_aux = NovaAuxiliaryParams::<G2>::new(self.aux_r1cs_shape.clone(), ARITY);
     let rho = scalar_as_base::<G1>(transcript_p.get_last_state());
     let aux_circuit_input = NovaAuxiliaryInputs::<G1>::new(
       Some(pp_aux.digest),
@@ -929,8 +946,8 @@ where
     );
 
     let aux_circuit = NovaAuxiliarySecondCircuit::<G1>::new(
-      ro_consts_circuit_secondary,
-      te_consts_circuit_secondary,
+      self.ro_consts_circuit_secondary,
+      self.te_consts_circuit_secondary.clone(),
       aux_circuit_input,
     );
     let mut cs_secondary = SatisfyingAssignment::<G2>::new();
@@ -946,11 +963,10 @@ where
     let (aux_r1cs_instance, aux_r1cs_witness) = cs_secondary.r1cs_instance_and_witness(&aux_r1cs_shape, &aux_commit_key)?;
 
     // Then, handling the PCD primary circuit
-    let ro_consts_secondary: ROConstants<G2> = Default::default();
     let (nifs_proof, (relaxed_r1cs_instance, relaxed_r1cs_witness) ) =
         NIFS::prove_with_multi_relaxed(
           &aux_commit_key,
-          &ro_consts_secondary,
+          &self.ro_consts_secondary,
           &pp_aux.digest,
           &aux_r1cs_shape,
           &self.relaxed_r1cs_instance,
@@ -959,9 +975,8 @@ where
           &aux_r1cs_witness,
         )?;
 
-    let pp_pcd = PCDUnitParams::<G1, ARITY, R>::new(BN_LIMB_WIDTH, BN_N_LIMBS);
     let pcd_circuit_input= PCDUnitInputs::<G2>::new(
-      pp_pcd.digest,
+      self.pp_pcd.digest,
       self.z0.clone(),
       self.zi.clone(),
       Some(self.lcccs.clone()),
@@ -982,12 +997,12 @@ where
       G1,
       TrivialTestCircuit<<G2 as Group>::Base>, ARITY, R,
     >::new(
-      &pp_pcd,
+      &self.pp_pcd,
       Some(pcd_circuit_input),
       &test_circuit,
       ProofWitness::<G2>::from(nimfs_proof),
-      ro_consts_circuit_primary,
-      te_consts_circuit_primary,
+      self.ro_consts_circuit_primary,
+      self.te_consts_circuit_primary.clone(),
     );
 
     let mut cs_primary = SatisfyingAssignment::<G1>::new();
@@ -1013,7 +1028,61 @@ where
       cccs_witness,
       relaxed_r1cs_witness,
       zi_primary,
+      ck_pcd,
     ))
+  }
+
+  pub fn verify(
+    &self,
+    lcccs: &LCCCS<G1>,
+    U: &RelaxedR1CSInstance<G2>,
+    zi_primary: &[G1::Scalar],
+    ck: &CommitmentKey<G1>,
+    u: &CCCS<G1>,
+    w_cccs: &CCSWitness<G1>,
+    w_lcccs: &CCSWitness<G1>,
+  ) -> Result<Vec<G1::Scalar>, NovaError> {
+    if U.X.len() != 2
+    {
+      return Err(NovaError::ProofVerifyError);
+    }
+
+    let ro_consts: ROConstants<G2> = Default::default();
+
+    let mut hasher1 = <G2 as Group>::RO::new(
+      ro_consts.clone(),
+      NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * ARITY,
+    );
+    hasher1.absorb(self.pp_pcd.digest);
+    for e in zi_primary {
+      hasher1.absorb(*e);
+    }
+
+    U.absorb_in_ro(&mut hasher1);
+
+    let mut hasher2 = <G2 as Group>::RO::new(
+      ro_consts.clone(),
+      NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * ARITY,
+    );
+    hasher2.absorb(self.pp_pcd.digest);
+    for e in zi_primary {
+      hasher2.absorb(*e);
+    }
+
+    lcccs.absorb_in_ro::<G2>(&mut hasher2);
+    let hash_U = hasher1.squeeze(NUM_HASH_BITS);
+    let hash_lcccs = hasher2.squeeze(NUM_HASH_BITS);
+    if hash_U != scalar_as_base::<G1>(u.x[0]) || hash_lcccs != scalar_as_base::<G1>(u.x[0])
+    {
+      return Err(NovaError::ProofVerifyError);
+    }
+
+    let res_lcccs = lcccs.check_relation(ck, w_lcccs);
+    let res_cccs = u.check_relation(ck, w_cccs);
+    res_lcccs.map_err(|_| NovaError::ProofVerifyError)?;
+    res_cccs.map_err(|_| NovaError::ProofVerifyError)?;
+    Ok(zi_primary.to_vec())
+
   }
 }
 
@@ -1729,7 +1798,7 @@ mod tests {
     let (
       node_1_lcccs, node_1_cccs, node_1_relaxed_r1cs_instance,
       node_1_lcccs_witness, node_1_cccs_witness, node_1_relaxed_r1cs_witness,
-      node_1_zi
+      node_1_zi, _
     ) = node_1.prove_step().map_err(|_| NovaError::SynthesisError)?;
 
     let node_2 = PCDNode::<G1, G2, IO_NUM, R>::new(
@@ -1745,8 +1814,8 @@ mod tests {
     let (
       node_2_lcccs, node_2_cccs, node_2_relaxed_r1cs_instance,
       node_2_lcccs_witness, node_2_cccs_witness, node_2_folded_relaxed_r1cs_witness,
-      node_2_zi
-    ) = node_1.prove_step().map_err(|_| NovaError::SynthesisError)?;
+      node_2_zi, _
+    ) = node_2.prove_step().map_err(|_| NovaError::SynthesisError)?;
 
     let node_3_input_lcccs = vec![node_1_lcccs, node_2_lcccs];
     let node_3_input_cccs = vec![node_1_cccs, node_2_cccs];
@@ -1767,6 +1836,23 @@ mod tests {
       Some(node_3_relaxed_r1cs_witness),
     );
 
+    let (
+      node_3_lcccs, node_3_cccs, node_3_relaxed_r1cs_instance,
+      node_3_lcccs_witness, node_3_cccs_witness, node_3_folded_relaxed_r1cs_witness,
+      node_3_zi, node_3_ck
+    ) = node_3.prove_step().map_err(|_| NovaError::SynthesisError)?;
+
+    let res = node_3.verify(
+      &node_3_lcccs,
+      &node_3_relaxed_r1cs_instance,
+      &node_3_zi,
+      &node_3_ck,
+      &node_3_cccs,
+      &node_3_cccs_witness,
+      &node_3_lcccs_witness,
+    );
+
+    assert!(res.is_ok());
     Ok(())
   }
 
