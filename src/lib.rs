@@ -824,6 +824,7 @@ fn compute_digest<G: Group, T: Serialize>(o: &T) -> G::Scalar {
   digest
 }
 
+#[derive(Clone)]
 pub struct PCDNode<G1, G2, const ARITY: usize, const R: usize>
 where
     G1: Group<Base = <G2 as Group>::Scalar>,
@@ -832,8 +833,8 @@ where
   lcccs: Vec<LCCCS<G1>>,
   cccs: Vec<CCCS<G1>>,
   z0: Vec<G1::Scalar>,
-  zi: Option<Vec<Vec<<G1 as Group>::Scalar>>>,
-  relaxed_r1cs_instance: Vec<RelaxedR1CSInstance<G2>>,
+  zi: Option<Vec<Vec<G1::Scalar>>>,
+  relaxed_r1cs_instance: Option<Vec<RelaxedR1CSInstance<G2>>>,
   w_lcccs: Option<Vec<CCSWitness<G1>>>,
   w_cccs: Option<Vec<CCSWitness<G1>>>,
   w_relaxed_r1cs: Option<Vec<RelaxedR1CSWitness<G2>>>,
@@ -855,8 +856,8 @@ where
     lcccs: Vec<LCCCS<G1>>,
     cccs: Vec<CCCS<G1>>,
     z0: Vec<G1::Scalar>,
-    zi: Option<Vec<Vec<<G1 as Group>::Scalar>>>,
-    relaxed_r1cs_instance: Vec<RelaxedR1CSInstance<G2>>,
+    zi: Option<Vec<Vec<G1::Scalar>>>,
+    relaxed_r1cs_instance: Option<Vec<RelaxedR1CSInstance<G2>>>,
     w_lcccs: Option<Vec<CCSWitness<G1>>>,
     w_cccs: Option<Vec<CCSWitness<G1>>>,
     w_relaxed_r1cs: Option<Vec<RelaxedR1CSWitness<G2>>>,
@@ -874,7 +875,7 @@ where
       R,
     );
     let aux_circuit_setup = NovaAuxiliarySecondCircuit::<G1>::new(
-      ro_consts_circuit_secondary,
+      ro_consts_circuit_secondary.clone(),
       te_consts_circuit_secondary.clone(),
       aux_circuit_setup_input,
     );
@@ -907,10 +908,9 @@ where
     (
       LCCCS<G1>, CCCS<G1>, RelaxedR1CSInstance<G2>,
       CCSWitness<G1>, CCSWitness<G1>, RelaxedR1CSWitness<G2>,
-      Vec<<G1 as Group>::Scalar>, CommitmentKey<G1>
+      Vec<G1::Scalar>, CommitmentKey<G1>
     ), NovaError
   > {
-
     let mut transcript_p = <G1 as Group>::TE::new(Default::default(), b"multifolding");
     transcript_p.squeeze(b"init").unwrap();
 
@@ -934,7 +934,6 @@ where
           )
         };
 
-    // TODO: move these codes into setup and use constants' reference
     let pp_aux = NovaAuxiliaryParams::<G2>::new(self.aux_r1cs_shape.clone(), ARITY);
     let rho = scalar_as_base::<G1>(transcript_p.get_last_state());
     let aux_circuit_input = NovaAuxiliaryInputs::<G1>::new(
@@ -946,7 +945,7 @@ where
     );
 
     let aux_circuit = NovaAuxiliarySecondCircuit::<G1>::new(
-      self.ro_consts_circuit_secondary,
+      self.ro_consts_circuit_secondary.clone(),
       self.te_consts_circuit_secondary.clone(),
       aux_circuit_input,
     );
@@ -969,18 +968,21 @@ where
           &self.ro_consts_secondary,
           &pp_aux.digest,
           &aux_r1cs_shape,
-          &self.relaxed_r1cs_instance,
+          self.relaxed_r1cs_instance.as_ref().unwrap(),
           self.w_relaxed_r1cs.as_ref().unwrap(),
           &aux_r1cs_instance,
           &aux_r1cs_witness,
         )?;
 
     let pcd_circuit_input= PCDUnitInputs::<G2>::new(
-      self.pp_pcd.digest,
+      scalar_as_base::<G1>(self.pp_pcd.digest),
       self.z0.clone(),
       self.zi.clone(),
-      Some(self.lcccs.clone()),
-      Some(self.cccs.clone()),
+      Some(self.lcccs.iter().cloned().map(Into::into).collect()),
+      Some(self.cccs.iter().cloned().map(Into::into).collect()),
+      self.relaxed_r1cs_instance.clone(),
+      Some(aux_r1cs_instance),
+      Some(lcccs.C.to_coordinates()),
       Some(
         nifs_proof
           .iter()
@@ -1001,12 +1003,12 @@ where
       Some(pcd_circuit_input),
       &test_circuit,
       ProofWitness::<G2>::from(nimfs_proof),
-      self.ro_consts_circuit_primary,
+      self.ro_consts_circuit_primary.clone(),
       self.te_consts_circuit_primary.clone(),
     );
 
     let mut cs_primary = SatisfyingAssignment::<G1>::new();
-    let zi_primary = pcd_circuit.synthesize(&mut cs_primary)
+    let zi_primary = pcd_circuit.clone().synthesize(&mut cs_primary)
         .unwrap()
         .iter()
         .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
@@ -1015,7 +1017,7 @@ where
     // TODO: move these codes into setup
     let (r1cs_shape_pcd, ck_pcd) = {
       let mut cs_helper: ShapeCS<G1> = ShapeCS::new();
-      let _ = pcd_circuit.clone().synthesize(&mut cs_helper);
+      let _ = pcd_circuit.synthesize(&mut cs_helper);
       cs_helper.r1cs_shape()
     };
 
@@ -1790,7 +1792,7 @@ mod tests {
       vec![CCCS::<G1>::default_for_pcd(),CCCS::<G1>::default_for_pcd()],
       z0.clone(),
       None,
-      vec![RelaxedR1CSInstance::<G2>::default_for_pcd(), RelaxedR1CSInstance::<G2>::default_for_pcd()],
+      Some(vec![RelaxedR1CSInstance::<G2>::default_for_pcd(), RelaxedR1CSInstance::<G2>::default_for_pcd()]),
       None,
       None,
       None,
@@ -1801,16 +1803,7 @@ mod tests {
       node_1_zi, _
     ) = node_1.prove_step().map_err(|_| NovaError::SynthesisError)?;
 
-    let node_2 = PCDNode::<G1, G2, IO_NUM, R>::new(
-      vec![LCCCS::<G1>::default_for_pcd(),LCCCS::<G1>::default_for_pcd()],
-      vec![CCCS::<G1>::default_for_pcd(),CCCS::<G1>::default_for_pcd()],
-      z0.clone(),
-      None,
-      vec![RelaxedR1CSInstance::<G2>::default_for_pcd(), RelaxedR1CSInstance::<G2>::default_for_pcd()],
-      None,
-      None,
-      None,
-    );
+    let node_2 = node_1.clone();
     let (
       node_2_lcccs, node_2_cccs, node_2_relaxed_r1cs_instance,
       node_2_lcccs_witness, node_2_cccs_witness, node_2_folded_relaxed_r1cs_witness,
@@ -1830,7 +1823,7 @@ mod tests {
       node_3_input_cccs,
       z0,
       Some(node_3_zi),
-      node_3_relaxed_r1cs_instance,
+      Some(node_3_relaxed_r1cs_instance),
       Some(node_3_lcccs_witness),
       Some(node_3_cccs_witness),
       Some(node_3_relaxed_r1cs_witness),

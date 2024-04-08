@@ -4,25 +4,26 @@ use bellpepper_core::boolean::{AllocatedBit, Boolean};
 use bellpepper_core::num::{AllocatedNum, Num};
 use ff::Field;
 use serde::Serialize;
-use crate::constants::{NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS};
-use crate::gadgets::cccs::{AllocatedCCCSPrimaryPart, AllocatedLCCCSPrimaryPart, multi_folding_with_primary_part};
+use crate::constants::NUM_HASH_BITS;
+use crate::gadgets::cccs::{AllocatedCCCS, AllocatedCCCSPrimaryPart, AllocatedLCCCS, AllocatedLCCCSPrimaryPart, multi_folding_with_primary_part};
 use crate::gadgets::ext_allocated_num::ExtendFunc;
 use crate::gadgets::r1cs::{AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance};
 use crate::gadgets::sumcheck::{AllocatedProof, enforce_compute_c_from_sigmas_and_thetas, enforce_interpolate_uni_poly, sumcheck_verify};
-use crate::gadgets::utils::{alloc_num_equals, alloc_zero, conditionally_select_vec_allocated_num, le_bits_to_num, multi_and};
-use crate::nimfs::ccs::cccs::CCCS;
+use crate::gadgets::utils::{alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select_vec_allocated_num, le_bits_to_num, multi_and};
+use crate::nimfs::ccs::cccs::{CCCSForBase, PointForScalar};
 use crate::nimfs::ccs::ccs::CCS;
-use crate::nimfs::ccs::lcccs::LCCCS;
+use crate::nimfs::ccs::lcccs::LCCCSForBase;
 use crate::nimfs::espresso::virtual_polynomial::VPAuxInfo;
 use crate::nimfs::multifolding::NIMFSProof;
 use crate::traits::{Group, ROCircuitTrait, ROConstantsCircuit, TEConstantsCircuit, TranscriptCircuitEngineTrait};
 use crate::traits::circuit::PCDStepCircuit;
 use crate::{Commitment, compute_digest};
-use crate::gadgets::ecc::AllocatedPoint;
+use crate::gadgets::ecc::{AllocatedPoint, AllocatedSimulatedPoint};
+use crate::r1cs::{R1CSInstance, RelaxedR1CSInstance};
 use crate::traits::commitment::CommitmentTrait;
 
 // R: the number of multi-folding PCD node
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct PCDUnitParams<G: Group, const ARITY: usize, const R: usize>{
     pub(crate) ccs: CCS<G>,
     pub(crate) limb_width: usize,
@@ -50,11 +51,14 @@ impl<G: Group, const ARITY: usize, const R: usize> PCDUnitParams<G, ARITY, R> {
 
 #[derive(Clone)]
 pub struct PCDUnitInputs<G: Group> {
-    params: G::Base, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
+    params: G::Scalar, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
     z0: Vec<G::Base>,
     zi: Option<Vec<Vec<G::Base>>>,
-    lcccs: Option<Vec<LCCCS<G>>>,
-    cccs: Option<Vec<CCCS<G>>>,
+    lcccs: Option<Vec<LCCCSForBase<G>>>,
+    cccs: Option<Vec<CCCSForBase<G>>>,
+    relaxed_r1cs_instance: Option<Vec<RelaxedR1CSInstance<G>>>,
+    r1cs_instance: Option<R1CSInstance<G>>,
+    new_lcccs_C: Option<PointForScalar<G>>,
     T: Option<Vec<Commitment<G>>>,
 }
 
@@ -62,11 +66,14 @@ impl<G: Group> PCDUnitInputs<G> {
     /// Create new inputs/witness for the verification circuit
     #[allow(clippy::too_many_arguments)]
     pub fn new(
-        params: G::Base,
+        params: G::Scalar,
         z0: Vec<G::Base>,
         zi: Option<Vec<Vec<G::Base>>>,
-        lcccs: Option<Vec<LCCCS<G>>>,
-        cccs: Option<Vec<CCCS<G>>>,
+        lcccs: Option<Vec<LCCCSForBase<G>>>,
+        cccs: Option<Vec<CCCSForBase<G>>>,
+        relaxed_r1cs_instance: Option<Vec<RelaxedR1CSInstance<G>>>,
+        r1cs_instance: Option<R1CSInstance<G>>,
+        new_lcccs_C: Option<PointForScalar<G>>,
         T: Option<Vec<Commitment<G>>>,
     ) -> Self {
         Self {
@@ -75,6 +82,9 @@ impl<G: Group> PCDUnitInputs<G> {
             zi,
             lcccs,
             cccs,
+            relaxed_r1cs_instance,
+            r1cs_instance,
+            new_lcccs_C,
             T,
         }
     }
@@ -126,16 +136,19 @@ where
         mut cs: CS,
     ) -> Result<
         (
-            AllocatedProof<G>,
-            Vec<AllocatedNum<G::Base>>,
-            Vec<Vec<AllocatedNum<G::Base>>>,
-            Vec<AllocatedLCCCSPrimaryPart<G>>,
-            Vec<AllocatedCCCSPrimaryPart<G>>,
-            Vec<AllocatedPoint<G>>,
+            AllocatedNum<G::Base>, Vec<AllocatedNum<G::Base>>, Vec<Vec<AllocatedNum<G::Base>>>,
+            Vec<AllocatedLCCCS<G>>, Vec<AllocatedCCCS<G>>, AllocatedProof<G>,
+            Vec<AllocatedRelaxedR1CSInstance<G>>, AllocatedR1CSInstance<G>,
+            AllocatedSimulatedPoint<G>, Vec<AllocatedPoint<G>>,
         ),
         SynthesisError,
     > {
         // Allocate the params
+        let params = alloc_scalar_as_base::<G, _>(
+            cs.namespace(|| "params"),
+            self.inputs.get().map_or(None, |inputs| Some(inputs.params)),
+        )?;
+
         let nimfs_proof = AllocatedProof::from_witness(
             cs.namespace(|| "params"),
             &self.proof,
@@ -152,81 +165,119 @@ where
 
         // Allocate zi. If inputs.zi is not provided (base case) allocate default value 0
         let z_i = (0..ARITY).map(|i|
-                (0..R).map(|j|
-                    AllocatedNum::alloc(cs.namespace(|| format!("zi is {j}th_io for {i}th lcccs")), || {
-                        Ok(self.inputs.get()?
-                            .zi
-                            .as_ref()
-                            .map(|zs| zs[i][j])
-                            .unwrap_or_default()
-                        )
-                    })
-                ).collect::<Result<Vec<_>, SynthesisError>>()
-            )
+            (0..R).map(|j|
+                AllocatedNum::alloc(cs.namespace(|| format!("zi is {j}th_io for {i}th lcccs")), || {
+                    Ok(self.inputs.get()?
+                        .zi
+                        .as_ref()
+                        .map(|zs| zs[i][j])
+                        .unwrap_or_default()
+                    )
+                })
+            ).collect::<Result<Vec<_>, SynthesisError>>()
+        )
             .collect::<Result<Vec<Vec<AllocatedNum<G::Base>>>, SynthesisError>>()?;
 
         // Allocate the running instance
         let lcccs = (0..R)
             .map(|i| {
-                AllocatedLCCCSPrimaryPart::alloc(
+                AllocatedLCCCS::alloc(
                     cs.namespace(|| format!("allocate instance lcccs_{i} to fold")),
                     self
                         .inputs
                         .as_ref()
-                        .and_then(|inputs| inputs.lcccs.as_ref().map(|U|&U[i])),
+                        .and_then(|inputs| inputs.lcccs.as_ref().map(|U| &U[i])),
                     ARITY,
-                    self.params.limb_width,
-                    self.params.n_limbs,
+                    (self.params.ccs.t, self.params.ccs.s),
+                    (self.params.limb_width, self.params.n_limbs),
                 )
             })
-            .collect::<Result<Vec<AllocatedLCCCSPrimaryPart<G>>, _>>()?;
+            .collect::<Result<Vec<AllocatedLCCCS<G>>, _>>()?;
 
         // Allocate the instance to be folded in
         let cccs = (0..R)
             .map(|i| {
-                AllocatedCCCSPrimaryPart::alloc(
+                AllocatedCCCS::alloc(
                     cs.namespace(|| format!("allocate instance cccs_{i} to fold")),
                     self
                         .inputs
                         .as_ref()
                         .and_then(|inputs| inputs.cccs.as_ref().map(|u|&u[i])),
+                    self.params.limb_width,
+                    self.params.n_limbs,
                     ARITY,
                 )
             })
-            .collect::<Result<Vec<AllocatedCCCSPrimaryPart<G>>, _>>()?;
-        
+            .collect::<Result<Vec<AllocatedCCCS<G>>, _>>()?;
+        let relaxed_r1cs_inst = (0..R)
+            .map(|i| {
+                AllocatedRelaxedR1CSInstance::alloc(
+                    cs.namespace(|| format!("Allocate {i}th relaxed r1cs instance")),
+                    self.inputs.as_ref().and_then(|inputs| {
+                        inputs.relaxed_r1cs_instance.as_ref().and_then(|U| Some(&U[i]))
+                    }),
+                    self.params.limb_width,
+                    self.params.n_limbs,
+                )
+            })
+            .collect::<Result<Vec<AllocatedRelaxedR1CSInstance<G>>, _>>()?;
+        let r1cs_inst = AllocatedR1CSInstance::alloc(
+            cs.namespace(|| "Allocate r1cs instance"),
+            self.inputs.as_ref().and_then(|inputs| {
+                inputs.r1cs_instance.as_ref().and_then(|u| Some(u))
+            }),
+        )?;
+
+        let new_lcccs_C = AllocatedSimulatedPoint::alloc(
+            cs.namespace(|| "Allocate new lcccs C"),
+            self.inputs.as_ref().and_then(|inputs| {
+                inputs.new_lcccs_C.as_ref().and_then(|U| Some(*U))
+            }),
+            self.params.limb_width,
+            self.params.n_limbs,
+        )?;
+
         let T = (0..R)
             .map(|i| {
                 AllocatedPoint::alloc(
                     cs.namespace(|| format!("Allocate T_{i}")),
-                    self
-                        .inputs
+                    self.inputs
                         .as_ref()
-                        .and_then(|inputs| inputs.T.as_ref().map(|T| T[i].clone().to_coordinates())),
+                        .and_then(|inputs|
+                            inputs.T.as_ref().map(|T| T[i].clone().to_coordinates())
+                        )
                 )
             })
             .collect::<Result<Vec<AllocatedPoint<G>>, _>>()?;
-        
         for (i,t) in T.iter().enumerate(){
             t.check_on_curve(cs.namespace(|| format!("check T_{i} on curve")))?;
         }
 
-        Ok((nimfs_proof, z_0, z_i, lcccs, cccs, T))
+        Ok((
+            params, z_0, z_i,
+            lcccs, cccs, nimfs_proof,
+            relaxed_r1cs_inst, r1cs_inst, new_lcccs_C, T
+        ))
     }
 
     /// Synthesizes base case and returns the new `LCCCS`
     fn synthesize_genesis_based_nimfs<CS: ConstraintSystem<<G as Group>::Base>>(
         &self,
         mut cs: CS,
-    ) -> Result<AllocatedLCCCSPrimaryPart<G>, SynthesisError> {
-        AllocatedLCCCSPrimaryPart::default(
+    ) -> Result<AllocatedLCCCS<G>, SynthesisError> {
+        let primary_part = AllocatedLCCCSPrimaryPart::default(
             cs.namespace(|| "Allocate lcccs default"),
             ARITY,
             self.params.ccs.s,
             self.params.ccs.t,
+        )?;
+        let second_part = AllocatedSimulatedPoint::default(
+            cs.namespace(|| "Allocate second part default Simulated Point"),
             self.params.limb_width,
             self.params.n_limbs,
-        )
+        )?;
+
+        Ok(AllocatedLCCCS::new(primary_part, second_part))
     }
 
     /// Synthesizes base case and returns the new `relaxed r1cs instance`
@@ -255,8 +306,9 @@ where
     ) -> Result<Vec<AllocatedNum<G::Base>>, SynthesisError> {
         // Allocate all witnesses
         let (
-            nimfs_proof, z_0, z_i,
-            lcccs, cccs, _t
+            params, z_0, z_i,
+            lcccs, cccs, nimfs_proof,
+            relaxed_r1cs_inst, r1cs_inst, new_lcccs_second_part, T
         ) = self.alloc_witness(cs.namespace(|| "allocate the circuit witness"))?;
 
         // Compute variable indicating if this is the base case
@@ -268,42 +320,57 @@ where
         for (i, c) in cccs.iter().enumerate() {
             is_base_case_flags.push(c.is_null(cs.namespace(|| format!("{}th cccs", i)), &zero)?);
         }
-        let is_base_case = multi_and(cs.namespace(|| "is base case"), &is_base_case_flags)?;
+        let is_base_case = Boolean::from(multi_and(cs.namespace(|| "is base case"), &is_base_case_flags)?);
+
+        let is_correct_public_input = self.check_public_input(
+            cs.namespace(|| "is_correct_public_input"),
+            &cccs,
+            &params,
+            &z_0,
+            &z_i,
+            &lcccs,
+            &relaxed_r1cs_inst
+        )?;
+        Boolean::enforce_equal(
+            cs.namespace(|| "is_correct_public_input or is_base case"),
+            &is_correct_public_input,
+            &is_base_case.not()
+        )?;
 
         // Synthesize the circuit for the base case and get the new running instance
         let lcccs_base = self.synthesize_genesis_based_nimfs(cs.namespace(|| "generate base case based nimfs"))?;
 
         // Synthesize the circuit for the non-base case and get the new running
         // instance along with a boolean indicating if all checks have passed
-        let (Unew_non_base, check_non_base_pass) = self
+        let (new_lcccs_primary_part, check_non_base_pass) = self
             .synthesize_based_nimfs(
                 cs.namespace(|| "generate non base case based nimfs"),
                 &self.params,
-                &z_0,
-                &z_i.iter().map(|z| &z[..]).collect::<Vec<_>>(),
-                lcccs,
-                cccs,
+                &lcccs.into_iter().map(|l| l.primary_part).collect::<Vec<_>>(),
+                &cccs.into_iter().map(|l| l.primary_part).collect::<Vec<_>>(),
                 &nimfs_proof
             )?;
+        let new_lcccs = AllocatedLCCCS::new(new_lcccs_primary_part, new_lcccs_second_part);
 
         // Either check_non_base_pass=true or we are in the base case
-        let should_be_false = AllocatedBit::nor(
+        Boolean::enforce_equal(
             cs.namespace(|| "check_non_base_pass nor base_case"),
-            &check_non_base_pass,
+            &check_non_base_pass.into(),
             &is_base_case,
         )?;
-        cs.enforce(
-            || "check_non_base_pass nor base_case = false",
-            |lc| lc + should_be_false.get_variable(),
-            |lc| lc + CS::one(),
-            |lc| lc,
-        );
 
-        // Compute the U_new
-        let lcccs = lcccs_base.conditionally_select(
+        // Update the lcccs and relaxed R1CS instance
+        let new_lcccs = lcccs_base.conditionally_select(
             cs.namespace(|| "compute U_new"),
-            &Unew_non_base,
+            &new_lcccs,
             &Boolean::from(is_base_case.clone()),
+        )?;
+        let relaxed_r1cs_inst = self.synthesize_based_nifs(
+            cs.namespace(|| "generate non base case based nifs"),
+            &params,
+            relaxed_r1cs_inst,
+            &r1cs_inst,
+            T,
         )?;
 
         // select correct z
@@ -315,38 +382,34 @@ where
                     cs.namespace(|| format!("select {i}th input to F")),
                     &z_0,
                     &z,
-                    &Boolean::from(is_base_case),
+                    &Boolean::from(is_base_case.clone()),
                 )
             )
             .collect::<Result<Vec<Vec<_>>, SynthesisError>>()?;
 
-        let updated_z = self
+        let new_z = self
             .step_circuit
             .synthesize(
                 &mut cs.namespace(|| "F"),
                 &z_input.iter().map(|z| &z[..]).collect::<Vec<_>>()
             )?;
-        if updated_z.len() != ARITY {
+        if new_z.len() != ARITY {
             return Err(SynthesisError::IncompatibleLengthVector(
                 "z_next".to_string(),
             ));
         }
 
-        // Compute the new hash H(params, Unew, i+1, z0, z_{i+1})
-        let mut ro = G::ROCircuit::new(self.ro_consts, NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * ARITY);
-        // ro.absorb(&params);
-        for e in &z_0 {
-            ro.absorb(e);
-        }
-        for e in &updated_z {
-            ro.absorb(e);
-        }
-        lcccs.absorb_in_ro(cs.namespace(|| "absorb U_new"), &mut ro)?;
-        let hash_bits = ro.squeeze(cs.namespace(|| "output hash bits"), NUM_HASH_BITS)?;
-        let hash = le_bits_to_num(cs.namespace(|| "convert hash to num"), &hash_bits)?;
-        hash.inputize(cs.namespace(|| "output new hash of this circuit"))?; // this circuit's x1
+        let hash = self.commit_explicit_public_input(
+            cs.namespace(|| "commit public input"),
+            &params,
+            &z_0,
+            &new_z,
+            &new_lcccs,
+            &relaxed_r1cs_inst
+        )?;
+        hash.inputize(cs.namespace(|| "output new hash of this circuit"))?; // this circuit's public input
 
-        Ok(updated_z)
+        Ok(new_z)
     }
 
 
@@ -357,10 +420,8 @@ where
         &self,
         mut cs: CS,
         params: &PCDUnitParams<G1, ARITY, R>,
-        _z_0: &[AllocatedNum<G::Base>],
-        _z_i: &[&[AllocatedNum<G::Base>]],
-        lcccs: Vec<AllocatedLCCCSPrimaryPart<G>>,
-        cccs: Vec<AllocatedCCCSPrimaryPart<G>>,
+        lcccs: &[AllocatedLCCCSPrimaryPart<G>],
+        cccs: &[AllocatedCCCSPrimaryPart<G>],
         proof: &AllocatedProof<G>,
     ) -> Result<(AllocatedLCCCSPrimaryPart<G>, AllocatedBit), SynthesisError> {
         assert!(!lcccs.is_empty());
@@ -444,12 +505,12 @@ where
             &proof.sum_check_proof.proofs.last().unwrap().evaluations,
         )?;
         let check_pass2 = alloc_num_equals(
-            cs.namespace(|| "check that the g(r_x') from the sumcheck proof is equal to the computed c from sigmas&thetas"),
+            cs.namespace(|| "check c"),
             &c,
             &g_on_rxprime_from_sumcheck_last_eval
         )?;
         let check_pass3 = alloc_num_equals(
-            cs.namespace(|| "check that the g(r_x') from the sumcheck proof is equal to the computed c from sigmas&thetas"),
+            cs.namespace(|| "check evaluation"),
             &sumcheck_subclaim.expected_evaluation,
             &g_on_rxprime_from_sumcheck_last_eval
         )?;
@@ -458,16 +519,15 @@ where
         let rho = transcript.squeeze(cs.namespace(|| "alloc rho"), b"rho")?;
 
         // Run NIMFS Verifier part 1
-        let new_lcccs = multi_folding_with_primary_part(
+        let mut new_lcccs = multi_folding_with_primary_part(
             cs.namespace(|| "compute fold of U and u"),
             &lcccs,
             &cccs,
             rho,
             &proof.sigmas,
             &proof.thetas,
-            self.params.limb_width,
-            self.params.n_limbs,
         )?;
+        new_lcccs.r_x = r_x_prime;
 
         let check_pass = AllocatedBit::and(
             cs.namespace(|| "check pass 1 and 2"),
@@ -483,62 +543,101 @@ where
         Ok((new_lcccs, check_pass))
     }
 
-
-
-    /// Synthesizes non base case and returns the new relaxed `R1CSInstance`
+    /// Synthesizes non-base case and returns the new relaxed `R1CSInstance`
     /// And a boolean indicating if all checks pass
     #[allow(clippy::too_many_arguments)]
     fn synthesize_based_nifs<CS: ConstraintSystem<<G as Group>::Base>>(
         &self,
         mut cs: CS,
         params: &AllocatedNum<G::Base>,
-        U: Vec<AllocatedRelaxedR1CSInstance<G>>,
+        mut U: Vec<AllocatedRelaxedR1CSInstance<G>>,
         u: &AllocatedR1CSInstance<G>,
-        T: Vec<AllocatedPoint<G>>,
-        arity: usize,
-    ) -> Result<(AllocatedRelaxedR1CSInstance<G>, AllocatedBit), SynthesisError> {
+        mut T: Vec<AllocatedPoint<G>>,
+    ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
         assert!(!U.is_empty());
-        // Check that u.x[0] = Hash(params, U)
-        let Len = U.len();
-        let mut ro = G::ROCircuit::new(
-            self.ro_consts.clone(),
-            NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * arity,
-        );
-        ro.absorb(params);
-        for x in 0..Len{
-            U[x].absorb_in_ro(cs.namespace(|| "absorb U"), &mut ro)?;
-        }
-
-        let hash_bits = ro.squeeze(cs.namespace(|| "Input hash"), NUM_HASH_BITS)?;
-        let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), &hash_bits)?;
-        let check_pass = alloc_num_equals(
-            cs.namespace(|| "check consistency of u.X[0] with H(params, U, i)"),
-            &u.X0,
-            &hash,
-        )?;
+        let last_T = T.pop().unwrap();
+        let mut U_folded_U = U.remove(0);
 
         // Run NIFS Verifier
-        let mut U_temp = U[0].clone();
-        for x in 1..Len{
-            U_temp = U_temp.fold_with_relaxed_r1cs(
+        use itertools::Itertools;
+        for (U, T) in U.into_iter().zip_eq(T){
+            U_folded_U = U_folded_U.fold_with_relaxed_r1cs(
                 cs.namespace(|| "compute fold of U and U"),
                 params,
-                &U[x],
-                &T[x-1],
+                &U,
+                &T,
                 self.ro_consts.clone(),
                 self.params.limb_width,
                 self.params.n_limbs
             )?;
         }
-        let U_fold = U_temp.fold_with_r1cs(
+        let U_folded = U_folded_U.fold_with_r1cs(
             cs.namespace(|| "compute fold of U and u"),
             params,
             u,
-            &T[Len-1],
+            &last_T,
             self.ro_consts.clone(),
             self.params.limb_width,
             self.params.n_limbs,
         )?;
-        Ok((U_fold, check_pass))
+
+        Ok(U_folded)
+    }
+
+    /// check the correctness of the all cccs's X(public input)
+    pub fn check_public_input<CS: ConstraintSystem<<G as Group>::Base>>(
+        &self,
+        mut cs: CS,
+        cccs: &[AllocatedCCCS<G>],
+        params: &AllocatedNum<G::Base>,
+        z_0: &[AllocatedNum<G::Base>],
+        new_z: &[Vec<AllocatedNum<G::Base>>],
+        lcccs: &[AllocatedLCCCS<G>],
+        relaxed_r1cs_inst: &[AllocatedRelaxedR1CSInstance<G>],
+    ) -> Result<Boolean, SynthesisError> {
+        let mut is_correct = Vec::new();
+        for (i, c) in cccs.iter()
+            .enumerate()
+        {
+            let public_hash = self.commit_explicit_public_input(
+                cs.namespace(|| "commit public input"),
+                params,
+                &z_0,
+                &new_z[i],
+                &lcccs[i],
+                &relaxed_r1cs_inst[i]
+            )?;
+            let is_eq = alloc_num_equals(
+                cs.namespace(|| "check public_hash"),
+                &public_hash,
+                &c.primary_part.Xs[0]
+            )?;
+            is_correct.push(is_eq.into())
+        }
+        multi_and(cs.namespace(|| "is correct public inputs"), &is_correct).map(Into::into)
+    }
+
+    /// Compute the new hash H(params, z0, z, lcccs, relaxed R1CS instance)
+    pub fn commit_explicit_public_input<CS: ConstraintSystem<<G as Group>::Base>>(
+        &self,
+        mut cs: CS,
+        params: &AllocatedNum<G::Base>,
+        z_0: &[AllocatedNum<G::Base>],
+        new_z: &[AllocatedNum<G::Base>],
+        lcccs: &AllocatedLCCCS<G>,
+        relaxed_r1cs_inst: &AllocatedRelaxedR1CSInstance<G>,
+    ) -> Result<AllocatedNum<G::Base>, SynthesisError> {
+        let num_absorbs = 1 + 2 * ARITY + lcccs.element_num() + relaxed_r1cs_inst.element_num();
+        let mut ro = G::ROCircuit::new(self.ro_consts.clone(), num_absorbs);
+
+        ro.absorb(params);
+        z_0.iter().for_each(|e| ro.absorb(e));
+        new_z.iter().for_each(|e| ro.absorb(e));
+        lcccs.absorb_in_ro(cs.namespace(|| "absorb lcccs"), &mut ro)?;
+        relaxed_r1cs_inst.absorb_in_ro(cs.namespace(|| "absorb relaxed r1cs instance"), &mut ro)?;
+
+        let hash_bits = ro.squeeze(cs.namespace(|| "output hash bits"), NUM_HASH_BITS)?;
+        let hash = le_bits_to_num(cs.namespace(|| "convert hash to num"), &hash_bits)?;
+        Ok(hash)
     }
 }

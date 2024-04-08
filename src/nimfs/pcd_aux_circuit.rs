@@ -4,13 +4,11 @@ use bellpepper_core::num::AllocatedNum;
 use ff::Field;
 use serde::Serialize;
 use crate::compute_digest;
-use crate::constants::NUM_HASH_BITS;
 use crate::gadgets::cccs::{AllocatedCCCSSecondPart, AllocatedLCCCSSecondPart};
-use crate::gadgets::utils::le_bits_to_num;
 use crate::nimfs::ccs::cccs::CCCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::r1cs::R1CSShape;
-use crate::traits::{Group, ROCircuitTrait, ROConstantsCircuit, TEConstantsCircuit};
+use crate::traits::{Group, ROConstantsCircuit, TEConstantsCircuit};
 
 #[derive(Clone)]
 pub struct NovaAuxiliaryInputs<G: Group> {
@@ -125,7 +123,7 @@ impl<G: Group> NovaAuxiliarySecondCircuit<G> {
     pub fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
         self,
         cs: &mut CS,
-    ) -> Result<AllocatedNum<G::Base>, SynthesisError> {
+    ) -> Result<(), SynthesisError> {
         // Allocate all witnesses
         let (lcccs, cccs, rho)
             = self.alloc_witness(cs.namespace(|| "allocate the circuit witness"))?;
@@ -134,22 +132,20 @@ impl<G: Group> NovaAuxiliarySecondCircuit<G> {
             cs.namespace(|| "calc new lcccs"),
             &lcccs,
             &cccs,
-            rho
+            &rho
         )?;
 
-        let mut ro = G::ROCircuit::new(self.ro_consts, (lcccs.len() + cccs.len() + 1) * 3);
-        for c in lcccs {
-            c.absorb_in_ro(&mut ro)?;
+        // TODO: compress ecc point to x0, x1, x2, ... , ys_parity(the bit that expresses the parity of all y encode to element)
+        // public input
+        rho.inputize(cs.namespace(|| "pub rho"))?;
+        for (i, x) in lcccs.into_iter().enumerate() {
+            x.C.inputize(cs.namespace(|| format!("{i}th lcccs")))?;
         }
-        for c in cccs {
-            c.absorb_in_ro(&mut ro)?;
+        for (i, x) in cccs.into_iter().enumerate() {
+            x.C.inputize(cs.namespace(|| format!("{i}th cccs")))?;
         }
-        new_lcccs.absorb_in_ro(&mut ro)?;
-        let hash_bits = ro.squeeze(cs.namespace(|| "output hash bits"), NUM_HASH_BITS)?;
-        let hash = le_bits_to_num(cs.namespace(|| "convert hash to num"), &hash_bits)?;
+        new_lcccs.C.inputize(cs.namespace(|| "pub new lcccs"))?;
 
-        hash.inputize(cs.namespace(|| "output new hash of this circuit"))?; // this circuit's x1
-
-        Ok(hash)
+        Ok(())
     }
 }

@@ -389,7 +389,7 @@ impl<G: Group> TranscriptCircuitEngineTrait<G> for PoseidonTranscriptCircuit<G> 
           _ => panic!("Wrong type of input. We should have never reached there"),
         })
         .collect::<Vec<AllocatedBit>>();
-    let truncated_output = le_bits_to_num(cs.namespace(|| "bits to hash"), &output_bits[..NUM_HASH_BITS])?;
+    let truncated_output = le_bits_to_num(ns.namespace(|| "bits to hash"), &output_bits[..NUM_HASH_BITS])?;
 
     // update state
     self.round = self.round.checked_add(1).unwrap();

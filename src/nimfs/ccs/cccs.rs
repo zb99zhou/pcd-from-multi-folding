@@ -4,17 +4,17 @@ use ff::Field;
 use serde::{Deserialize, Serialize};
 use crate::{CE, Commitment, CommitmentKey};
 use crate::errors::NovaError;
-
 use crate::nimfs::ccs::ccs::{CCSError, CCS};
 use crate::nimfs::ccs::util::compute_sum_Mz;
-
 use crate::nimfs::espresso::virtual_polynomial::VirtualPolynomial;
 use crate::nimfs::util::hypercube::BooleanHypercube;
 use crate::nimfs::util::mle::matrix_to_mle;
 use crate::nimfs::util::mle::vec_to_mle;
 use crate::r1cs::R1CSShape;
-use crate::traits::commitment::CommitmentEngineTrait;
+use crate::traits::commitment::{CommitmentEngineTrait, CommitmentTrait};
 use crate::traits::Group;
+
+pub type PointForScalar<C> = (<C as Group>::Scalar, <C as Group>::Scalar, bool);
 
 /// Witness for the LCCCS & CCCS, containing the w vector, and the r_w used as randomness in the Pedersen commitment.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,6 +50,29 @@ pub struct CCCS<C: Group> {
     pub C: Commitment<C>,
     // Public input/output
     pub x: Vec<C::Scalar>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(bound = "")]
+#[allow(clippy::upper_case_acronyms)]
+pub struct CCCSForBase<C: Group> {
+    // Commitment to witness
+    pub C: (C::Scalar, C::Scalar, bool),
+    // Public input/output
+    pub x: Vec<C::Base>,
+}
+
+impl<G1, G2> From<CCCS<G1>> for CCCSForBase<G2>
+    where
+        G1: Group<Base = <G2 as Group>::Scalar>,
+        G2: Group<Base = <G1 as Group>::Scalar>,
+{
+    fn from(value: CCCS<G1>) -> Self {
+        Self {
+            C: value.C.to_coordinates(),
+            x: value.x,
+        }
+    }
 }
 
 impl<C: Group> CCCS<C> {

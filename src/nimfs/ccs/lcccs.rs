@@ -11,7 +11,7 @@ use crate::nimfs::espresso::virtual_polynomial::VirtualPolynomial;
 use crate::nimfs::util::mle::matrix_to_mle;
 use crate::nimfs::util::mle::vec_to_mle;
 use crate::spartan::polys::multilinear::MultiLinearPolynomial;
-use crate::traits::commitment::CommitmentEngineTrait;
+use crate::traits::commitment::{CommitmentEngineTrait, CommitmentTrait};
 use crate::traits::{Group, ROTrait, TranscriptReprTrait};
 
 /// Linearized Committed CCS instance
@@ -34,6 +34,38 @@ pub struct LCCCS<C: Group> {
     pub r_x: Vec<C::Scalar>,
     // Vector of v_i
     pub v: Vec<C::Scalar>,
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(bound = "")]
+#[allow(clippy::upper_case_acronyms)]
+pub struct LCCCSForBase<C: Group> {
+    // Commitment to witness
+    pub C: (C::Scalar, C::Scalar, bool),
+    // Relaxation factor of z for folded LCCCS
+    pub u: C::Base,
+    // Public input/output
+    pub x: Vec<C::Base>,
+    // Random evaluation point for the v_i
+    pub r_x: Vec<C::Base>,
+    // Vector of v_i
+    pub v: Vec<C::Base>,
+}
+
+impl<G1, G2> From<LCCCS<G1>> for LCCCSForBase<G2>
+    where
+        G1: Group<Base = <G2 as Group>::Scalar>,
+        G2: Group<Base = <G1 as Group>::Scalar>,
+{
+    fn from(value: LCCCS<G1>) -> Self {
+        Self {
+            C: value.C.to_coordinates(),
+            u: value.u,
+            x: value.x,
+            r_x: value.r_x,
+            v: value.v,
+        }
+    }
 }
 
 impl<G: Group> LCCCS<G> {

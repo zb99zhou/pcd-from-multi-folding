@@ -182,6 +182,12 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     })
   }
 
+  pub fn element_num(&self) -> usize {
+    2 * 3 + 1
+        + self.X0.params.n_limbs
+        + self.X1.params.n_limbs
+  }
+
   /// Absorb the provided instance in the RO
   pub fn absorb_in_ro<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
