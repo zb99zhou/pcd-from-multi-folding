@@ -169,7 +169,8 @@ macro_rules! impl_traits {
 
     impl PrimeFieldExt for $name::Scalar {
       fn from_uniform(bytes: &[u8]) -> Self {
-        let bytes_arr: [u8; 64] = bytes.try_into().unwrap();
+        let mut bytes_arr = [0u8; 64];
+        bytes_arr[64 - bytes.len()..64].copy_from_slice(bytes);
         $name::Scalar::from_uniform_bytes(&bytes_arr)
       }
     }

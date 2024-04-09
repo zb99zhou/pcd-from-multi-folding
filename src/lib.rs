@@ -916,23 +916,13 @@ where
 
     // First, handling PCD auxiliary secondary circuit
     let (nimfs_proof, lcccs, lcccs_witness) =
-        if let Some(ref w_lcccs) = self.w_lcccs {
-          NIMFS::prove(
-            &mut transcript_p,
-            &self.lcccs,
-            &self.cccs,
-            w_lcccs,
-            self.w_cccs.as_ref().unwrap(),
-          )
-        }else {
-          NIMFS::prove(
-            &mut transcript_p,
-            &self.lcccs,
-            &self.cccs,
-            &[],
-            &[],
-          )
-        };
+        NIMFS::prove(
+          &mut transcript_p,
+          &self.lcccs,
+          &self.cccs,
+          self.w_lcccs.as_ref().unwrap(),
+          self.w_cccs.as_ref().unwrap(),
+        );
 
     let pp_aux = NovaAuxiliaryParams::<G2>::new(self.aux_r1cs_shape.clone(), ARITY);
     let rho = scalar_as_base::<G1>(transcript_p.get_last_state());
@@ -1831,7 +1821,7 @@ mod tests {
 
     let (
       node_3_lcccs, node_3_cccs, node_3_relaxed_r1cs_instance,
-      node_3_lcccs_witness, node_3_cccs_witness, node_3_folded_relaxed_r1cs_witness,
+      node_3_lcccs_witness, node_3_cccs_witness, _node_3_folded_relaxed_r1cs_witness,
       node_3_zi, node_3_ck
     ) = node_3.prove_step().map_err(|_| NovaError::SynthesisError)?;
 
