@@ -26,6 +26,7 @@ pub mod provider;
 pub mod spartan;
 pub mod traits;
 pub mod pcd_compressed_snark;
+pub mod pcd_node;
 
 use crate::bellpepper::{
   r1cs::{NovaShape, NovaWitness},
@@ -49,13 +50,6 @@ use traits::{
   snark::RelaxedR1CSSNARKTrait,
   AbsorbInROTrait, Group, ROConstants, ROConstantsCircuit, ROTrait,
 };
-use crate::nimfs::ccs::cccs::{CCCS, CCSWitness};
-use crate::nimfs::ccs::lcccs::LCCCS;
-use crate::nimfs::multifolding::{NIMFS, ProofWitness};
-use crate::nimfs::pcd_aux_circuit::{NovaAuxiliaryParams, NovaAuxiliaryInputs, NovaAuxiliarySecondCircuit};
-use crate::nimfs::pcd_circuit::{PCDUnitInputs, PCDUnitParams, PCDUnitPrimaryCircuit};
-use crate::traits::{TEConstantsCircuit, TranscriptEngineTrait};
-use crate::traits::circuit::TrivialTestCircuit;
 
 /// A type that holds public parameters of Nova
 #[derive(Serialize, Deserialize)]
@@ -824,269 +818,6 @@ fn compute_digest<G: Group, T: Serialize>(o: &T) -> G::Scalar {
   digest
 }
 
-#[derive(Clone)]
-pub struct PCDNode<G1, G2, const ARITY: usize, const R: usize>
-where
-    G1: Group<Base = <G2 as Group>::Scalar>,
-    G2: Group<Base = <G1 as Group>::Scalar>,
-{
-  lcccs: Vec<LCCCS<G1>>,
-  cccs: Vec<CCCS<G1>>,
-  z0: Vec<G1::Scalar>,
-  zi: Option<Vec<Vec<G1::Scalar>>>,
-  relaxed_r1cs_instance: Option<Vec<RelaxedR1CSInstance<G2>>>,
-  w_lcccs: Option<Vec<CCSWitness<G1>>>,
-  w_cccs: Option<Vec<CCSWitness<G1>>>,
-  w_relaxed_r1cs: Option<Vec<RelaxedR1CSWitness<G2>>>,
-  ro_consts_circuit_primary: ROConstantsCircuit<G2>,
-  ro_consts_circuit_secondary: ROConstantsCircuit<G1>,
-  te_consts_circuit_primary: TEConstantsCircuit<G2>,
-  te_consts_circuit_secondary: TEConstantsCircuit<G1>,
-  aux_r1cs_shape: R1CSShape<G2>,
-  ro_consts_secondary: ROConstants<G2>,
-  pp_pcd: PCDUnitParams<G1, ARITY, R>,
-}
-
-impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
-where
-    G1: Group<Base = <G2 as Group>::Scalar>,
-    G2: Group<Base = <G1 as Group>::Scalar>,
-{
-  pub fn new(
-    lcccs: Vec<LCCCS<G1>>,
-    cccs: Vec<CCCS<G1>>,
-    z0: Vec<G1::Scalar>,
-    zi: Option<Vec<Vec<G1::Scalar>>>,
-    relaxed_r1cs_instance: Option<Vec<RelaxedR1CSInstance<G2>>>,
-    w_lcccs: Option<Vec<CCSWitness<G1>>>,
-    w_cccs: Option<Vec<CCSWitness<G1>>>,
-    w_relaxed_r1cs: Option<Vec<RelaxedR1CSWitness<G2>>>,
-  ) -> Self {
-    let ro_consts_circuit_primary: ROConstantsCircuit<G2> = Default::default();
-    let ro_consts_circuit_secondary: ROConstantsCircuit<G1> = Default::default();
-    let te_consts_circuit_primary: TEConstantsCircuit<G2> = Default::default();
-    let te_consts_circuit_secondary: TEConstantsCircuit<G1> = Default::default();
-
-    let aux_circuit_setup_input = NovaAuxiliaryInputs::<G1>::new(
-      None,
-      None,
-      None,
-      None,
-      R,
-    );
-    let aux_circuit_setup = NovaAuxiliarySecondCircuit::<G1>::new(
-      ro_consts_circuit_secondary.clone(),
-      te_consts_circuit_secondary.clone(),
-      aux_circuit_setup_input,
-    );
-    let mut cs_aux_helper: ShapeCS<G2> = ShapeCS::new();
-    let _ = aux_circuit_setup.clone().synthesize(&mut cs_aux_helper);
-    let (aux_r1cs_shape, _) = cs_aux_helper.r1cs_shape();
-
-    let ro_consts_secondary: ROConstants<G2> = Default::default();
-    let pp_pcd = PCDUnitParams::<G1, ARITY, R>::new(BN_LIMB_WIDTH, BN_N_LIMBS);
-    Self{
-      lcccs,
-      cccs,
-      z0,
-      zi,
-      relaxed_r1cs_instance,
-      w_lcccs,
-      w_cccs,
-      w_relaxed_r1cs,
-      ro_consts_circuit_primary,
-      ro_consts_circuit_secondary,
-      te_consts_circuit_primary,
-      te_consts_circuit_secondary,
-      aux_r1cs_shape,
-      ro_consts_secondary,
-      pp_pcd,
-    }
-  }
-
-  pub fn prove_step(&self) -> Result<
-    (
-      LCCCS<G1>, CCCS<G1>, RelaxedR1CSInstance<G2>,
-      CCSWitness<G1>, CCSWitness<G1>, RelaxedR1CSWitness<G2>,
-      Vec<G1::Scalar>, CommitmentKey<G1>
-    ), NovaError
-  > {
-    let mut transcript_p = <G1 as Group>::TE::new(Default::default(), b"multifolding");
-    transcript_p.squeeze(b"init").unwrap();
-
-    // First, handling PCD auxiliary secondary circuit
-    let (nimfs_proof, lcccs, lcccs_witness) =
-        if let Some(ref w_lcccs) = self.w_lcccs {
-          NIMFS::prove(
-            &mut transcript_p,
-            &self.lcccs,
-            &self.cccs,
-            w_lcccs,
-            self.w_cccs.as_ref().unwrap(),
-          )
-        }else {
-          NIMFS::prove(
-            &mut transcript_p,
-            &self.lcccs,
-            &self.cccs,
-            &[],
-            &[],
-          )
-        };
-
-    let pp_aux = NovaAuxiliaryParams::<G2>::new(self.aux_r1cs_shape.clone(), ARITY);
-    let rho = scalar_as_base::<G1>(transcript_p.get_last_state());
-    let aux_circuit_input = NovaAuxiliaryInputs::<G1>::new(
-      Some(pp_aux.digest),
-      Some(self.lcccs.to_vec()),
-      Some(self.cccs.to_vec()),
-      Some(rho),
-      R,
-    );
-
-    let aux_circuit = NovaAuxiliarySecondCircuit::<G1>::new(
-      self.ro_consts_circuit_secondary.clone(),
-      self.te_consts_circuit_secondary.clone(),
-      aux_circuit_input,
-    );
-    let mut cs_secondary = SatisfyingAssignment::<G2>::new();
-    let _ = aux_circuit.clone().synthesize(&mut cs_secondary);
-
-    // TODO: move these codes into setup
-    let (aux_r1cs_shape, aux_commit_key) = {
-      let mut cs_aux_helper: ShapeCS<G2> = ShapeCS::new();
-      let _ = aux_circuit.clone().synthesize(&mut cs_aux_helper);
-      cs_aux_helper.r1cs_shape()
-    };
-
-    let (aux_r1cs_instance, aux_r1cs_witness) = cs_secondary.r1cs_instance_and_witness(&aux_r1cs_shape, &aux_commit_key)?;
-
-    // Then, handling the PCD primary circuit
-    let (nifs_proof, (relaxed_r1cs_instance, relaxed_r1cs_witness) ) =
-        NIFS::prove_with_multi_relaxed(
-          &aux_commit_key,
-          &self.ro_consts_secondary,
-          &pp_aux.digest,
-          &aux_r1cs_shape,
-          self.relaxed_r1cs_instance.as_ref().unwrap(),
-          self.w_relaxed_r1cs.as_ref().unwrap(),
-          &aux_r1cs_instance,
-          &aux_r1cs_witness,
-        )?;
-
-    let pcd_circuit_input= PCDUnitInputs::<G2>::new(
-      scalar_as_base::<G1>(self.pp_pcd.digest),
-      self.z0.clone(),
-      self.zi.clone(),
-      Some(self.lcccs.iter().cloned().map(Into::into).collect()),
-      Some(self.cccs.iter().cloned().map(Into::into).collect()),
-      self.relaxed_r1cs_instance.clone(),
-      Some(aux_r1cs_instance),
-      Some(lcccs.C.to_coordinates()),
-      Some(
-        nifs_proof
-          .iter()
-          .map(|p| Commitment::<G2>::decompress(&p.comm_T))
-          .collect::<Result<Vec<_>, NovaError>>()?
-      ),
-    );
-
-    // TODO: move test_circuit into a field SC: StepCircuit of Self
-    let test_circuit = TrivialTestCircuit::<<G2 as Group>::Base>::default();
-    let pcd_circuit = PCDUnitPrimaryCircuit::<
-      '_,
-      G2,
-      G1,
-      TrivialTestCircuit<<G2 as Group>::Base>, ARITY, R,
-    >::new(
-      &self.pp_pcd,
-      Some(pcd_circuit_input),
-      &test_circuit,
-      ProofWitness::<G2>::from(nimfs_proof),
-      self.ro_consts_circuit_primary.clone(),
-      self.te_consts_circuit_primary.clone(),
-    );
-
-    let mut cs_primary = SatisfyingAssignment::<G1>::new();
-    let zi_primary = pcd_circuit.clone().synthesize(&mut cs_primary)
-        .unwrap()
-        .iter()
-        .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
-        .collect::<Result<Vec<<G1 as Group>::Scalar>, NovaError>>()?;
-
-    // TODO: move these codes into setup
-    let (r1cs_shape_pcd, ck_pcd) = {
-      let mut cs_helper: ShapeCS<G1> = ShapeCS::new();
-      let _ = pcd_circuit.synthesize(&mut cs_helper);
-      cs_helper.r1cs_shape()
-    };
-
-    let (cccs, cccs_witness) = cs_primary.cccs_and_witness(&r1cs_shape_pcd, &ck_pcd)?;
-    Ok((
-      lcccs,
-      cccs,
-      relaxed_r1cs_instance,
-      lcccs_witness,
-      cccs_witness,
-      relaxed_r1cs_witness,
-      zi_primary,
-      ck_pcd,
-    ))
-  }
-
-  pub fn verify(
-    &self,
-    lcccs: &LCCCS<G1>,
-    U: &RelaxedR1CSInstance<G2>,
-    zi_primary: &[G1::Scalar],
-    ck: &CommitmentKey<G1>,
-    u: &CCCS<G1>,
-    w_cccs: &CCSWitness<G1>,
-    w_lcccs: &CCSWitness<G1>,
-  ) -> Result<Vec<G1::Scalar>, NovaError> {
-    if U.X.len() != 2
-    {
-      return Err(NovaError::ProofVerifyError);
-    }
-
-    let ro_consts: ROConstants<G2> = Default::default();
-
-    let mut hasher1 = <G2 as Group>::RO::new(
-      ro_consts.clone(),
-      NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * ARITY,
-    );
-    hasher1.absorb(self.pp_pcd.digest);
-    for e in zi_primary {
-      hasher1.absorb(*e);
-    }
-
-    U.absorb_in_ro(&mut hasher1);
-
-    let mut hasher2 = <G2 as Group>::RO::new(
-      ro_consts.clone(),
-      NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * ARITY,
-    );
-    hasher2.absorb(self.pp_pcd.digest);
-    for e in zi_primary {
-      hasher2.absorb(*e);
-    }
-
-    lcccs.absorb_in_ro::<G2>(&mut hasher2);
-    let hash_U = hasher1.squeeze(NUM_HASH_BITS);
-    let hash_lcccs = hasher2.squeeze(NUM_HASH_BITS);
-    if hash_U != scalar_as_base::<G1>(u.x[0]) || hash_lcccs != scalar_as_base::<G1>(u.x[0])
-    {
-      return Err(NovaError::ProofVerifyError);
-    }
-
-    let res_lcccs = lcccs.check_relation(ck, w_lcccs);
-    let res_cccs = u.check_relation(ck, w_cccs);
-    res_lcccs.map_err(|_| NovaError::ProofVerifyError)?;
-    res_cccs.map_err(|_| NovaError::ProofVerifyError)?;
-    Ok(zi_primary.to_vec())
-
-  }
-}
 
 #[cfg(test)]
 mod tests {
@@ -1108,6 +839,8 @@ mod tests {
   use traits::circuit::TrivialTestCircuit;
   use crate::nimfs::ccs::cccs::CCCS;
   use crate::nimfs::ccs::lcccs::LCCCS;
+  use crate::pcd_compressed_snark::PCDPublicParams;
+  use crate::pcd_node::PCDNode;
 
   #[derive(Clone, Debug, Default)]
   struct CubicCircuit<F: PrimeField> {
@@ -1787,7 +1520,19 @@ mod tests {
       G2: Group<Base = <G1 as Group>::Scalar>,
   {
     let z0 = vec![<G1 as Group>::Scalar::ZERO; IO_NUM];
-    let node_1 = PCDNode::<G1, G2, IO_NUM, R>::new(
+    let pp = PCDPublicParams::<
+        G1,
+        G2,
+        TrivialTestCircuit<<G1 as Group>::Scalar>,
+        IO_NUM,
+        R,
+        >::setup();
+
+    let node_1 = PCDNode::<
+        G1,
+        G2,
+        IO_NUM,
+        R>::new(
       vec![LCCCS::<G1>::default_for_pcd(),LCCCS::<G1>::default_for_pcd()],
       vec![CCCS::<G1>::default_for_pcd(),CCCS::<G1>::default_for_pcd()],
       z0.clone(),
@@ -1797,18 +1542,19 @@ mod tests {
       None,
       None,
     );
+
     let (
       node_1_lcccs, node_1_cccs, node_1_relaxed_r1cs_instance,
       node_1_lcccs_witness, node_1_cccs_witness, node_1_relaxed_r1cs_witness,
       node_1_zi, _
-    ) = node_1.prove_step().map_err(|_| NovaError::SynthesisError)?;
+    ) = node_1.prove_step(&pp).map_err(|_| NovaError::SynthesisError)?;
 
     let node_2 = node_1.clone();
     let (
       node_2_lcccs, node_2_cccs, node_2_relaxed_r1cs_instance,
       node_2_lcccs_witness, node_2_cccs_witness, node_2_folded_relaxed_r1cs_witness,
       node_2_zi, _
-    ) = node_2.prove_step().map_err(|_| NovaError::SynthesisError)?;
+    ) = node_2.prove_step(&pp).map_err(|_| NovaError::SynthesisError)?;
 
     let node_3_input_lcccs = vec![node_1_lcccs, node_2_lcccs];
     let node_3_input_cccs = vec![node_1_cccs, node_2_cccs];
@@ -1818,7 +1564,11 @@ mod tests {
     let node_3_cccs_witness = vec![node_1_cccs_witness, node_2_cccs_witness];
     let node_3_relaxed_r1cs_witness = vec![node_1_relaxed_r1cs_witness, node_2_folded_relaxed_r1cs_witness];
 
-    let node_3 = PCDNode::<G1, G2, IO_NUM, R>::new(
+    let node_3 = PCDNode::<
+        G1,
+        G2,
+        IO_NUM,
+        R>::new(
       node_3_input_lcccs,
       node_3_input_cccs,
       z0,
@@ -1833,16 +1583,18 @@ mod tests {
       node_3_lcccs, node_3_cccs, node_3_relaxed_r1cs_instance,
       node_3_lcccs_witness, node_3_cccs_witness, node_3_folded_relaxed_r1cs_witness,
       node_3_zi, node_3_ck
-    ) = node_3.prove_step().map_err(|_| NovaError::SynthesisError)?;
+    ) = node_3.prove_step(&pp).map_err(|_| NovaError::SynthesisError)?;
 
     let res = node_3.verify(
       &node_3_lcccs,
       &node_3_relaxed_r1cs_instance,
+      &node_3_folded_relaxed_r1cs_witness,
       &node_3_zi,
       &node_3_ck,
       &node_3_cccs,
       &node_3_cccs_witness,
       &node_3_lcccs_witness,
+      &pp,
     );
 
     assert!(res.is_ok());
