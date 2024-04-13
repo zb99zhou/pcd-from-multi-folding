@@ -149,9 +149,9 @@ where
             self.inputs.get().map_or(None, |inputs| Some(inputs.params)),
         )?;
 
-        let nimfs_proof = AllocatedProof::from_witness(
+        let nimfs_proof = AllocatedProof::from_witness::<_, R>(
             cs.namespace(|| "params"),
-            &self.proof,
+            Some(&self.proof),
         )?;
 
         // Allocate z0

@@ -78,8 +78,8 @@ impl<G: Group> CCS<G> {
             m: 0,
             n: 0,
             l: 0,
-            s: 0,
-            s_prime: 0,
+            s: 16, // TODO: Needs to be tested and then adjusted
+            s_prime: 14, // TODO: Needs to be tested and then adjusted
             t: 3,
             q: 2,
             d: 2,
