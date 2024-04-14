@@ -231,7 +231,7 @@ pub trait TranscriptReprTrait<G: Group>: Send + Sync {
   }
 
   /// returns a circuit allocated number representation of self to be added to the transcript
-  fn to_transcript_nums(&self) -> Vec<AllocatedNum<G::Base>> {
+  fn to_transcript_nums<CS: ConstraintSystem<G::Base>>(&self, _cs: CS) -> Result<Vec<AllocatedNum<G::Base>>, SynthesisError> {
     unimplemented!()
   }
 }

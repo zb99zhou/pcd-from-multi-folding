@@ -10,6 +10,8 @@
 use crate::nimfs::espresso::errors::ArithErrors;
 use rayon::prelude::*;
 use std::{cmp::max, collections::HashMap, marker::PhantomData, ops::Add, sync::Arc};
+use bellpepper_core::{ConstraintSystem, SynthesisError};
+use bellpepper_core::num::AllocatedNum;
 use ff::PrimeField;
 use crate::spartan::polys::multilinear::MultiLinearPolynomial;
 use crate::traits::{Group, PrimeFieldExt};
@@ -86,6 +88,22 @@ impl<C: Group, F: PrimeField> crate::traits::TranscriptReprTrait<C> for VPAuxInf
             .chunks(31)
             .map(|b| C::Scalar::from_uniform(b))
             .collect()
+    }
+
+    fn to_transcript_nums<CS: ConstraintSystem<C::Base>>(&self, mut cs: CS) -> Result<Vec<AllocatedNum<C::Base>>, SynthesisError> {
+        let bytes1 = self.max_degree.to_be_bytes();
+        let bytes2 = self.num_variables.to_be_bytes();
+        let mut bytes = Vec::with_capacity(bytes1.len() + bytes2.len());
+        bytes.extend(bytes1);
+        bytes.extend(bytes2);
+        bytes
+            .chunks(31)
+            .enumerate()
+            .map(|(i, b)| AllocatedNum::alloc(
+                cs.namespace(|| format!("{i}th transcript num")),
+                || Ok(C::Base::from_uniform(b))
+            ))
+            .collect::<Result<Vec<_>, SynthesisError>>()
     }
 }
 

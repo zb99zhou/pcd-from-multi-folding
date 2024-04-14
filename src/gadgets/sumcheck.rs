@@ -79,8 +79,8 @@ pub struct AllocatedIOPProverMessage<C: Group> {
 }
 
 impl<C: Group> TranscriptReprTrait<C> for  AllocatedIOPProverMessage<C> {
-    fn to_transcript_nums(&self) -> Vec<AllocatedNum<C::Base>> {
-        self.evaluations.clone()
+    fn to_transcript_nums<CS: ConstraintSystem<C::Base>>(&self, _cs: CS) -> Result<Vec<AllocatedNum<C::Base>>, SynthesisError> {
+        Ok(self.evaluations.clone())
     }
 }
 
