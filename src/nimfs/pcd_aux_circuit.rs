@@ -8,7 +8,7 @@ use crate::gadgets::cccs::{AllocatedCCCSSecondPart, AllocatedLCCCSSecondPart};
 use crate::nimfs::ccs::cccs::CCCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::r1cs::R1CSShape;
-use crate::traits::{Group, ROConstantsCircuit, TEConstantsCircuit};
+use crate::traits::Group;
 
 #[derive(Clone)]
 pub struct NovaAuxiliaryInputs<G: Group> {
@@ -21,8 +21,6 @@ pub struct NovaAuxiliaryInputs<G: Group> {
 
 #[derive(Clone)]
 pub struct NovaAuxiliarySecondCircuit<G: Group> {
-    ro_consts: ROConstantsCircuit<G>,
-    te_consts: TEConstantsCircuit<G>,
     inputs: NovaAuxiliaryInputs<G>,
 }
 
@@ -70,13 +68,9 @@ impl<G: Group> NovaAuxiliaryParams<G> {
 
 impl<G: Group> NovaAuxiliarySecondCircuit<G> {
     pub fn new(
-        ro_consts: ROConstantsCircuit<G>,
-        te_consts: TEConstantsCircuit<G>,
         inputs: NovaAuxiliaryInputs<G>,
     ) -> Self{
         Self{
-            ro_consts,
-            te_consts,
             inputs,
         }
     }

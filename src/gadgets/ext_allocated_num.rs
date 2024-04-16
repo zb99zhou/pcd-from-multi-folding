@@ -143,6 +143,10 @@ impl<Scalar: PrimeField> ExtendFunc<Scalar> for AllocatedNum<Scalar> {
             || Ok(Scalar::ONE)
         )?;
 
+        if constant == 0 {
+            return Ok(res);
+        }
+
         let constant_bits_num = constant.log_2();
 
         let mut temp = self.clone();

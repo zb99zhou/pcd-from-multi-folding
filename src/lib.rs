@@ -837,10 +837,7 @@ mod tests {
   use core::marker::PhantomData;
   use ff::PrimeField;
   use traits::circuit::TrivialTestCircuit;
-  use crate::nimfs::ccs::cccs::CCCS;
-  use crate::nimfs::ccs::lcccs::LCCCS;
-  use crate::pcd_compressed_snark::PCDPublicParams;
-  use crate::pcd_node::PCDNode;
+
 
   #[derive(Clone, Debug, Default)]
   struct CubicCircuit<F: PrimeField> {

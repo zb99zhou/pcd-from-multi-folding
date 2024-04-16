@@ -35,6 +35,22 @@ impl<G: Group, const ARITY: usize, const R: usize> PCDUnitParams<G, ARITY, R> {
     pub fn new(
         limb_width: usize,
         n_limbs: usize,
+        ccs: CCS<G>,
+    ) -> Self {
+        let mut pp = Self {
+            ccs,
+            limb_width,
+            n_limbs,
+            digest: G::Scalar::ZERO,
+        };
+        pp.digest = compute_digest::<G, PCDUnitParams<G, ARITY, R>>(&pp);
+
+        pp
+    }
+
+    pub fn default_for_pcd(
+        limb_width: usize,
+        n_limbs: usize,
     ) -> Self {
         let mut pp = Self {
             ccs: CCS::default_r1cs(),
@@ -46,7 +62,6 @@ impl<G: Group, const ARITY: usize, const R: usize> PCDUnitParams<G, ARITY, R> {
 
         pp
     }
-
 }
 
 #[derive(Clone)]
@@ -60,6 +75,7 @@ pub struct PCDUnitInputs<G: Group> {
     r1cs_instance: Option<R1CSInstance<G>>,
     new_lcccs_C: Option<PointForScalar<G>>,
     T: Option<Vec<Commitment<G>>>,
+    proof: Option<NIMFSProof<G>>,
 }
 
 impl<G: Group> PCDUnitInputs<G> {
@@ -75,6 +91,7 @@ impl<G: Group> PCDUnitInputs<G> {
         r1cs_instance: Option<R1CSInstance<G>>,
         new_lcccs_C: Option<PointForScalar<G>>,
         T: Option<Vec<Commitment<G>>>,
+        proof: Option<NIMFSProof<G>>,
     ) -> Self {
         Self {
             params,
@@ -86,6 +103,7 @@ impl<G: Group> PCDUnitInputs<G> {
             r1cs_instance,
             new_lcccs_C,
             T,
+            proof,
         }
     }
 }
@@ -101,7 +119,6 @@ where
     ro_consts: ROConstantsCircuit<G>, // random oracle
     te_consts: TEConstantsCircuit<G>, // Transcript Engine
     inputs: Option<PCDUnitInputs<G>>,
-    proof: NIMFSProof<G>,
     step_circuit: &'a SC, // The function that is applied for each step
 }
 
@@ -116,14 +133,12 @@ where
         params: &'a PCDUnitParams<G1, ARITY, R>,
         inputs: Option<PCDUnitInputs<G>>,
         step_circuit: &'a SC,
-        proof: NIMFSProof<G>,
         ro_consts: ROConstantsCircuit<G>,
         te_consts: TEConstantsCircuit<G>,
     ) -> Self {
         Self {
             params,
             inputs,
-            proof,
             step_circuit,
             ro_consts,
             te_consts,
@@ -151,7 +166,7 @@ where
 
         let nimfs_proof = AllocatedProof::from_witness::<_, R>(
             cs.namespace(|| "params"),
-            Some(&self.proof),
+            self.clone().inputs.unwrap().proof.as_ref(),
         )?;
 
         // Allocate z0
@@ -164,8 +179,8 @@ where
             .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
         // Allocate zi. If inputs.zi is not provided (base case) allocate default value 0
-        let z_i = (0..ARITY).map(|i|
-            (0..R).map(|j|
+        let z_i = (0..R).map(|i|
+            (0..ARITY).map(|j|
                 AllocatedNum::alloc(cs.namespace(|| format!("zi is {j}th_io for {i}th lcccs")), || {
                     Ok(self.inputs.get()?
                         .zi
@@ -337,9 +352,10 @@ where
             &is_base_case.not()
         )?;
 
+        // cs.print_vers_cons();
         // Synthesize the circuit for the base case and get the new running instance
         let lcccs_base = self.synthesize_genesis_based_nimfs(cs.namespace(|| "generate base case based nimfs"))?;
-
+        // cs.print_vers_cons();
         // Synthesize the circuit for the non-base case and get the new running
         // instance along with a boolean indicating if all checks have passed
         let (new_lcccs_primary_part, check_non_base_pass) = self

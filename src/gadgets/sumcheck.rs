@@ -32,7 +32,7 @@ impl<G: Group> AllocatedProof<G> {
         let mut proofs = Vec::new();
         for i in 0..default_ccs.s {
             proofs.push(AllocatedIOPProverMessage {
-                evaluations: (0..default_ccs.d + 1)
+                evaluations: (0..default_ccs.d + 2)
                     .map(|j|AllocatedNum::alloc(
                         cs.namespace(|| format!("alloc {i}-{j}th sigmas")),
                         || proof_witness.get().map(|n| n.proofs[i][j])

@@ -347,13 +347,11 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     n_limbs: usize,
   ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
     // Compute r:
-    let mut ro = G::ROCircuit::new(ro_consts, NUM_FE_FOR_RO);
+    let num_for_ro = 1 + 2 * (3 + 3 + 1 + 2 * n_limbs);
+    let mut ro = G::ROCircuit::new(ro_consts, num_for_ro);
     ro.absorb(params);
     self.absorb_in_ro(cs.namespace(|| "absorb running instance"), &mut ro)?;
     U.absorb_in_ro(cs.namespace(|| "absorb U"), &mut ro)?;
-    ro.absorb(&U.E.x);
-    ro.absorb(&U.E.y);
-    ro.absorb(&U.E.is_infinity);
     let r_bits = ro.squeeze(cs.namespace(|| "r bits"), NUM_CHALLENGE_BITS)?;
     let r = le_bits_to_num(cs.namespace(|| "r"), &r_bits)?;
 

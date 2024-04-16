@@ -1,4 +1,6 @@
 use std::marker::PhantomData;
+use bellpepper_core::ConstraintSystem;
+use ff::Field;
 
 use serde::{Deserialize, Serialize};
 use crate::bellpepper::r1cs::NovaShape;
@@ -13,10 +15,10 @@ use crate::nimfs::ccs::ccs::CCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::nimfs::multifolding::{MultiFolding, NIMFS, Proof};
 use crate::nimfs::pcd_aux_circuit::{NovaAuxiliaryInputs, NovaAuxiliaryParams, NovaAuxiliarySecondCircuit};
-use crate::nimfs::pcd_circuit::PCDUnitParams;
+use crate::nimfs::pcd_circuit::{PCDUnitInputs, PCDUnitParams, PCDUnitPrimaryCircuit};
 use crate::r1cs::{ RelaxedR1CSInstance, RelaxedR1CSWitness};
 use crate::traits::{Group, ROConstants, ROConstantsCircuit, ROTrait, TEConstantsCircuit, TranscriptEngineTrait};
-use crate::traits::circuit::StepCircuit;
+use crate::traits::circuit::{StepCircuit, TrivialTestCircuit};
 use crate::traits::snark::{LinearCommittedCCSTrait, RelaxedR1CSSNARKTrait};
 
 pub struct PCDPublicParams<G1, G2, SC, const ARITY: usize, const R: usize>
@@ -67,20 +69,51 @@ where
             R,
         );
         let aux_circuit_setup = NovaAuxiliarySecondCircuit::<G1>::new(
-            ro_consts_circuit_secondary.clone(),
-            te_consts_circuit_secondary.clone(),
             aux_circuit_setup_input,
         );
         let mut cs_aux_helper: ShapeCS<G2> = ShapeCS::new();
         let _ = aux_circuit_setup.clone().synthesize(&mut cs_aux_helper);
         let (aux_r1cs_shape, ck_secondary) = cs_aux_helper.r1cs_shape();
-
-        let default_ccs = CCS::<G1>::default_r1cs();
-        let ck_primary = default_ccs.commitment_key();
-
-        let augmented_circuit_params_primary: PCDUnitParams<G1, ARITY, R> = PCDUnitParams::new(BN_LIMB_WIDTH, BN_N_LIMBS);
+        println!("Created aux_r1cs_shape");
+        cs_aux_helper.print_vers_cons();
+        let circuit_params_primary_for_setup: PCDUnitParams<G1, ARITY, R> = PCDUnitParams::default_for_pcd(BN_LIMB_WIDTH, BN_N_LIMBS);
         let augmented_circuit_params_secondary: NovaAuxiliaryParams<G2> = NovaAuxiliaryParams::new(aux_r1cs_shape, ARITY);
-
+        println!("Created 2nd pp");
+        let test_circuit = TrivialTestCircuit::<<G2 as Group>::Base>::default();
+        let pcd_circuit_setup_input = PCDUnitInputs::<G2>::new(
+            scalar_as_base::<G1>(circuit_params_primary_for_setup.digest),
+            vec![G2::Base::ZERO; ARITY],
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+        let pcd_circuit_setup = PCDUnitPrimaryCircuit::<
+            '_,
+            G2,
+            G1,
+            TrivialTestCircuit<<G2 as Group>::Base>, ARITY, R,
+        >::new(
+            &circuit_params_primary_for_setup,
+            Some(pcd_circuit_setup_input),
+            &test_circuit,
+            ro_consts_circuit_primary.clone(),
+            te_consts_circuit_primary.clone(),
+        );
+        let mut cs_pcd_helper: ShapeCS<G1> = ShapeCS::new();
+        let _ = pcd_circuit_setup.clone().synthesize(&mut cs_pcd_helper);
+        let (r1cs_primary, ck_primary) = cs_pcd_helper.r1cs_shape();
+        println!("Created r1cs_primary");
+        println!("num_cons:{}, num_vars:{}", r1cs_primary.num_cons, r1cs_primary.num_vars);
+        // assert!(false);
+        let ccs_primary = CCS::<G1>::from(r1cs_primary.clone());
+        println!("Created ccs_primary");
+        let augmented_circuit_params_primary = PCDUnitParams::<G1, ARITY, R>::new(BN_LIMB_WIDTH, BN_N_LIMBS, ccs_primary.clone());
+        println!("Created 1st pp");
         let _p_c = PhantomData::<SC>::default();
 
         Self{

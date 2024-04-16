@@ -75,24 +75,14 @@ impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
 
         // First, handling PCD auxiliary secondary circuit
         let (nimfs_proof, lcccs, lcccs_witness) =
-            if let Some(ref w_lcccs) = self.w_lcccs {
-                NIMFS::prove(
-                    &mut transcript_p,
-                    &self.lcccs,
-                    &self.cccs,
-                    w_lcccs,
-                    self.w_cccs.as_ref().unwrap(),
-                )
-            }else {
-                NIMFS::prove(
-                    &mut transcript_p,
-                    &self.lcccs,
-                    &self.cccs,
-                    &[],
-                    &[],
-                )
-            };
-
+            NIMFS::prove(
+                &mut transcript_p,
+                &self.lcccs,
+                &self.cccs,
+                self.w_lcccs.as_ref().unwrap(),
+                self.w_cccs.as_ref().unwrap(),
+            );
+        println!("Finish NIMFS prove");
         let pp_aux = NovaAuxiliaryParams::<G2>::new(pp.augmented_circuit_params_secondary.r1cs_shape.clone() , ARITY);
         let rho = scalar_as_base::<G1>(transcript_p.get_last_state());
         let aux_circuit_input = NovaAuxiliaryInputs::<G1>::new(
@@ -104,8 +94,6 @@ impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
         );
 
         let aux_circuit = NovaAuxiliarySecondCircuit::<G1>::new(
-            pp.ro_consts_circuit_secondary.clone(),
-            pp.te_consts_circuit_secondary.clone(),
             aux_circuit_input,
         );
         let mut cs_secondary = SatisfyingAssignment::<G2>::new();
@@ -132,7 +120,7 @@ impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
                 &aux_r1cs_instance,
                 &aux_r1cs_witness,
             )?;
-
+        println!("Finish NIFS prove_with_multi_relaxed");
         let pcd_circuit_input= PCDUnitInputs::<G2>::new(
             scalar_as_base::<G1>(pp.augmented_circuit_params_primary.digest),
             self.z0.clone(),
@@ -148,6 +136,7 @@ impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
                     .map(|p| Commitment::<G2>::decompress(&p.comm_T))
                     .collect::<Result<Vec<_>, NovaError>>()?
             ),
+            Some(ProofWitness::<G2>::from(nimfs_proof)),
         );
 
         // TODO: move test_circuit into a field SC: StepCircuit of Self
@@ -161,7 +150,6 @@ impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
             &pp.augmented_circuit_params_primary,
             Some(pcd_circuit_input),
             &test_circuit,
-            ProofWitness::<G2>::from(nimfs_proof),
             pp.ro_consts_circuit_primary.clone(),
             pp.te_consts_circuit_primary.clone(),
         );
@@ -267,19 +255,20 @@ impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
 mod test {
     use ff::Field;
     use crate::errors::NovaError;
-use crate::nimfs::ccs::cccs::CCCS;
-use crate::nimfs::ccs::lcccs::LCCCS;
-use crate::pcd_compressed_snark::PCDPublicParams;
-use crate::pcd_node::PCDNode;
-use crate::r1cs::RelaxedR1CSInstance;
-use crate::traits::circuit::TrivialTestCircuit;
-use crate::traits::Group;
+    use crate::nimfs::ccs::cccs::{CCCS, CCSWitness};
+    use crate::nimfs::ccs::lcccs::LCCCS;
+    use crate::pcd_compressed_snark::PCDPublicParams;
+    use crate::pcd_node::PCDNode;
+    use crate::r1cs::RelaxedR1CSInstance;
+    use crate::traits::circuit::TrivialTestCircuit;
+    use crate::traits::Group;
 
     fn test_pcd_with<G1, G2, const R: usize, const IO_NUM: usize>() -> Result<(), NovaError>
         where
             G1: Group<Base = <G2 as Group>::Scalar>,
             G2: Group<Base = <G1 as Group>::Scalar>,
     {
+        println!("Start pcd_test");
         let z0 = vec![<G1 as Group>::Scalar::ZERO; IO_NUM];
         let pp = PCDPublicParams::<
             G1,
@@ -289,27 +278,30 @@ use crate::traits::Group;
             R,
         >::setup();
 
+        println!("Finished pp setup");
         let node_1 = PCDNode::<
             G1,
             G2,
             IO_NUM,
             R>::new(
-            vec![LCCCS::<G1>::default_for_pcd(),LCCCS::<G1>::default_for_pcd()],
-            vec![CCCS::<G1>::default_for_pcd(),CCCS::<G1>::default_for_pcd()],
+            vec![LCCCS::<G1>::default_for_pcd(pp.augmented_circuit_params_primary.ccs.clone()),LCCCS::<G1>::default_for_pcd(pp.augmented_circuit_params_primary.ccs.clone())],
+            vec![CCCS::<G1>::default_for_pcd(pp.augmented_circuit_params_primary.ccs.clone()),CCCS::<G1>::default_for_pcd(pp.augmented_circuit_params_primary.ccs.clone())],
             z0.clone(),
             None,
             Some(vec![RelaxedR1CSInstance::<G2>::default_for_pcd(), RelaxedR1CSInstance::<G2>::default_for_pcd()]),
-            None,
-            None,
+            Some(vec![CCSWitness::<G1>::default_for_pcd(&pp.augmented_circuit_params_primary.ccs), CCSWitness::<G1>::default_for_pcd(&pp.augmented_circuit_params_primary.ccs)]),
+            Some(vec![CCSWitness::<G1>::default_for_pcd(&pp.augmented_circuit_params_primary.ccs), CCSWitness::<G1>::default_for_pcd(&pp.augmented_circuit_params_primary.ccs)]),
             None,
         );
 
+        println!("Finished node_1 new");
         let (
             node_1_lcccs, node_1_cccs, node_1_relaxed_r1cs_instance,
             node_1_lcccs_witness, node_1_cccs_witness, node_1_relaxed_r1cs_witness,
             node_1_zi, _
         ) = node_1.prove_step(&pp).map_err(|_| NovaError::SynthesisError)?;
 
+        println!("Finished node_1 prove_step");
         let node_2 = node_1.clone();
         let (
             node_2_lcccs, node_2_cccs, node_2_relaxed_r1cs_instance,

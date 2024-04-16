@@ -1,4 +1,4 @@
-use std::ops::Add;
+use std::ops::{Add};
 use std::sync::Arc;
 use ff::Field;
 use serde::{Deserialize, Serialize};
@@ -30,6 +30,14 @@ impl<C: Group> CCSWitness<C> {
             Err(NovaError::InvalidWitnessLength)
         } else {
             Ok(Self { w: W.to_owned(), r_w: Default::default() })
+        }
+    }
+
+    pub fn default_for_pcd(ccs: &CCS<C>) -> Self
+    {
+        Self {
+            w: vec![C::Scalar::ZERO; ccs.n],
+            r_w: Default::default(),
         }
     }
 
@@ -84,11 +92,11 @@ impl<C: Group> CCCS<C> {
         }
     }
 
-    pub fn default_for_pcd() -> Self{
+    pub fn default_for_pcd(ccs: CCS<C>) -> Self{
         Self{
             C: Commitment::<C>::default(),
             x: vec![C::Scalar::ZERO],
-            ccs: CCS::<C>::default_r1cs(),
+            ccs,
         }
     }
 

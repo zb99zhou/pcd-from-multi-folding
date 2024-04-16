@@ -69,15 +69,14 @@ impl<G1, G2> From<LCCCS<G1>> for LCCCSForBase<G2>
 }
 
 impl<G: Group> LCCCS<G> {
-    pub fn default_for_pcd() -> Self {
-        let default_r1cs_ccs = CCS::<G>::default_r1cs();
-        Self {
+    pub fn default_for_pcd(ccs: CCS<G>) -> Self {
+         Self {
             C: Commitment::<G>::default(),
             u: G::Scalar::ZERO,
             x: vec![G::Scalar::ZERO],
-            r_x: vec![G::Scalar::ZERO; default_r1cs_ccs.s],
-            v: vec![G::Scalar::ZERO; default_r1cs_ccs.t],
-            ccs: default_r1cs_ccs,
+            r_x: vec![G::Scalar::ZERO; ccs.s],
+            v: vec![G::Scalar::ZERO; ccs.t],
+            ccs,
         }
     }
 }

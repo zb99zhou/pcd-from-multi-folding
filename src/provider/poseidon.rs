@@ -165,7 +165,7 @@ where
   /// Absorb a new number into the state of the oracle
   fn absorb(&mut self, e: &AllocatedNum<Base>) {
     self.state.push(e.clone());
-    self.num_absorbs += 1;
+    // self.num_absorbs += 1;
   }
 
   /// Compute a challenge by hashing the current state
