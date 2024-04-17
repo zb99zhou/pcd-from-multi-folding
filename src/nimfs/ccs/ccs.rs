@@ -55,11 +55,12 @@ pub struct CCS<G: Group> {
 
 impl<G: Group> From<R1CSShape<G>> for CCS<G> {
     fn from(value: R1CSShape<G>) -> Self {
-        let mut A = vec![vec![G::Scalar::default(); value.num_vars]; value.num_cons];
-        let mut B = A.clone();
-        let mut C = A.clone();
+        let total_col_num = value.num_vars + value.num_io + 1;
+        let mut A = vec![vec![G::Scalar::default(); total_col_num]; value.num_cons];
         matrix_type_convert(&mut A, value.A);
+        let mut B = vec![vec![G::Scalar::default(); total_col_num]; value.num_cons];
         matrix_type_convert(&mut B, value.B);
+        let mut C = vec![vec![G::Scalar::default(); total_col_num]; value.num_cons];
         matrix_type_convert(&mut C, value.C);
         CCS::from_r1cs(A, B, C, value.num_io)
     }

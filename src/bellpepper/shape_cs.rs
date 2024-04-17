@@ -3,7 +3,6 @@
 use crate::traits::Group;
 use bellpepper_core::{ConstraintSystem, Index, LinearCombination, SynthesisError, Variable};
 use ff::PrimeField;
-use crate::bellpepper::r1cs::NovaShape;
 
 #[allow(clippy::upper_case_acronyms)]
 /// `ShapeCS` is a `ConstraintSystem` for creating `R1CSShape`s for a circuit.
@@ -57,10 +56,6 @@ impl<G: Group> Default for ShapeCS<G> {
 impl<G: Group> ConstraintSystem<G::Scalar> for ShapeCS<G> {
   type Root = Self;
 
-  fn print_vers_cons(&self) {
-    let (r1cs_shape, _) = self.r1cs_shape();
-    println!("vars:{}, cons:{}",r1cs_shape.num_vars, r1cs_shape.num_cons);
-  }
   fn alloc<F, A, AR>(&mut self, _annotation: A, _f: F) -> Result<Variable, SynthesisError>
   where
     F: FnOnce() -> Result<G::Scalar, SynthesisError>,
