@@ -180,7 +180,7 @@ impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
         w_lcccs: &CCSWitness<G1>,
         pp: &PCDPublicParams<G1, G2, SC, ARITY, R>,
     ) -> Result<Vec<G1::Scalar>, NovaError> {
-        if U.X.len() != 2
+        if U.X.len() != 16
         {
             return Err(NovaError::ProofVerifyError);
         }
