@@ -1,8 +1,7 @@
 use bellpepper_core::ConstraintSystem;
-use crate::bellpepper::shape_cs::ShapeCS;
 use crate::bellpepper::solver::SatisfyingAssignment;
 use crate::{Commitment, CommitmentKey};
-use crate::bellpepper::r1cs::{NovaShape, NovaWitness};
+use crate::bellpepper::r1cs::NovaWitness;
 use crate::constants::{ NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS};
 use crate::errors::NovaError;
 use crate::gadgets::utils::scalar_as_base;
@@ -99,22 +98,15 @@ impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
         let mut cs_secondary = SatisfyingAssignment::<G2>::new();
         let _ = aux_circuit.clone().synthesize(&mut cs_secondary);
 
-        // TODO: move these codes into setup
-        let (aux_r1cs_shape, aux_commit_key) = {
-            let mut cs_aux_helper: ShapeCS<G2> = ShapeCS::new();
-            let _ = aux_circuit.clone().synthesize(&mut cs_aux_helper);
-            cs_aux_helper.r1cs_shape()
-        };
-
-        let (aux_r1cs_instance, aux_r1cs_witness) = cs_secondary.r1cs_instance_and_witness(&aux_r1cs_shape, &aux_commit_key)?;
+        let (aux_r1cs_instance, aux_r1cs_witness) = cs_secondary.r1cs_instance_and_witness(&pp.augmented_circuit_params_secondary.r1cs_shape, &pp.ck_secondary)?;
 
         // Then, handling the PCD primary circuit
         let (nifs_proof, (relaxed_r1cs_instance, relaxed_r1cs_witness) ) =
             NIFS::prove_with_multi_relaxed(
-                &aux_commit_key,
+                &pp.ck_secondary,
                 &pp.ro_consts_secondary,
-                &pp_aux.digest,
-                &aux_r1cs_shape,
+                &pp.augmented_circuit_params_secondary.digest,
+                &pp.augmented_circuit_params_secondary.r1cs_shape,
                 self.relaxed_r1cs_instance.as_ref().unwrap(),
                 self.w_relaxed_r1cs.as_ref().unwrap(),
                 &aux_r1cs_instance,
@@ -162,13 +154,8 @@ impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
             .collect::<Result<Vec<<G1 as Group>::Scalar>, NovaError>>()?;
 
         // TODO: move these codes into setup
-        let (r1cs_shape_pcd, ck_pcd) = {
-            let mut cs_helper: ShapeCS<G1> = ShapeCS::new();
-            let _ = pcd_circuit.synthesize(&mut cs_helper);
-            cs_helper.r1cs_shape()
-        };
 
-        let (cccs, cccs_witness) = cs_primary.cccs_and_witness(&r1cs_shape_pcd, &ck_pcd)?;
+        let (cccs, cccs_witness) = cs_primary.cccs_and_witness(pp.augmented_circuit_params_primary.ccs.clone(), &pp.r1cs_shape_primary, &pp.ck_primary)?;
         Ok((
             lcccs,
             cccs,
@@ -177,7 +164,7 @@ impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
             cccs_witness,
             relaxed_r1cs_witness,
             zi_primary,
-            ck_pcd,
+            pp.ck_primary.clone(),
         ))
     }
 
@@ -254,12 +241,13 @@ impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
 #[cfg(test)]
 mod test {
     use ff::Field;
+    use rand_core::OsRng;
     use crate::errors::NovaError;
-    use crate::nimfs::ccs::cccs::{CCCS, CCSWitness};
-    use crate::nimfs::ccs::lcccs::LCCCS;
+    // use crate::nimfs::ccs::cccs::{CCCS, CCSWitness};
+    // use crate::nimfs::ccs::lcccs::LCCCS;
     use crate::pcd_compressed_snark::PCDPublicParams;
     use crate::pcd_node::PCDNode;
-    use crate::r1cs::RelaxedR1CSInstance;
+    use crate::r1cs::{RelaxedR1CSInstance, RelaxedR1CSWitness};
     use crate::traits::circuit::TrivialTestCircuit;
     use crate::traits::Group;
 
@@ -278,20 +266,26 @@ mod test {
             R,
         >::setup();
 
+        let rng = OsRng;
+        let z = vec![G1::Scalar::ONE; pp.augmented_circuit_params_primary.ccs.n];
+        let (default_cccs, default_w_cccs) = pp.augmented_circuit_params_primary.ccs.to_cccs(rng, &pp.ck_primary, &z);
+        let (default_lcccs, default_w_lcccs) = pp.augmented_circuit_params_primary.ccs.to_lcccs(rng, &pp.ck_primary, &z);
+        let default_relaxed_r1cs_instance = RelaxedR1CSInstance::<G2>::default_for_pcd(pp.augmented_circuit_params_secondary.r1cs_shape.num_io.clone());
+        let default_relaxed_r1cs_witness = RelaxedR1CSWitness::<G2>::default(&pp.augmented_circuit_params_secondary.r1cs_shape);
         println!("Finished pp setup");
         let node_1 = PCDNode::<
             G1,
             G2,
             IO_NUM,
             R>::new(
-            vec![LCCCS::<G1>::default_for_pcd(pp.augmented_circuit_params_primary.ccs.clone()),LCCCS::<G1>::default_for_pcd(pp.augmented_circuit_params_primary.ccs.clone())],
-            vec![CCCS::<G1>::default_for_pcd(pp.augmented_circuit_params_primary.ccs.clone()),CCCS::<G1>::default_for_pcd(pp.augmented_circuit_params_primary.ccs.clone())],
+            vec![default_lcccs.clone(),default_lcccs.clone()],
+            vec![default_cccs.clone(),default_cccs.clone()],
             z0.clone(),
             None,
-            Some(vec![RelaxedR1CSInstance::<G2>::default_for_pcd(), RelaxedR1CSInstance::<G2>::default_for_pcd()]),
-            Some(vec![CCSWitness::<G1>::default_for_pcd(&pp.augmented_circuit_params_primary.ccs), CCSWitness::<G1>::default_for_pcd(&pp.augmented_circuit_params_primary.ccs)]),
-            Some(vec![CCSWitness::<G1>::default_for_pcd(&pp.augmented_circuit_params_primary.ccs), CCSWitness::<G1>::default_for_pcd(&pp.augmented_circuit_params_primary.ccs)]),
-            None,
+            Some(vec![default_relaxed_r1cs_instance.clone(), default_relaxed_r1cs_instance.clone()]),
+            Some(vec![default_w_lcccs.clone(), default_w_lcccs.clone()]),
+            Some(vec![default_w_cccs.clone(), default_w_cccs.clone()]),
+            Some(vec![default_relaxed_r1cs_witness.clone(), default_relaxed_r1cs_witness.clone()]),
         );
 
         println!("Finished node_1 new");

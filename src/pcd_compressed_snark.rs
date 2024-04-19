@@ -15,7 +15,7 @@ use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::nimfs::multifolding::{MultiFolding, NIMFS, Proof};
 use crate::nimfs::pcd_aux_circuit::{NovaAuxiliaryInputs, NovaAuxiliaryParams, NovaAuxiliarySecondCircuit};
 use crate::nimfs::pcd_circuit::{PCDUnitInputs, PCDUnitParams, PCDUnitPrimaryCircuit};
-use crate::r1cs::{ RelaxedR1CSInstance, RelaxedR1CSWitness};
+use crate::r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness};
 use crate::traits::{Group, ROConstants, ROConstantsCircuit, ROTrait, TEConstantsCircuit, TranscriptEngineTrait};
 use crate::traits::circuit::{StepCircuit, TrivialTestCircuit};
 use crate::traits::snark::{LinearCommittedCCSTrait, RelaxedR1CSSNARKTrait};
@@ -29,7 +29,7 @@ pub struct PCDPublicParams<G1, G2, SC, const ARITY: usize, const R: usize>
     // F_arity_primary: usize,
     // F_arity_secondary: usize,
     // ccs_primary: CCS<G1>,
-    // r1cs_shape_secondary: R1CSShape<G2>,
+    pub(crate) r1cs_shape_primary: R1CSShape<G1>,
     pub(crate) ro_consts_primary: ROConstants<G1>,
     pub(crate) ro_consts_secondary: ROConstants<G2>,
     pub(crate) ro_consts_circuit_primary: ROConstantsCircuit<G2>,
@@ -75,6 +75,7 @@ where
             vec![G2::Base::ZERO; ARITY],
             None, None, None, None, None, None, None, None,
         );
+        let test_circuit = TrivialTestCircuit::<<G2 as Group>::Base>::default();
         let pcd_circuit_setup = PCDUnitPrimaryCircuit::<
             '_,
             G2,
@@ -83,19 +84,20 @@ where
         >::new(
             &circuit_params_primary_for_setup,
             Some(pcd_circuit_setup_input),
-            &TrivialTestCircuit::<<G2 as Group>::Base>::default(),
+            &test_circuit,
             ro_consts_circuit_primary.clone(),
             te_consts_circuit_primary.clone(),
         );
         let mut cs_pcd_helper: ShapeCS<G1> = ShapeCS::new();
         let _ = pcd_circuit_setup.synthesize(&mut cs_pcd_helper);
-        let (r1cs_primary, ck_primary) = cs_pcd_helper.r1cs_shape();
-        let ccs_primary = CCS::<G1>::from(r1cs_primary);
-
+        let (r1cs_shape_primary, ck_primary) = cs_pcd_helper.r1cs_shape();
+        println!("num_vars:{}, num_cons:{}", r1cs_shape_primary.num_vars, r1cs_shape_primary.num_cons);
+        let ccs_primary = CCS::<G1>::from(r1cs_shape_primary.clone());
         let augmented_circuit_params_primary = PCDUnitParams::<G1, ARITY, R>::new(BN_LIMB_WIDTH, BN_N_LIMBS, ccs_primary);
         let _p_c = PhantomData::<SC>::default();
 
         Self{
+            r1cs_shape_primary,
             ro_consts_primary,
             ro_consts_secondary,
             ro_consts_circuit_primary,

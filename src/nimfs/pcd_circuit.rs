@@ -424,7 +424,9 @@ where
             &relaxed_r1cs_inst
         )?;
         hash.inputize(cs.namespace(|| "output new hash of this circuit"))?; // this circuit's public input
-
+        // let hash = AllocatedNum::<<G1 as Group>::Scalar>::one(cs.namespace(|| "")).unwrap();
+        // hash.inputize(cs.namespace(|| "output new hash of this circuit"))?; // this circuit's public input
+        // let new_z = vec![AllocatedNum::<<G1 as Group>::Scalar>::one(cs.namespace(|| "")).unwrap(); ARITY];
         Ok(new_z)
     }
 

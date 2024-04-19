@@ -80,11 +80,11 @@ impl<G: Group> R1CS<G> {
 }
 
 impl<G: Group> RelaxedR1CSInstance<G> {
-    pub fn default_for_pcd() -> Self {
+    pub fn default_for_pcd(num_io: usize) -> Self {
         Self {
             comm_W: Commitment::<G>::default(),
             comm_E: Commitment::<G>::default(),
-            X: vec![G::Scalar::ZERO],
+            X: vec![G::Scalar::ZERO; num_io],
             u: G::Scalar::ZERO,
         }
     }
@@ -330,6 +330,7 @@ impl<G: Group> R1CSShape<G> {
     ) -> Result<(Vec<G::Scalar>, Commitment<G>), NovaError> {
         let (AZ_1, BZ_1, CZ_1) = {
             let Z1 = [W1.W.clone(), vec![U1.u], U1.X.clone()].concat();
+            println!("W1.W.len:{}, U1.X.len:{}, self.num_io:{}, self.num_vars:{}", W1.W.len(), U1.X.len(), self.num_io, self.num_vars);
             self.multiply_vec(&Z1)?
         };
 

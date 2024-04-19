@@ -84,9 +84,9 @@ impl<G1, G2> From<CCCS<G1>> for CCCSForBase<G2>
 }
 
 impl<C: Group> CCCS<C> {
-    pub fn new(shape: &R1CSShape<C>, comm_C: Commitment<C>, X: &[C::Scalar]) -> Self {
+    pub fn new(ccs: CCS<C>, comm_C: Commitment<C>, X: &[C::Scalar]) -> Self {
         Self{
-            ccs: shape.to_cccs(),
+            ccs,
             C: comm_C,
             x: X.to_vec(),
         }
