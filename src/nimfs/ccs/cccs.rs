@@ -110,7 +110,7 @@ impl<C: Group> CCCS<C> {
             let mut prod: VirtualPolynomial<C::Scalar> =
                 VirtualPolynomial::<C::Scalar>::new(self.ccs.s);
             for j in self.ccs.S[i].clone() {
-                let M_j = matrix_to_mle(self.ccs.M[j].clone());
+                let M_j = matrix_to_mle(&self.ccs.M[j]);
 
                 let sum_Mz = compute_sum_Mz(M_j, &z_mle, self.ccs.s_prime);
 

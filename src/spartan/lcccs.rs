@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use crate::nimfs::ccs::cccs::CCSWitness;
 use crate::nimfs::ccs::ccs::CCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
-use crate::nimfs::util::vec::Matrix;
+use crate::nimfs::util::spare_matrix::SparseMatrix;
 use crate::traits::snark::LinearCommittedCCSTrait;
 
 /// A type that represents the prover's key
@@ -169,11 +169,9 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
                 |S: &CCS<G>, rx: &[G::Scalar]| -> (Vec<G::Scalar>, Vec<G::Scalar>, Vec<G::Scalar>) {
                     assert_eq!(rx.len(), S.m);
 
-                    let inner = |M: &Matrix<G::Scalar>, M_evals: &mut Vec<G::Scalar>| {
-                        for (row, cols) in M.iter().enumerate() {
-                            for (col, val) in cols.iter().enumerate() {
-                                M_evals[col] += rx[row] * val;
-                            }
+                    let inner = |M: &SparseMatrix<G::Scalar>, M_evals: &mut Vec<G::Scalar>| {
+                        for (row, col, val) in M.iter() {
+                            M_evals[col] += rx[row] * val;
                         }
                     };
 
@@ -399,21 +397,13 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
         };
 
         // compute evaluations of R1CS matrices
-        let multi_evaluate = |M_vec: &[&Matrix<G::Scalar>],
+        let multi_evaluate = |M_vec: &[&SparseMatrix<G::Scalar>],
                               r_x: &[G::Scalar],
                               r_y: &[G::Scalar]|
                               -> Vec<G::Scalar> {
             let evaluate_with_table =
-                |M: &Matrix<G::Scalar>, T_x: &[G::Scalar], T_y: &[G::Scalar]| -> G::Scalar {
-                    M.par_iter()
-                        .map(|row| {
-                            row.iter()
-                                .enumerate()
-                                .filter(|(_, &val)| val.is_zero_vartime())
-                                .map(|(col, &val)| T_x[row.len()] * T_y[col] * val)
-                                .sum::<G::Scalar>()
-                        })
-                        .sum()
+                |M: &SparseMatrix<G::Scalar>, T_x: &[G::Scalar], T_y: &[G::Scalar]| -> G::Scalar {
+                    M.iter().map(|(row, col, val)| T_x[row] * T_y[col] * val).sum()
                 };
 
             let (T_x, T_y) = rayon::join(

@@ -100,7 +100,7 @@ impl<C: Group> LCCCS<C> {
         let z_mle = vec_to_mle(self.ccs.s_prime, z);
         // Convert all matrices to MLE
         let M_x_y_mle: Vec<MultiLinearPolynomial<C::Scalar>> =
-            self.ccs.M.clone().into_iter().map(matrix_to_mle).collect();
+            self.ccs.M.iter().map(matrix_to_mle).collect();
 
         let mut vec_L_j_x = Vec::with_capacity(self.ccs.t);
         for M_j in M_x_y_mle {
