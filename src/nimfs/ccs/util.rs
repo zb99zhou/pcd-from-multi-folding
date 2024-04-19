@@ -7,13 +7,13 @@ use crate::nimfs::espresso::multilinear_polynomial::scalar_mul;
 use crate::nimfs::util::hypercube::BooleanHypercube;
 use crate::nimfs::util::mle::matrix_to_mle;
 use crate::nimfs::util::mle::vec_to_mle;
-use crate::nimfs::util::vec::Matrix;
+use crate::nimfs::util::spare_matrix::SparseMatrix;
 use crate::spartan::polys::multilinear::MultiLinearPolynomial;
 
 /// Return a vector of evaluations p_j(r) = \sum_{y \in {0,1}^s'} M_j(r, y) * z(y)
 /// for all j values in 0..self.t
 pub fn compute_all_sum_Mz_evals<F: PrimeField>(
-    vec_M: &[Matrix<F>],
+    vec_M: &[SparseMatrix<F>],
     z: &Vec<F>,
     r: &[F],
     s_prime: usize,
@@ -21,8 +21,8 @@ pub fn compute_all_sum_Mz_evals<F: PrimeField>(
     // Convert z to MLE
     let z_y_mle = vec_to_mle(s_prime, z);
     // Convert all matrices to MLE
-    let M_x_y_mle: Vec<MultiLinearPolynomial<F>> =
-        vec_M.iter().cloned().map(matrix_to_mle).collect();
+    let M_x_y_mle: Vec<_> =
+        vec_M.iter().map(matrix_to_mle).collect();
 
     let mut v = Vec::with_capacity(M_x_y_mle.len());
     for M_i in M_x_y_mle {
@@ -85,7 +85,7 @@ pub mod test {
             for i in 0..ccs.q {
                 let mut Sj_prod = bn256::Scalar::one();
                 for j in ccs.S[i].clone() {
-                    let M_j = matrix_to_mle(ccs.M[j].clone());
+                    let M_j = matrix_to_mle(&ccs.M[j]);
                     let sum_Mz = compute_sum_Mz(M_j, &z_mle, ccs.s_prime);
                     let sum_Mz_x = sum_Mz.evaluate(&x);
                     Sj_prod *= sum_Mz_x;
@@ -122,23 +122,26 @@ pub mod test {
         let ccs = get_test_ccs::<bn256::Point>();
 
         let M = ccs.M[0].clone();
-        let M_mle = matrix_to_mle(M.clone());
+        let M_mle = matrix_to_mle(&ccs.M[0]);
 
         // Fix the polynomial ~M(r,y)
         let r: Vec<Fr> = (0..ccs.s).map(|_| Fr::random(&mut OsRng)).collect();
         let M_r_y = fix_last_variables(&M_mle, &r);
 
         // Now let's compute M_r_y the other way around
-        for j in 0..M[0].len() {
+        for j in 0..M.cols {
             // Go over every column of M
-            let column_j: Vec<Fr> = M.clone().iter().map(|x| x[j]).collect();
+            let column_j: Vec<_> = M.iter().filter(|(_, c, _)| *c == j).map(|(r, _, v)| (r, v)).collect();
 
             // and perform the random lincomb between the elements of the column and eq_i(r)
             let rlc = BooleanHypercube::new(ccs.s)
                 .enumerate()
                 .into_iter()
-                .map(|(i, x)| column_j[i] * eq_eval(&x, &r).unwrap())
-                .fold(Fr::zero(), |acc, result| acc + result);
+                .map(|(i, x)| column_j
+                    .iter()
+                    .find_map(|(r, v)| if *r == i { Some(*v) } else { None })
+                    .unwrap_or_default() * eq_eval(&x, &r).unwrap())
+                .sum();
 
             assert_eq!(M_r_y.Z[j], rlc);
         }

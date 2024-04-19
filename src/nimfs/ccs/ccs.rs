@@ -9,7 +9,8 @@ use crate::errors::NovaError;
 use crate::nimfs::ccs::cccs::{CCCS, CCSWitness};
 use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::nimfs::ccs::util::compute_all_sum_Mz_evals;
-use crate::nimfs::util::vec::{hadamard, Matrix};
+use crate::nimfs::util::spare_matrix::SparseMatrix;
+use crate::nimfs::util::vec::hadamard;
 
 use crate::nimfs::util::vec::*;
 use crate::r1cs::R1CSShape;
@@ -46,7 +47,7 @@ pub struct CCS<G: Group> {
     pub s_prime: usize,
 
     // Vector of matrices
-    pub M: Vec<Matrix<G::Scalar>>,
+    pub M: Vec<SparseMatrix<G::Scalar>>,
     // Vector of multisets
     pub S: Vec<Vec<usize>>,
     // Vector of coefficients
@@ -56,12 +57,9 @@ pub struct CCS<G: Group> {
 impl<G: Group> From<R1CSShape<G>> for CCS<G> {
     fn from(value: R1CSShape<G>) -> Self {
         let total_col_num = value.num_vars + value.num_io + 1;
-        let mut A = vec![vec![G::Scalar::default(); total_col_num]; value.num_cons];
-        matrix_type_convert(&mut A, value.A);
-        let mut B = vec![vec![G::Scalar::default(); total_col_num]; value.num_cons];
-        matrix_type_convert(&mut B, value.B);
-        let mut C = vec![vec![G::Scalar::default(); total_col_num]; value.num_cons];
-        matrix_type_convert(&mut C, value.C);
+        let A = SparseMatrix::new(&value.A, value.num_cons, total_col_num);
+        let B = SparseMatrix::new(&value.B, value.num_cons, total_col_num);
+        let C = SparseMatrix::new(&value.C, value.num_cons, total_col_num);
         CCS::from_r1cs(A, B, C, value.num_io)
     }
 }
@@ -103,13 +101,13 @@ impl<G: Group> CCS<G> {
 
     /// Converts the R1CS structure to the CCS structure
     fn from_r1cs(
-        A: Vec<Vec<G::Scalar>>,
-        B: Vec<Vec<G::Scalar>>,
-        C: Vec<Vec<G::Scalar>>,
+        A: SparseMatrix<G::Scalar>,
+        B: SparseMatrix<G::Scalar>,
+        C: SparseMatrix<G::Scalar>,
         io_len: usize,
     ) -> CCS<G> {
-        let m = A.len();
-        let n = A[0].len();
+        let m = A.rows;
+        let n = A.cols;
         CCS {
             m,
             n,
@@ -195,15 +193,11 @@ impl<G: Group> CCS<G> {
         // This does not perform any validation of entries in M (e.g., if entries in `M` reference indexes outside the range of `z`)
         // This is safe since we know that `M` is valid
         let sparse_matrix_vec_product =
-            |M: &Matrix<G::Scalar>, num_rows: usize, z: &[G::Scalar]| -> Vec<G::Scalar> {
+            |M: &SparseMatrix<G::Scalar>, num_rows: usize, z: &[G::Scalar]| -> Vec<G::Scalar> {
                 let mut result = vec![G::Scalar::ZERO; num_rows];
 
-                for (row_index, row) in M.iter().enumerate() {
-                    for (col_index, val) in row.iter().enumerate() {
-                        if val.is_zero_vartime() {
-                            result[row_index] += *val * z[col_index];
-                        }
-                    }
+                for (row_index, col_index, val) in M.iter() {
+                    result[row_index] += val * z[col_index];
                 }
 
                 result
@@ -232,7 +226,7 @@ impl<G: Group> CCS<G> {
             // XXX This can be done more neatly with a .fold() or .reduce()
 
             // Extract the needed M_j matrices out of S_i
-            let vec_M_j: Vec<&Matrix<G::Scalar>> =
+            let vec_M_j: Vec<_> =
                 self.S[i].iter().map(|j| &self.M[*j]).collect();
 
             // Complete the hadamard chain
@@ -286,7 +280,7 @@ pub mod test {
             vec![0, 0, 0, 0, 0, 1],
             vec![0, 0, 1, 0, 0, 0],
         ]);
-        CCS::from_r1cs(A, B, C, 1)
+        CCS::from_r1cs((&A).into(), (&B).into(), (&C).into(), 1)
     }
 
     /// Computes the z vector for the given input for Vitalik's equation.

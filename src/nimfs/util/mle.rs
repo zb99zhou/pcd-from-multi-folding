@@ -1,4 +1,5 @@
 use ff::PrimeField;
+use crate::nimfs::util::spare_matrix::SparseMatrix;
 /// Some basic MLE utilities
 use crate::spartan::math::Math;
 use crate::spartan::polys::multilinear::MultiLinearPolynomial;
@@ -28,14 +29,11 @@ fn pad_matrix<F: PrimeField>(matrix: &Matrix<F>) -> Matrix<F> {
 }
 
 // XXX shouldn't consume the matrix
-pub fn matrix_to_mle<F: PrimeField>(matrix: Matrix<F>) -> MultiLinearPolynomial<F> {
-    let n_vars: usize = matrix.len().log_2() + matrix[0].len().log_2(); // n_vars = s + s'
+pub fn matrix_to_mle<F: PrimeField>(matrix: &SparseMatrix<F>) -> MultiLinearPolynomial<F> {
+    let n_vars = matrix.cols.log_2() + matrix.rows.log_2(); // n_vars = s + s'
 
-    // Matrices might need to get padded before turned into an MLE
-    let padded_matrix = pad_matrix(&matrix);
-
-    // Flatten matrix into a vector
-    let M_evals: Vec<F> = padded_matrix.into_iter().flatten().collect();
+    let z = vec![F::default(); matrix.cols];
+    let M_evals = matrix.multiply_vec(&z);
 
     vec_to_mle(n_vars, &M_evals)
 }
@@ -58,16 +56,20 @@ mod tests {
         util::{hypercube::BooleanHypercube, vec::to_F_matrix},
     };
 
-    #[test]
-    fn test_matrix_to_mle() {
-        let A = to_F_matrix::<Fr>(vec![
+    fn test_matrix() -> Vec<Vec<Fr>> {
+        to_F_matrix::<Fr>(vec![
             vec![2, 3, 4, 4],
             vec![4, 11, 14, 14],
             vec![2, 8, 17, 17],
             vec![420, 4, 2, 0],
-        ]);
+        ])
+    }
 
-        let A_mle = matrix_to_mle(A);
+    #[test]
+    fn test_matrix_to_mle() {
+        let A = test_matrix();
+
+        let A_mle = matrix_to_mle(&(&A).into());
         assert_eq!(A_mle.Z.len(), 16); // 4x4 matrix, thus 2bit x 2bit, thus 2^4=16 evals
 
         let A = to_F_matrix::<Fr>(vec![
@@ -77,7 +79,7 @@ mod tests {
             vec![420, 4, 2, 0, 4],
             vec![420, 4, 2, 0, 5],
         ]);
-        let A_mle = matrix_to_mle(A.clone());
+        let A_mle = matrix_to_mle(&(&A).into());
         assert_eq!(A_mle.Z.len(), 64); // 5x5 matrix, thus 3bit x 3bit, thus 2^6=64 evals
 
         // check that the A_mle evaluated over the boolean hypercube equals the matrix A_i_j values
@@ -112,14 +114,9 @@ mod tests {
 
     #[test]
     fn test_fix_variables() {
-        let A = to_F_matrix(vec![
-            vec![2, 3, 4, 4],
-            vec![4, 11, 14, 14],
-            vec![2, 8, 17, 17],
-            vec![420, 4, 2, 0],
-        ]);
+        let A = test_matrix();
 
-        let A_mle = matrix_to_mle(A.clone());
+        let A_mle = matrix_to_mle(&(&A).into());
         let bhc = BooleanHypercube::new(2);
         for (i, y) in bhc.enumerate() {
             // First check that the arkworks and espresso funcs match
@@ -131,7 +128,7 @@ mod tests {
             // Check that fixing first variables pins down a column
             // i.e. fixing x to 0 will return the first column
             //      fixing x to 1 will return the second column etc.
-            let column_i: Vec<Fr> = A.clone().iter().map(|x| x[i]).collect();
+            let column_i: Vec<Fr> = A.iter().map(|x| x[i]).collect();
             assert_eq!(fix_left.Z, column_i);
 
             // Now check that fixing last variables pins down a row
