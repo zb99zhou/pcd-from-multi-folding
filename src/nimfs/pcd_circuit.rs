@@ -9,7 +9,7 @@ use crate::gadgets::cccs::{AllocatedCCCS, AllocatedCCCSPrimaryPart, AllocatedLCC
 use crate::gadgets::ext_allocated_num::ExtendFunc;
 use crate::gadgets::r1cs::{AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance};
 use crate::gadgets::sumcheck::{AllocatedProof, enforce_compute_c_from_sigmas_and_thetas, enforce_interpolate_uni_poly, sumcheck_verify};
-use crate::gadgets::utils::{alloc_num_equals, alloc_scalar_as_base,  le_bits_to_num, multi_and};
+use crate::gadgets::utils::{alloc_num_equals, alloc_scalar_as_base,alloc_zero,conditionally_select_vec_allocated_num,le_bits_to_num, multi_and};
 use crate::nimfs::ccs::cccs::{CCCSForBase, PointForScalar};
 use crate::nimfs::ccs::ccs::CCS;
 use crate::nimfs::ccs::lcccs::LCCCSForBase;
