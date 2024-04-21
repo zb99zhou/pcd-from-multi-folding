@@ -125,10 +125,40 @@ pub struct PCDRecursiveSNARK<G1, G2, SC>
     r_U_primary: LCCCS<G1>,
     r_W_secondary: RelaxedR1CSWitness<G2>,
     r_U_secondary: RelaxedR1CSInstance<G2>,
-    i: usize,
+    // i: usize,
     zi_primary: Vec<G1::Scalar>,
     _p_c: PhantomData<SC>,
     // _p_c2: PhantomData<C2>,
+}
+
+impl<G1, G2, SC> PCDRecursiveSNARK<G1, G2, SC>
+    where
+        G1: Group<Base = <G2 as Group>::Scalar>,
+        G2: Group<Base = <G1 as Group>::Scalar>,
+        SC: StepCircuit<G1::Scalar>,
+{
+    pub fn new(
+        r_w_primary: CCSWitness<G1>,
+        r_u_primary: CCCS<G1>,
+        r_W_primary: CCSWitness<G1>,
+        r_U_primary: LCCCS<G1>,
+        r_W_secondary: RelaxedR1CSWitness<G2>,
+        r_U_secondary: RelaxedR1CSInstance<G2>,
+        // i: usize,
+        zi_primary: Vec<G1::Scalar>,
+    ) -> Self {
+        Self {
+            r_w_primary,
+            r_u_primary,
+            r_W_primary,
+            r_U_primary,
+            r_W_secondary,
+            r_U_secondary,
+            // i,
+            zi_primary,
+            _p_c: PhantomData::<SC>::default(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]

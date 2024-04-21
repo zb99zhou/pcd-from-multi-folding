@@ -11,12 +11,11 @@ use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::nimfs::multifolding::{NIMFS, ProofWitness};
 use crate::nimfs::pcd_aux_circuit::{NovaAuxiliaryInputs, NovaAuxiliaryParams, NovaAuxiliarySecondCircuit};
 use crate::nimfs::pcd_circuit::{PCDUnitInputs, PCDUnitPrimaryCircuit};
-use crate::pcd_compressed_snark::PCDPublicParams;
+use crate::pcd_compressed_snark::{PCDPublicParams};
 use crate::r1cs::{RelaxedR1CSInstance, RelaxedR1CSWitness};
 use crate::traits::{AbsorbInROTrait, Group, ROConstants, ROTrait, TranscriptEngineTrait};
 use crate::traits::circuit::{StepCircuit, TrivialTestCircuit};
-use crate::traits::commitment::CommitmentTrait;
-
+use crate::traits::commitment::{ CommitmentTrait};
 
 
 #[derive(Clone)]
@@ -50,7 +49,7 @@ impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
         w_cccs: Option<Vec<CCSWitness<G1>>>,
         w_relaxed_r1cs: Option<Vec<RelaxedR1CSWitness<G2>>>,
     ) -> Self {
-        Self{
+        Self {
             lcccs,
             cccs,
             z0,
@@ -82,7 +81,7 @@ impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
                 self.w_cccs.as_ref().unwrap(),
             );
         println!("Finish NIMFS prove");
-        let pp_aux = NovaAuxiliaryParams::<G2>::new(pp.augmented_circuit_params_secondary.r1cs_shape.clone() , ARITY);
+        let pp_aux = NovaAuxiliaryParams::<G2>::new(pp.augmented_circuit_params_secondary.r1cs_shape.clone(), ARITY);
         let rho = scalar_as_base::<G1>(transcript_p.get_last_state());
         let aux_circuit_input = NovaAuxiliaryInputs::<G1>::new(
             Some(pp_aux.digest),
@@ -101,7 +100,7 @@ impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
         let (aux_r1cs_instance, aux_r1cs_witness) = cs_secondary.r1cs_instance_and_witness(&pp.augmented_circuit_params_secondary.r1cs_shape, &pp.ck_secondary)?;
 
         // Then, handling the PCD primary circuit
-        let (nifs_proof, (relaxed_r1cs_instance, relaxed_r1cs_witness) ) =
+        let (nifs_proof, (relaxed_r1cs_instance, relaxed_r1cs_witness)) =
             NIFS::prove_with_multi_relaxed(
                 &pp.ck_secondary,
                 &pp.ro_consts_secondary,
@@ -113,7 +112,7 @@ impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
                 &aux_r1cs_witness,
             )?;
         println!("Finish NIFS prove_with_multi_relaxed");
-        let pcd_circuit_input= PCDUnitInputs::<G2>::new(
+        let pcd_circuit_input = PCDUnitInputs::<G2>::new(
             scalar_as_base::<G1>(pp.augmented_circuit_params_primary.digest),
             self.z0.clone(),
             self.zi.clone(),
@@ -234,7 +233,6 @@ impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
         res_lcccs.map_err(|_| NovaError::ProofVerifyError)?;
         res_cccs.map_err(|_| NovaError::ProofVerifyError)?;
         Ok(zi_primary.to_vec())
-
     }
 }
 
@@ -245,10 +243,16 @@ mod test {
     use crate::errors::NovaError;
     // use crate::nimfs::ccs::cccs::{CCCS, CCSWitness};
     // use crate::nimfs::ccs::lcccs::LCCCS;
-    use crate::pcd_compressed_snark::PCDPublicParams;
+    use crate::pcd_compressed_snark::{PCDCompressedSNARK, PCDPublicParams, PCDRecursiveSNARK};
     use crate::pcd_node::PCDNode;
+    use crate::provider::ipa_pc::EvaluationEngine;
+    use crate::provider::pedersen::CommitmentKeyExtTrait;
     use crate::r1cs::{RelaxedR1CSInstance, RelaxedR1CSWitness};
-    use crate::traits::circuit::TrivialTestCircuit;
+    use crate::spartan::lcccs::LCCCSSNARK;
+    use crate::spartan::ppsnark::RelaxedR1CSSNARK;
+    use crate::traits::circuit::{StepCircuit, TrivialTestCircuit};
+    use crate::traits::commitment::CommitmentEngineTrait;
+    use crate::traits::evaluation::EvaluationEngineTrait;
     use crate::traits::Group;
 
     fn test_pcd_with<G1, G2, const R: usize, const IO_NUM: usize>() -> Result<(), NovaError>
@@ -332,6 +336,7 @@ mod test {
             node_3_zi, node_3_ck
         ) = node_3.prove_step(&pp).map_err(|_| NovaError::SynthesisError)?;
 
+
         let res = node_3.verify(
             &node_3_lcccs,
             &node_3_relaxed_r1cs_instance,
@@ -355,5 +360,149 @@ mod test {
         const ARITY: usize = 1;
         const R: usize = 2;
         test_pcd_with::<G1, G2, R, ARITY>().unwrap();
+    }
+
+    fn test_pcd_with_compressed_verify_with<
+        G1, G2,
+        const R: usize, const IO_NUM: usize,
+        EE1: EvaluationEngineTrait<G1>,
+        EE2: EvaluationEngineTrait<G2>,
+        SC: StepCircuit<<G2 as Group>::Base>
+    >() -> Result<(), NovaError>
+        where
+            G1: Group<Base=<G2 as Group>::Scalar>,
+            G2: Group<Base=<G1 as Group>::Scalar>,
+            <G1::CE as CommitmentEngineTrait<G1>>::CommitmentKey: CommitmentKeyExtTrait<G1>,
+            <G2::CE as CommitmentEngineTrait<G2>>::CommitmentKey: CommitmentKeyExtTrait<G2>,
+    {
+        println!("Start pcd_test");
+        let z0 = vec![<G1 as Group>::Scalar::ZERO; IO_NUM];
+        let pp = PCDPublicParams::<
+            G1,
+            G2,
+            SC,
+            IO_NUM,
+            R,
+        >::setup();
+
+        let rng = OsRng;
+        let z = vec![G1::Scalar::ONE; pp.augmented_circuit_params_primary.ccs.n];
+        let (default_cccs, default_w_cccs) = pp.augmented_circuit_params_primary.ccs.to_cccs(rng, &pp.ck_primary, &z);
+        let (default_lcccs, default_w_lcccs) = pp.augmented_circuit_params_primary.ccs.to_lcccs(rng, &pp.ck_primary, &z);
+        let default_relaxed_r1cs_instance = RelaxedR1CSInstance::<G2>::default_for_pcd(pp.augmented_circuit_params_secondary.r1cs_shape.num_io.clone());
+        let default_relaxed_r1cs_witness = RelaxedR1CSWitness::<G2>::default(&pp.augmented_circuit_params_secondary.r1cs_shape);
+        println!("Finished pp setup");
+        let node_1 = PCDNode::<
+            G1,
+            G2,
+            IO_NUM,
+            R>::new(
+            vec![default_lcccs.clone(),default_lcccs.clone()],
+            vec![default_cccs.clone(),default_cccs.clone()],
+            z0.clone(),
+            None,
+            Some(vec![default_relaxed_r1cs_instance.clone(), default_relaxed_r1cs_instance.clone()]),
+            Some(vec![default_w_lcccs.clone(), default_w_lcccs.clone()]),
+            Some(vec![default_w_cccs.clone(), default_w_cccs.clone()]),
+            Some(vec![default_relaxed_r1cs_witness.clone(), default_relaxed_r1cs_witness.clone()]),
+        );
+
+        println!("Finished node_1 new");
+        let (
+            node_1_lcccs, node_1_cccs, node_1_relaxed_r1cs_instance,
+            node_1_lcccs_witness, node_1_cccs_witness, node_1_relaxed_r1cs_witness,
+            node_1_zi, _
+        ) = node_1.prove_step(&pp).map_err(|_| NovaError::SynthesisError)?;
+
+        println!("Finished node_1 prove_step");
+        let node_2 = node_1.clone();
+        let (
+            node_2_lcccs, node_2_cccs, node_2_relaxed_r1cs_instance,
+            node_2_lcccs_witness, node_2_cccs_witness, node_2_folded_relaxed_r1cs_witness,
+            node_2_zi, _
+        ) = node_2.prove_step(&pp).map_err(|_| NovaError::SynthesisError)?;
+
+        let node_3_input_lcccs = vec![node_1_lcccs, node_2_lcccs];
+        let node_3_input_cccs = vec![node_1_cccs, node_2_cccs];
+        let node_3_zi = vec![node_1_zi, node_2_zi];
+        let node_3_relaxed_r1cs_instance = vec![node_1_relaxed_r1cs_instance, node_2_relaxed_r1cs_instance];
+        let node_3_lcccs_witness = vec![node_1_lcccs_witness, node_2_lcccs_witness];
+        let node_3_cccs_witness = vec![node_1_cccs_witness, node_2_cccs_witness];
+        let node_3_relaxed_r1cs_witness = vec![node_1_relaxed_r1cs_witness, node_2_folded_relaxed_r1cs_witness];
+
+        let node_3 = PCDNode::<
+            G1,
+            G2,
+            IO_NUM,
+            R>::new(
+            node_3_input_lcccs,
+            node_3_input_cccs,
+            z0.clone(),
+            Some(node_3_zi),
+            Some(node_3_relaxed_r1cs_instance),
+            Some(node_3_lcccs_witness),
+            Some(node_3_cccs_witness),
+            Some(node_3_relaxed_r1cs_witness),
+        );
+
+        let (
+            node_3_lcccs, node_3_cccs, node_3_relaxed_r1cs_instance,
+            node_3_lcccs_witness, node_3_cccs_witness, node_3_folded_relaxed_r1cs_witness,
+            node_3_zi, _node_3_ck
+        ) = node_3.prove_step(&pp).map_err(|_| NovaError::SynthesisError)?;
+
+
+        let recursive_snark = PCDRecursiveSNARK::<
+            G1, G2,
+            SC,
+        >::new(
+            node_3_cccs_witness,
+            node_3_cccs,
+            node_3_lcccs_witness,
+            node_3_lcccs,
+            node_3_folded_relaxed_r1cs_witness,
+            node_3_relaxed_r1cs_instance,
+            node_3_zi,
+        );
+
+        let (compressed_pk, compressed_vk) = PCDCompressedSNARK::<
+            G1, G2,
+            SC,
+            LCCCSSNARK<G1, EE1>,
+            RelaxedR1CSSNARK<G2, EE2>,
+        >::setup::<IO_NUM, R>(&pp)?;
+
+        let compress_snark = PCDCompressedSNARK::<
+            G1,
+            G2,
+            SC,
+            LCCCSSNARK<G1, EE1>,
+            RelaxedR1CSSNARK<G2, EE2>,
+        >::prove::<IO_NUM, R>(
+            &pp,
+            &compressed_pk,
+            &recursive_snark,
+        )?;
+
+        let res = compress_snark.verify(
+            &compressed_vk,
+            z0.clone(),
+        );
+        assert!(res.is_ok());
+        Ok(())
+    }
+    #[test]
+    fn test_pcd_with_compressed_verify() {
+        type G1 = pasta_curves::pallas::Point;
+        type G2 = pasta_curves::vesta::Point;
+        const ARITY: usize = 1;
+        const R: usize = 2;
+        test_pcd_with_compressed_verify_with::<
+            G1, G2,
+            R, ARITY,
+            EvaluationEngine<G1>,
+            EvaluationEngine<G2>,
+            TrivialTestCircuit<<G1 as Group>::Scalar>
+        >().unwrap();
     }
 }
