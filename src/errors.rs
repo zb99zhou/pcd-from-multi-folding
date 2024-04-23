@@ -1,10 +1,11 @@
 //! This module defines errors returned by the library.
 use core::fmt::Debug;
+use bellpepper_core::SynthesisError;
 use thiserror::Error;
 use crate::nimfs::espresso::errors::ArithErrors;
 
 /// Errors returned by Nova
-#[derive(Clone, Debug, Eq, PartialEq, Error)]
+#[derive(Debug, Error)]
 pub enum NovaError {
   /// returned if the supplied row or col in (row,col,val) tuple is out of range
   #[error("InvalidIndex")]
@@ -75,10 +76,19 @@ pub enum NovaError {
   /// Arithmetic Error: {0}
   #[error("ArithmeticErrors")]
   ArithmeticErrors(ArithErrors),
+  /// Circuit Error: {0}
+  #[error("CircuitErrors")]
+  CircuitErrors(SynthesisError),
 }
 
 impl From<ArithErrors> for NovaError {
   fn from(e: ArithErrors) -> Self {
     Self::ArithmeticErrors(e)
+  }
+}
+
+impl From<SynthesisError> for NovaError {
+  fn from(e: SynthesisError) -> Self {
+    Self::CircuitErrors(e)
   }
 }

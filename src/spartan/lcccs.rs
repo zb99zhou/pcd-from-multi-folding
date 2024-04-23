@@ -71,7 +71,6 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
     ) -> Result<(Self::ProverKey, Self::VerifierKey), NovaError> {
         let (pk_ee, vk_ee) = EE::setup(ck);
 
-
         let vk = {
             let mut vk = VerifierKey {
                 vk_ee,

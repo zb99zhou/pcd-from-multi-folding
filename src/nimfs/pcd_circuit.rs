@@ -167,7 +167,7 @@ where
 
         let nimfs_proof = AllocatedProof::from_witness::<_, R>(
             cs.namespace(|| "params"),
-            self.clone().inputs.unwrap().proof.as_ref(),
+            self.inputs.as_ref().and_then(|i| i.proof.as_ref()),
         )?;
 
         // Allocate z0

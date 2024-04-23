@@ -10,7 +10,6 @@ use crate::nimfs::espresso::virtual_polynomial::VirtualPolynomial;
 use crate::nimfs::util::hypercube::BooleanHypercube;
 use crate::nimfs::util::mle::matrix_to_mle;
 use crate::nimfs::util::mle::vec_to_mle;
-use crate::r1cs::R1CSShape;
 use crate::traits::commitment::{CommitmentEngineTrait, CommitmentTrait};
 use crate::traits::Group;
 
@@ -25,8 +24,8 @@ pub struct CCSWitness<C: Group> {
 }
 
 impl<C: Group> CCSWitness<C> {
-    pub fn new(S: &R1CSShape<C>, W: &[C::Scalar]) -> Result<Self, NovaError> {
-        if S.num_vars != W.len() {
+    pub fn new(S: &CCS<C>, W: &[C::Scalar]) -> Result<Self, NovaError> {
+        if S.n != W.len() {
             Err(NovaError::InvalidWitnessLength)
         } else {
             Ok(Self { w: W.to_owned(), r_w: Default::default() })

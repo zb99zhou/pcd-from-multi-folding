@@ -27,7 +27,6 @@ pub trait NovaWitness<G: Group> {
   fn cccs_and_witness(
     &self,
     ccs: CCS<G>,
-    shape: &R1CSShape<G>,
     ck: &CommitmentKey<G>,
   ) -> Result<(CCCS<G>, CCSWitness<G>), NovaError>;
 }
@@ -51,10 +50,9 @@ impl<G: Group> NovaWitness<G> for SatisfyingAssignment<G> {
   fn cccs_and_witness(
     &self,
     ccs: CCS<G>,
-    shape: &R1CSShape<G>,
     ck: &CommitmentKey<G>,
   ) -> Result<(CCCS<G>, CCSWitness<G>), NovaError> {
-    let C = CCSWitness::<G>::new(shape, &self.aux_assignment)?;
+    let C = CCSWitness::<G>::new(&ccs, &self.aux_assignment)?;
 
     let X = &self.input_assignment[1..];
 
