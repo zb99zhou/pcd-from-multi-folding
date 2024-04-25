@@ -247,26 +247,27 @@ mod test {
         let (default_lcccs, default_w_lcccs) = pp.primary_circuit_params.ccs.to_lcccs(rng, &pp.ck_primary, &z);
         let default_relaxed_r1cs_instance = RelaxedR1CSInstance::<G2>::default_for_pcd(pp.secondary_circuit_params.r1cs_shape.num_io.clone());
         let default_relaxed_r1cs_witness = RelaxedR1CSWitness::<G2>::default(&pp.secondary_circuit_params.r1cs_shape);
-        println!("Finished pp setup");
+
+        println!("Creating PCD node1");
         let node_1 = PCDNode::<G1, G2, IO_NUM, R>::new(
-            vec![default_lcccs.clone(),default_lcccs.clone()],
-            vec![default_cccs.clone(),default_cccs.clone()],
+            vec![default_lcccs.clone(),default_lcccs],
+            vec![default_cccs.clone(),default_cccs],
             z0.clone(),
             None,
-            Some(vec![default_relaxed_r1cs_instance.clone(), default_relaxed_r1cs_instance.clone()]),
-            Some(vec![default_w_lcccs.clone(), default_w_lcccs.clone()]),
-            Some(vec![default_w_cccs.clone(), default_w_cccs.clone()]),
-            Some(vec![default_relaxed_r1cs_witness.clone(), default_relaxed_r1cs_witness.clone()]),
+            Some(vec![default_relaxed_r1cs_instance.clone(), default_relaxed_r1cs_instance]),
+            Some(vec![default_w_lcccs.clone(), default_w_lcccs]),
+            Some(vec![default_w_cccs.clone(), default_w_cccs]),
+            Some(vec![default_relaxed_r1cs_witness.clone(), default_relaxed_r1cs_witness]),
         );
 
-        println!("Finished node_1 new");
+        println!("Proving node1");
         let (
             node_1_lcccs, node_1_cccs, node_1_relaxed_r1cs_instance,
             node_1_lcccs_witness, node_1_cccs_witness, node_1_relaxed_r1cs_witness,
             node_1_zi
         ) = node_1.prove_step(&pp, &test_circuit).map_err(|_| NovaError::SynthesisError)?;
 
-        println!("Finished node_1 prove_step");
+        println!("Proving node2");
         let node_2 = node_1.clone();
         let (
             node_2_lcccs, node_2_cccs, node_2_relaxed_r1cs_instance,
@@ -274,6 +275,7 @@ mod test {
             node_2_zi
         ) = node_2.prove_step(&pp, &test_circuit).map_err(|_| NovaError::SynthesisError)?;
 
+        println!("Generating node3");
         let node_3_input_lcccs = vec![node_1_lcccs, node_2_lcccs];
         let node_3_input_cccs = vec![node_1_cccs, node_2_cccs];
         let node_3_zi = vec![node_1_zi, node_2_zi];
@@ -293,6 +295,7 @@ mod test {
             Some(node_3_relaxed_r1cs_witness),
         );
 
+        println!("Proving node3");
         let (
             node_3_lcccs, node_3_cccs, node_3_relaxed_r1cs_instance,
             node_3_lcccs_witness, node_3_cccs_witness, node_3_relaxed_r1cs_witness,

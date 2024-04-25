@@ -330,7 +330,6 @@ impl<G: Group> R1CSShape<G> {
     ) -> Result<(Vec<G::Scalar>, Commitment<G>), NovaError> {
         let (AZ_1, BZ_1, CZ_1) = {
             let Z1 = [W1.W.clone(), vec![U1.u], U1.X.clone()].concat();
-            println!("W1.W.len:{}, U1.X.len:{}, self.num_io:{}, self.num_vars:{}", W1.W.len(), U1.X.len(), self.num_io, self.num_vars);
             self.multiply_vec(&Z1)?
         };
 

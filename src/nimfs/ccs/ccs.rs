@@ -8,7 +8,7 @@ use crate::CommitmentKey;
 use crate::errors::NovaError;
 use crate::nimfs::ccs::cccs::{CCCS, CCSWitness};
 use crate::nimfs::ccs::lcccs::LCCCS;
-use crate::nimfs::ccs::util::compute_all_sum_Mz_evals;
+use crate::nimfs::util::mle::vec_to_mle;
 use crate::nimfs::util::spare_matrix::SparseMatrix;
 use crate::nimfs::util::vec::hadamard;
 
@@ -131,8 +131,14 @@ impl<G: Group> CCS<G> {
 
     /// Compute v_j values of the linearized committed CCS form
     /// Given `r`, compute:  \sum_{y \in {0,1}^s'} M_j(r, y) * z(y)
-    fn compute_v_j(&self, z: &[G::Scalar], r: &[G::Scalar]) -> Vec<G::Scalar> {
-        compute_all_sum_Mz_evals(&self.M, &z.to_vec(), r, self.s_prime)
+    pub(crate) fn compute_v_j(&self, z: &[G::Scalar], r: &[G::Scalar]) -> Vec<G::Scalar> {
+        self.M
+            .iter()
+            .map(|M| {
+                let Mz = M.multiply_vec(&z);
+                vec_to_mle(Mz.len().log_2(), &Mz).evaluate(r)
+            })
+            .collect()
     }
 
     pub fn to_cccs(

@@ -68,11 +68,11 @@ impl<F: PrimeField> SparseMatrix<F> {
         let mut new_matrix = vec![vec![]; rows];
         for (row, col, val) in matrix {
             new_matrix[*row].push((*col, *val));
-            // TODO: ensure matrix is sorted
-            new_matrix[*row].sort_unstable_by_key(|(col, _)| *col);
         }
 
-        for row in new_matrix.iter() {
+        for row in new_matrix.iter_mut() {
+            // TODO: ensure matrix is sorted
+            row.sort_by_key(|(col, _)| *col);
             assert!(row.windows(2).all(|w| w[0].0 < w[1].0));
         }
 

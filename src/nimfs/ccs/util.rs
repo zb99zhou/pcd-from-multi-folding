@@ -67,26 +67,24 @@ pub mod test {
     use crate::nimfs::espresso::multilinear_polynomial::testing_code::fix_last_variables;
     use crate::nimfs::espresso::virtual_polynomial::eq_eval;
 
-    use crate::nimfs::ccs::util::compute_sum_Mz;
     use crate::provider::bn256_grumpkin::bn256;
+    use crate::spartan::math::Math;
 
     #[test]
     fn test_compute_sum_Mz_over_boolean_hypercube() -> () {
         let ccs = get_test_ccs::<bn256::Point>();
         let z = get_test_z(3);
         ccs.check_relation(&z).unwrap();
-        let z_mle = vec_to_mle(ccs.s_prime, &z);
 
         // check that evaluating over all the values x over the boolean hypercube, the result of
         // the next for loop is equal to 0
         for x in BooleanHypercube::new(ccs.s).into_iter() {
-            // println!("x {:?}", x);
             let mut r = bn256::Scalar::zero();
             for i in 0..ccs.q {
                 let mut Sj_prod = bn256::Scalar::one();
                 for j in ccs.S[i].clone() {
-                    let M_j = matrix_to_mle(&ccs.M[j]);
-                    let sum_Mz = compute_sum_Mz(M_j, &z_mle, ccs.s_prime);
+                    let Mz = ccs.M[j].multiply_vec(&z);
+                    let sum_Mz = vec_to_mle(Mz.len().log_2(), &Mz);
                     let sum_Mz_x = sum_Mz.evaluate(&x);
                     Sj_prod *= sum_Mz_x;
                 }

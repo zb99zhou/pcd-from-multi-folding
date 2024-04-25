@@ -8,7 +8,6 @@ use crate::Commitment;
 use crate::nimfs::ccs::cccs::{CCCS, CCSWitness};
 use crate::nimfs::ccs::ccs::CCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
-use crate::nimfs::ccs::util::compute_all_sum_Mz_evals;
 use crate::nimfs::espresso::sum_check::{PolyIOP, SumCheck, verifier::interpolate_uni_poly};
 use crate::nimfs::espresso::sum_check::structs::IOPProof as SumCheckProof;
 use crate::nimfs::espresso::virtual_polynomial::{eq_eval, VirtualPolynomial, VPAuxInfo};
@@ -72,13 +71,13 @@ impl<C: Group> MultiFolding<C> {
         let mut sigmas: Vec<Vec<C::Scalar>> = Vec::new();
         for z_lcccs_i in z_lcccs {
             // sigmas
-            let sigma_i = compute_all_sum_Mz_evals(&ccs.M, z_lcccs_i, r_x_prime, ccs.s_prime);
+            let sigma_i = ccs.compute_v_j(&z_lcccs_i, r_x_prime);
             sigmas.push(sigma_i);
         }
         let mut thetas: Vec<Vec<C::Scalar>> = Vec::new();
         for z_cccs_i in z_cccs {
             // thetas
-            let theta_i = compute_all_sum_Mz_evals(&ccs.M, z_cccs_i, r_x_prime, ccs.s_prime);
+            let theta_i = ccs.compute_v_j(&z_cccs_i, r_x_prime);
             thetas.push(theta_i);
         }
         (sigmas, thetas)
@@ -282,7 +281,6 @@ impl<C: Group> MultiFolding<C> {
         w_cccs: &[CCSWitness<C>],
     ) -> (Proof<C>, LCCCS<C>, CCSWitness<C>) {
         // TODO appends to transcript
-
         assert!(!running_instances.is_empty());
         assert!(!new_instances.is_empty());
 

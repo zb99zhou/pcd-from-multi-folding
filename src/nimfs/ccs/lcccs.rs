@@ -5,12 +5,10 @@ use crate::Commitment;
 
 use crate::nimfs::ccs::cccs::CCSWitness;
 use crate::nimfs::ccs::ccs::{CCSError, CCS};
-use crate::nimfs::ccs::util::{compute_all_sum_Mz_evals, compute_sum_Mz};
 
 use crate::nimfs::espresso::virtual_polynomial::VirtualPolynomial;
-use crate::nimfs::util::mle::matrix_to_mle;
 use crate::nimfs::util::mle::vec_to_mle;
-use crate::spartan::polys::multilinear::MultiLinearPolynomial;
+use crate::spartan::math::Math;
 use crate::traits::commitment::{CommitmentEngineTrait, CommitmentTrait};
 use crate::traits::{Group, ROTrait, TranscriptReprTrait};
 
@@ -97,14 +95,10 @@ impl<C: Group> TranscriptReprTrait<C> for LCCCS<C> {
 impl<C: Group> LCCCS<C> {
     /// Compute all L_j(x) polynomials
     pub fn compute_Ls(&self, z: &Vec<C::Scalar>) -> Vec<VirtualPolynomial<C::Scalar>> {
-        let z_mle = vec_to_mle(self.ccs.s_prime, z);
-        // Convert all matrices to MLE
-        let M_x_y_mle: Vec<MultiLinearPolynomial<C::Scalar>> =
-            self.ccs.M.iter().map(matrix_to_mle).collect();
-
         let mut vec_L_j_x = Vec::with_capacity(self.ccs.t);
-        for M_j in M_x_y_mle {
-            let sum_Mz = compute_sum_Mz(M_j, &z_mle, self.ccs.s_prime);
+        for M_j in self.ccs.M.iter() {
+            let Mz = M_j.multiply_vec(z);
+            let sum_Mz = vec_to_mle(Mz.len().log_2(), &Mz);
             let sum_Mz_virtual =
                 VirtualPolynomial::new_from_mle(&Arc::new(sum_Mz.clone()), C::Scalar::ONE);
             let L_j_x = sum_Mz_virtual.build_f_hat(&self.r_x).unwrap();
@@ -126,7 +120,7 @@ impl<C: Group> LCCCS<C> {
 
         // check CCS relation
         let z: Vec<C::Scalar> = [vec![self.u], self.x.clone(), w.w.to_vec()].concat();
-        let computed_v = compute_all_sum_Mz_evals(&self.ccs.M, &z, &self.r_x, self.ccs.s_prime);
+        let computed_v = self.ccs.compute_v_j(&z, &self.r_x);
         assert_eq!(computed_v, self.v);
         Ok(())
     }

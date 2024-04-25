@@ -58,12 +58,12 @@ where
         let mut cs_aux_helper: ShapeCS<G2> = ShapeCS::new();
         let _ = aux_circuit_setup.synthesize(&mut cs_aux_helper);
         let (aux_r1cs_shape, ck_secondary) = cs_aux_helper.r1cs_shape();
-        println!("Created aux_r1cs_shape");
+        println!("Created secondary pp!");
 
         let circuit_params_primary_for_setup: PCDUnitParams<G1, ARITY, R> = PCDUnitParams::default_for_pcd(BN_LIMB_WIDTH, BN_N_LIMBS);
         let secondary_circuit_params: NovaAuxiliaryParams<G2> = NovaAuxiliaryParams::new(aux_r1cs_shape, ARITY);
 
-        println!("Created 2nd pp");
+        println!("Created primary pp!");
         let pcd_circuit_setup = PCDUnitPrimaryCircuit::<'_, G2, G1, SC, ARITY, R>::new(
             &circuit_params_primary_for_setup,
             None,
@@ -74,8 +74,7 @@ where
         let mut cs_pcd_helper: ShapeCS<G1> = ShapeCS::new();
         let _ = pcd_circuit_setup.synthesize(&mut cs_pcd_helper);
         let (r1cs_shape_primary, ck_primary) = cs_pcd_helper.r1cs_shape();
-        println!("num_vars:{}, num_cons:{}", r1cs_shape_primary.num_vars, r1cs_shape_primary.num_cons);
-        let ccs_primary = CCS::<G1>::from(r1cs_shape_primary.clone());
+        let ccs_primary = CCS::<G1>::from(r1cs_shape_primary);
         let primary_circuit_params = PCDUnitParams::<G1, ARITY, R>::new(BN_LIMB_WIDTH, BN_N_LIMBS, ccs_primary);
 
         Self{
