@@ -19,6 +19,7 @@ use ff::Field;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use crate::nimfs::ccs::ccs::CCS;
+use crate::traits::commitment::CommitmentTrait;
 
 /// Public parameters for a given R1CS
 #[derive(Clone, Serialize, Deserialize)]
@@ -330,7 +331,6 @@ impl<G: Group> R1CSShape<G> {
     ) -> Result<(Vec<G::Scalar>, Commitment<G>), NovaError> {
         let (AZ_1, BZ_1, CZ_1) = {
             let Z1 = [W1.W.clone(), vec![U1.u], U1.X.clone()].concat();
-            println!("W1.W.len:{}, U1.X.len:{}, self.num_io:{}, self.num_vars:{}", W1.W.len(), U1.X.len(), self.num_io, self.num_vars);
             self.multiply_vec(&Z1)?
         };
 
@@ -688,12 +688,16 @@ impl<G: Group> TranscriptReprTrait<G> for RelaxedR1CSInstance<G> {
 
 impl<G: Group> AbsorbInROTrait<G> for RelaxedR1CSInstance<G> {
     fn absorb_in_ro(&self, ro: &mut G::RO) {
+        println!("comm_W: {:?}", self.comm_W.to_coordinates());
+        println!("comm_E: {:?}", self.comm_E.to_coordinates());
+        println!("self.u: {:?}", self.u);
         self.comm_W.absorb_in_ro(ro);
         self.comm_E.absorb_in_ro(ro);
         ro.absorb(scalar_as_base::<G>(self.u));
 
         // absorb each element of self.X in bignum format
         for x in &self.X {
+            println!("self.x: {:?}", x);
             let limbs: Vec<G::Scalar> = nat_to_limbs(&f_to_nat(x), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
             for limb in limbs {
                 ro.absorb(scalar_as_base::<G>(limb));

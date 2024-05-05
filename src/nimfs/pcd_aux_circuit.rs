@@ -98,7 +98,7 @@ impl<G: Group> NovaAuxiliarySecondCircuit<G> {
         // Allocate the instance to be folded in
         let cccs = (0..self.inputs.r)
             .map(|i |AllocatedCCCSSecondPart::alloc(
-                cs.namespace(|| format!("Allocate {i}th lcccs")),
+                cs.namespace(|| format!("Allocate {i}th cccs")),
                 self.inputs.cccs.get().as_ref().map_or(None, |U| Some(&U[i]))
             ))
             .collect::<Result<Vec<_>, SynthesisError>>()?;

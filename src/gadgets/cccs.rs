@@ -1,4 +1,5 @@
 //! This module implements various gadgets necessary for folding R1CS types.
+use std::fmt::{Debug, Formatter};
 use crate::{
     gadgets::{
         ecc::AllocatedPoint,
@@ -24,6 +25,15 @@ use crate::traits::ROCircuitTrait;
 pub struct AllocatedLCCCS<G: Group> {
     pub primary_part: AllocatedLCCCSPrimaryPart<G>,
     pub C: AllocatedSimulatedPoint<G>,
+}
+
+impl<G: Group> Debug for AllocatedLCCCS<G> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AllocatedLCCCS")
+            .field("primary_part", &self.primary_part)
+            .field("C", &self.C)
+            .finish()
+    }
 }
 
 impl<G: Group> AllocatedLCCCS<G> {
@@ -95,7 +105,7 @@ impl<G: Group> AllocatedLCCCS<G> {
     }
 
     pub fn element_num(&self) -> usize {
-        2 * self.C.x.params.n_limbs + 1
+        2 * self.C.x.params.n_limbs
             + 1 + self.primary_part.r_x.len() + self.primary_part.Xs.len() + self.primary_part.Vs.len()
     }
 }
@@ -211,6 +221,17 @@ pub struct AllocatedLCCCSPrimaryPart<G: Group> {
     pub Xs: Vec<AllocatedNum<G::Base>>,
     pub Vs: Vec<AllocatedNum<G::Base>>,
     pub r_x: Vec<AllocatedNum<G::Base>>,
+}
+
+impl<G: Group> Debug for AllocatedLCCCSPrimaryPart<G> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AllocatedLCCCSPrimaryPart")
+            .field("u", &self.u.get_value())
+            .field("Xs", &self.Xs.iter().map(|x| x.get_value()).collect::<Vec<_>>())
+            .field("Vs", &self.Vs.iter().map(|v| v.get_value()).collect::<Vec<_>>())
+            .field("r_x", &self.r_x.iter().map(|r| r.get_value()).collect::<Vec<_>>())
+            .finish()
+    }
 }
 
 impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
@@ -377,7 +398,7 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
         rho_i: &AllocatedNum<G::Base>,
         thetas: &[AllocatedNum<G::Base>],
     ) -> Result<(), SynthesisError> {
-        let one = AllocatedNum::alloc(cs.namespace(|| "alloc"), || Ok(G::Base::ZERO))?;
+        let one = AllocatedNum::one(cs.namespace(|| "alloc"))?;
         self.folding(
             cs.namespace(|| " folding with cccs"),
             rho_i,
@@ -567,7 +588,7 @@ pub fn multi_folding_with_primary_part<CS: ConstraintSystem<<G as Group>::Base>,
 
     // folding
     for (i, lcccs) in lcccs.iter().enumerate().skip(1) {
-        rho_i = rho_i.square(cs.namespace(|| format!("alloc {}th squared rho_i in folding lcccs", i)))?;
+        rho_i = rho_i.mul(cs.namespace(|| format!("alloc {}th squared rho_i in folding lcccs", i)), &rho)?;
         lcccs_folded.folding_with_lcccs_primary_part(
             cs.namespace(|| format!("folding {}th lcccs", i)),
             lcccs,
@@ -576,7 +597,7 @@ pub fn multi_folding_with_primary_part<CS: ConstraintSystem<<G as Group>::Base>,
         )?;
     }
     for (i, cccs) in cccs.iter().enumerate() {
-        rho_i = rho_i.square(cs.namespace(|| format!("alloc {}th squared rho_i in folding cccs", i)))?;
+        rho_i = rho_i.mul(cs.namespace(|| format!("alloc {}th squared rho_i in folding cccs", i)), &rho)?;
         lcccs_folded.folding_with_cccs_primary_part(
             cs.namespace(|| format!("folding {}th cccs", i)),
             cccs,

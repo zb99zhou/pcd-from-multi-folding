@@ -70,7 +70,9 @@ impl<F: PrimeField> SparseMatrix<F> {
             new_matrix[*row].push((*col, *val));
         }
 
-        for row in new_matrix.iter() {
+        for row in new_matrix.iter_mut() {
+            // TODO: ensure matrix is sorted
+            row.sort_by_key(|(col, _)| *col);
             assert!(row.windows(2).all(|w| w[0].0 < w[1].0));
         }
 

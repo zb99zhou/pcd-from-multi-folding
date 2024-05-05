@@ -116,13 +116,11 @@ impl<G: Group> NIFS<G> {
     let r = ro.squeeze(NUM_CHALLENGE_BITS);
     U_in_calc = U_in_calc.fold(U2, &comm_T, &r)?;
     W_in_calc = W_in_calc.fold(W2, &T, &r)?;
-    let U = U_in_calc.clone();
-    let W = W_in_calc.clone();
-    
+
     // return the folded instance and witness
     Ok((
       NIFS_vec,
-      (U, W),
+      (U_in_calc, W_in_calc),
     ))
   }
 

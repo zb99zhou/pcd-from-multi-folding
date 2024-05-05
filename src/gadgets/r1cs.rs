@@ -1,4 +1,5 @@
 //! This module implements various gadgets necessary for folding R1CS types.
+use std::fmt::{Debug, Formatter};
 use super::nonnative::{
   bignat::BigNat,
   util::{f_to_nat, Num},
@@ -69,6 +70,17 @@ pub struct AllocatedRelaxedR1CSInstance<G: Group> {
   pub(crate) E: AllocatedPoint<G>,
   pub(crate) u: AllocatedNum<G::Base>,
   pub(crate) Xs: Vec<BigNat<G::Base>>,
+}
+
+impl<G: Group> Debug for AllocatedRelaxedR1CSInstance<G> {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("AllocatedRelaxedR1CSInstance")
+        .field("W", &self.W)
+        .field("E", &self.E)
+        .field("u", &self.u.get_value())
+        .field("Xs", &self.Xs.iter().map(|x| x.value.as_ref().map(|v| format!("{:x}", v))).collect::<Vec<_>>())
+        .finish()
+  }
 }
 
 impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
@@ -364,7 +376,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     let r_square_E = U.E.scalar_mul(cs.namespace(|| "r * r * E"), &r_bits)?;
     let E_fold = self.E
         .add(cs.namespace(|| "self.E + r * T"), &rT)?
-        .add(cs.namespace(|| "self.E + r * T"), &r_square_E)?;
+        .add(cs.namespace(|| "self.E + r * T + r^2 * E"), &r_square_E)?;
 
     // u_fold = u_r + r
     let u_fold = AllocatedNum::alloc(

@@ -131,8 +131,8 @@ pub fn scalar_as_base<G: Group>(input: G::Scalar) -> G::Base {
 /// interepret base as scalar
 pub fn base_as_scalar<F1: PrimeFieldBits, F2: PrimeField>(input: F1) -> F2 {
   let input_bits = input.to_le_bits();
-  let mut mult = F2::ZERO;
-  let mut val = F2::ONE;
+  let mut mult = F2::ONE;
+  let mut val = F2::ZERO;
   for bit in input_bits {
     if bit {
       val += mult;
@@ -521,8 +521,9 @@ pub fn multi_and<F: PrimeField, CS: ConstraintSystem<F>>(
     lc = lc.add_bool_with_coeff(CS::one(), bool_x, F::ONE);
   }
 
+  let and_num = F::from(x.len() as u64);
   Ok(lc.equal(
     cs.namespace(||"asserts whether boolean sum is equal to the Vector constant size"),
-    &Num::new(Some(F::from(x.len() as u64)), LinearCombination::zero())
+    &Num::new(Some(and_num), LinearCombination::from_coeff(CS::one(), and_num))
   )?)
 }

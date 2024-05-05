@@ -1,3 +1,4 @@
+use std::fmt::{Debug, Formatter};
 use std::ops::Neg;
 use ff::{Field, PrimeField};
 use rand_core::RngCore;
@@ -8,7 +9,7 @@ use crate::CommitmentKey;
 use crate::errors::NovaError;
 use crate::nimfs::ccs::cccs::{CCCS, CCSWitness};
 use crate::nimfs::ccs::lcccs::LCCCS;
-use crate::nimfs::ccs::util::compute_all_sum_Mz_evals;
+use crate::nimfs::util::mle::vec_to_mle;
 use crate::nimfs::util::spare_matrix::SparseMatrix;
 use crate::nimfs::util::vec::hadamard;
 
@@ -25,7 +26,7 @@ pub enum CCSError {
 }
 
 /// A CCS structure
-#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[allow(clippy::upper_case_acronyms)]
 #[serde(bound = "")]
 pub struct CCS<G: Group> {
@@ -54,6 +55,21 @@ pub struct CCS<G: Group> {
     pub c: Vec<G::Scalar>,
 }
 
+impl<G: Group> Debug for CCS<G> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CCS")
+            .field("m", &self.m)
+            .field("n", &self.n)
+            .field("l", &self.l)
+            .field("t", &self.t)
+            .field("q", &self.q)
+            .field("d", &self.d)
+            .field("s", &self.s)
+            .field("s_prime", &self.s_prime)
+            .finish()
+    }
+}
+
 impl<G: Group> From<R1CSShape<G>> for CCS<G> {
     fn from(value: R1CSShape<G>) -> Self {
         let total_col_num = value.num_vars + value.num_io + 1;
@@ -74,11 +90,11 @@ impl<G: Group> CCS<G> {
     /// Create default CCS for R1CS
     pub fn default_r1cs() -> CCS<G>{
         CCS{
-            m: 0,
-            n: 0,
-            l: 0,
+            m: 59592,
+            n: 59834,
+            l: 1,
             s: 16, // TODO: Needs to be tested and then adjusted
-            s_prime: 14, // TODO: Needs to be tested and then adjusted
+            s_prime: 16, // TODO: Needs to be tested and then adjusted
             t: 3,
             q: 2,
             d: 2,
@@ -131,8 +147,14 @@ impl<G: Group> CCS<G> {
 
     /// Compute v_j values of the linearized committed CCS form
     /// Given `r`, compute:  \sum_{y \in {0,1}^s'} M_j(r, y) * z(y)
-    fn compute_v_j(&self, z: &[G::Scalar], r: &[G::Scalar]) -> Vec<G::Scalar> {
-        compute_all_sum_Mz_evals(&self.M, &z.to_vec(), r, self.s_prime)
+    pub(crate) fn compute_v_j(&self, z: &[G::Scalar], r: &[G::Scalar]) -> Vec<G::Scalar> {
+        self.M
+            .iter()
+            .map(|M| {
+                let Mz = M.multiply_vec(&z);
+                vec_to_mle(Mz.len().log_2(), &Mz).evaluate(r)
+            })
+            .collect()
     }
 
     pub fn to_cccs(
@@ -141,7 +163,7 @@ impl<G: Group> CCS<G> {
         ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
         z: &[G::Scalar],
     ) -> (CCCS<G>, CCSWitness<G>) {
-        let w: Vec<G::Scalar> = z[(1 + self.l)..].to_vec();
+        let w: Vec<G::Scalar> = z[..(self.n - self.l - 1)].to_vec();
         let r_w = G::Scalar::random(rng);
         let C = G::CE::commit(ck, &w);
 
@@ -149,7 +171,7 @@ impl<G: Group> CCS<G> {
             CCCS::<G> {
                 ccs: self.clone(),
                 C,
-                x: z[1..(1 + self.l)].to_vec(),
+                x: z[(self.n - self.l)..].to_vec(),
             },
             CCSWitness::<G> { w, r_w },
         )
@@ -161,7 +183,8 @@ impl<G: Group> CCS<G> {
         ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
         z: &[G::Scalar],
     ) -> (LCCCS<G>, CCSWitness<G>) {
-        let w: Vec<G::Scalar> = z[(1 + self.l)..].to_vec();
+        assert_eq!(z.len(), self.n);
+        let w: Vec<G::Scalar> = z[..(self.n - self.l - 1)].to_vec();
         let r_w = G::Scalar::random(rng.clone());
         let C = G::CE::commit(ck, &w);
 
@@ -173,7 +196,7 @@ impl<G: Group> CCS<G> {
                 ccs: self.clone(),
                 C,
                 u: G::Scalar::ONE,
-                x: z[1..(1 + self.l)].to_vec(),
+                x: z[(self.n - self.l)..].to_vec(),
                 r_x,
                 v,
             },
@@ -232,7 +255,7 @@ impl<G: Group> CCS<G> {
             // Complete the hadamard chain
             let mut hadamard_result = vec![G::Scalar::ONE; self.m];
             for M_j in vec_M_j.into_iter() {
-                hadamard_result = hadamard(&hadamard_result, &mat_vec_mul(M_j, z));
+                hadamard_result = hadamard(&hadamard_result, &M_j.multiply_vec(z));
             }
 
             // Multiply by the coefficient of this step

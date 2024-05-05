@@ -1,10 +1,12 @@
 //! This module defines errors returned by the library.
 use core::fmt::Debug;
+use bellpepper_core::SynthesisError;
 use thiserror::Error;
+use crate::nimfs::ccs::ccs::CCSError;
 use crate::nimfs::espresso::errors::ArithErrors;
 
 /// Errors returned by Nova
-#[derive(Clone, Debug, Eq, PartialEq, Error)]
+#[derive(Debug, Error)]
 pub enum NovaError {
   /// returned if the supplied row or col in (row,col,val) tuple is out of range
   #[error("InvalidIndex")]
@@ -12,6 +14,9 @@ pub enum NovaError {
   /// returned if the supplied input is not even-sized
   #[error("OddInputLength")]
   OddInputLength,
+  /// returned if the supplied input is incorrect
+  #[error("InvalidInput")]
+  InvalidInput,
   /// returned if the supplied input is not of the right length
   #[error("InvalidInputLength")]
   InvalidInputLength,
@@ -75,10 +80,28 @@ pub enum NovaError {
   /// Arithmetic Error: {0}
   #[error("ArithmeticErrors")]
   ArithmeticErrors(ArithErrors),
+  /// Circuit Error: {0}
+  #[error("CircuitErrors")]
+  CircuitErrors(SynthesisError),
+  /// CCS Error: {0}
+  #[error("CCSErrors")]
+  CCSErrors(CCSError),
 }
 
 impl From<ArithErrors> for NovaError {
   fn from(e: ArithErrors) -> Self {
     Self::ArithmeticErrors(e)
+  }
+}
+
+impl From<SynthesisError> for NovaError {
+  fn from(e: SynthesisError) -> Self {
+    Self::CircuitErrors(e)
+  }
+}
+
+impl From<CCSError> for NovaError {
+  fn from(e: CCSError) -> Self {
+    Self::CCSErrors(e)
   }
 }

@@ -115,6 +115,11 @@ pub trait CompressedGroup:
 pub trait AbsorbInROTrait<G: Group> {
   /// Absorbs the value in the provided RO
   fn absorb_in_ro(&self, ro: &mut G::RO);
+
+  /// Absorbs the value in the provided RO
+  fn absorb_in_g2_ro<G2: Group<Base = <G as Group>::Scalar>>(&self, _ro: &mut G2::RO) {
+    unimplemented!()
+  }
 }
 
 /// A helper trait that defines the behavior of a hash function that we use as an RO

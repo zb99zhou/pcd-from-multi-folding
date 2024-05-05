@@ -1,5 +1,4 @@
 use std::marker::PhantomData;
-use ff::Field;
 
 use serde::{Deserialize, Serialize};
 use crate::bellpepper::r1cs::NovaShape;
@@ -14,22 +13,18 @@ use crate::nimfs::ccs::ccs::CCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::nimfs::multifolding::{MultiFolding, NIMFS, Proof};
 use crate::nimfs::pcd_aux_circuit::{NovaAuxiliaryInputs, NovaAuxiliaryParams, NovaAuxiliarySecondCircuit};
-use crate::nimfs::pcd_circuit::{PCDUnitInputs, PCDUnitParams, PCDUnitPrimaryCircuit};
-use crate::r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness};
-use crate::traits::{Group, ROConstants, ROConstantsCircuit, ROTrait, TEConstantsCircuit, TranscriptEngineTrait};
-use crate::traits::circuit::{StepCircuit, TrivialTestCircuit};
+use crate::nimfs::pcd_circuit::{PCDUnitParams, PCDUnitPrimaryCircuit};
+use crate::r1cs::{RelaxedR1CSInstance, RelaxedR1CSWitness};
+use crate::traits::{AbsorbInROTrait, Group, ROConstants, ROConstantsCircuit, ROTrait, TEConstantsCircuit, TranscriptEngineTrait};
+use crate::traits::circuit::PCDStepCircuit;
 use crate::traits::snark::{LinearCommittedCCSTrait, RelaxedR1CSSNARKTrait};
 
 pub struct PCDPublicParams<G1, G2, SC, const ARITY: usize, const R: usize>
     where
         G1: Group<Base = <G2 as Group>::Scalar>,
         G2: Group<Base = <G1 as Group>::Scalar>,
-        SC: StepCircuit<G1::Scalar>,
+        SC: PCDStepCircuit<G1::Scalar, ARITY, R>,
 {
-    // F_arity_primary: usize,
-    // F_arity_secondary: usize,
-    // ccs_primary: CCS<G1>,
-    pub(crate) r1cs_shape_primary: R1CSShape<G1>,
     pub(crate) ro_consts_primary: ROConstants<G1>,
     pub(crate) ro_consts_secondary: ROConstants<G2>,
     pub(crate) ro_consts_circuit_primary: ROConstantsCircuit<G2>,
@@ -38,21 +33,20 @@ pub struct PCDPublicParams<G1, G2, SC, const ARITY: usize, const R: usize>
     pub(crate) te_consts_circuit_secondary: TEConstantsCircuit<G1>,
     pub(crate) ck_primary: CommitmentKey<G1>,
     pub(crate) ck_secondary: CommitmentKey<G2>,
-    pub(crate) augmented_circuit_params_primary: PCDUnitParams<G1, ARITY, R>,
-    pub(crate) augmented_circuit_params_secondary: NovaAuxiliaryParams<G2>,
+    pub(crate) primary_circuit_params: PCDUnitParams<G1, ARITY, R>,
+    pub(crate) secondary_circuit_params: NovaAuxiliaryParams<G2>,
     // digest: G1::Scalar, // digest of everything else with this field set to G1::Scalar::ZERO
     pub(crate) _p_c: PhantomData<SC>,
-    // _p_c1: PhantomData<C1>,
-    // _p_c2: PhantomData<C2>,
 }
 
 impl<G1, G2, SC, const ARITY: usize, const R: usize> PCDPublicParams<G1, G2, SC, ARITY, R>
 where
     G1: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G1 as Group>::Scalar>,
-    SC: StepCircuit<G1::Scalar>,
+    SC: PCDStepCircuit<G1::Scalar, ARITY, R>,
 {
-    pub fn setup() -> Self {
+    pub fn setup(circuit: &SC) -> Self {
+        println!("Created secondary pp!");
         let ro_consts_primary: ROConstants<G1> = Default::default();
         let ro_consts_secondary: ROConstants<G2> = Default::default();
         let ro_consts_circuit_primary: ROConstantsCircuit<G2> = Default::default();
@@ -65,39 +59,24 @@ where
         let mut cs_aux_helper: ShapeCS<G2> = ShapeCS::new();
         let _ = aux_circuit_setup.synthesize(&mut cs_aux_helper);
         let (aux_r1cs_shape, ck_secondary) = cs_aux_helper.r1cs_shape();
-        println!("Created aux_r1cs_shape");
-        let circuit_params_primary_for_setup: PCDUnitParams<G1, ARITY, R> = PCDUnitParams::default_for_pcd(BN_LIMB_WIDTH, BN_N_LIMBS);
-        let augmented_circuit_params_secondary: NovaAuxiliaryParams<G2> = NovaAuxiliaryParams::new(aux_r1cs_shape, ARITY);
+        let secondary_circuit_params: NovaAuxiliaryParams<G2> = NovaAuxiliaryParams::new(aux_r1cs_shape, ARITY);
 
-        println!("Created 2nd pp");
-        let pcd_circuit_setup_input = PCDUnitInputs::<G2>::new(
-            scalar_as_base::<G1>(circuit_params_primary_for_setup.digest),
-            vec![G2::Base::ZERO; ARITY],
-            None, None, None, None, None, None, None, None,
-        );
-        let test_circuit = TrivialTestCircuit::<<G2 as Group>::Base>::default();
-        let pcd_circuit_setup = PCDUnitPrimaryCircuit::<
-            '_,
-            G2,
-            G1,
-            TrivialTestCircuit<<G2 as Group>::Base>, ARITY, R,
-        >::new(
+        println!("Created primary pp!");
+        let circuit_params_primary_for_setup: PCDUnitParams<G1, ARITY, R> = PCDUnitParams::default_for_pcd(BN_LIMB_WIDTH, BN_N_LIMBS);
+        let pcd_circuit_setup = PCDUnitPrimaryCircuit::<'_, G2, G1, SC, ARITY, R>::new(
             &circuit_params_primary_for_setup,
-            Some(pcd_circuit_setup_input),
-            &test_circuit,
+            None,
+            circuit,
             ro_consts_circuit_primary.clone(),
             te_consts_circuit_primary.clone(),
         );
         let mut cs_pcd_helper: ShapeCS<G1> = ShapeCS::new();
         let _ = pcd_circuit_setup.synthesize(&mut cs_pcd_helper);
         let (r1cs_shape_primary, ck_primary) = cs_pcd_helper.r1cs_shape();
-        println!("num_vars:{}, num_cons:{}", r1cs_shape_primary.num_vars, r1cs_shape_primary.num_cons);
-        let ccs_primary = CCS::<G1>::from(r1cs_shape_primary.clone());
-        let augmented_circuit_params_primary = PCDUnitParams::<G1, ARITY, R>::new(BN_LIMB_WIDTH, BN_N_LIMBS, ccs_primary);
-        let _p_c = PhantomData::<SC>::default();
+        let ccs_primary = CCS::<G1>::from(r1cs_shape_primary);
+        let primary_circuit_params = PCDUnitParams::<G1, ARITY, R>::new(BN_LIMB_WIDTH, BN_N_LIMBS, ccs_primary);
 
         Self{
-            r1cs_shape_primary,
             ro_consts_primary,
             ro_consts_secondary,
             ro_consts_circuit_primary,
@@ -106,18 +85,19 @@ where
             te_consts_circuit_secondary,
             ck_primary,
             ck_secondary,
-            augmented_circuit_params_primary,
-            augmented_circuit_params_secondary,
-            _p_c,
+            primary_circuit_params,
+            secondary_circuit_params,
+            _p_c: PhantomData,
         }
 
     }
 }
-pub struct PCDRecursiveSNARK<G1, G2, SC>
+
+pub struct PCDRecursiveSNARK<G1, G2, SC, const ARITY: usize, const R: usize>
     where
         G1: Group<Base = <G2 as Group>::Scalar>,
         G2: Group<Base = <G1 as Group>::Scalar>,
-        SC: StepCircuit<G1::Scalar>,
+        SC: PCDStepCircuit<G1::Scalar, ARITY, R>,
 {
     r_w_primary: CCSWitness<G1>,
     r_u_primary: CCCS<G1>,
@@ -125,17 +105,15 @@ pub struct PCDRecursiveSNARK<G1, G2, SC>
     r_U_primary: LCCCS<G1>,
     r_W_secondary: RelaxedR1CSWitness<G2>,
     r_U_secondary: RelaxedR1CSInstance<G2>,
-    // i: usize,
     zi_primary: Vec<G1::Scalar>,
     _p_c: PhantomData<SC>,
-    // _p_c2: PhantomData<C2>,
 }
 
-impl<G1, G2, SC> PCDRecursiveSNARK<G1, G2, SC>
+impl<G1, G2, SC, const ARITY: usize, const R: usize> PCDRecursiveSNARK<G1, G2, SC, ARITY, R>
     where
         G1: Group<Base = <G2 as Group>::Scalar>,
         G2: Group<Base = <G1 as Group>::Scalar>,
-        SC: StepCircuit<G1::Scalar>,
+        SC: PCDStepCircuit<G1::Scalar, ARITY, R>,
 {
     pub fn new(
         r_w_primary: CCSWitness<G1>,
@@ -144,7 +122,6 @@ impl<G1, G2, SC> PCDRecursiveSNARK<G1, G2, SC>
         r_U_primary: LCCCS<G1>,
         r_W_secondary: RelaxedR1CSWitness<G2>,
         r_U_secondary: RelaxedR1CSInstance<G2>,
-        // i: usize,
         zi_primary: Vec<G1::Scalar>,
     ) -> Self {
         Self {
@@ -154,7 +131,6 @@ impl<G1, G2, SC> PCDRecursiveSNARK<G1, G2, SC>
             r_U_primary,
             r_W_secondary,
             r_U_secondary,
-            // i,
             zi_primary,
             _p_c: PhantomData::<SC>::default(),
         }
@@ -163,51 +139,42 @@ impl<G1, G2, SC> PCDRecursiveSNARK<G1, G2, SC>
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct PCDProverKey<G1, G2, SC, S1, S2>
+pub struct PCDProverKey<G1, G2, S1, S2>
     where
         G1: Group<Base = <G2 as Group>::Scalar>,
         G2: Group<Base = <G1 as Group>::Scalar>,
-        SC: StepCircuit<G1::Scalar>,
-        // C2: StepCircuit<G2::Scalar>,
         S1: LinearCommittedCCSTrait<G1>,
         S2: RelaxedR1CSSNARKTrait<G2>,
 {
     pk_primary: S1::ProverKey,
     pk_secondary: S2::ProverKey,
-    _p_c: PhantomData<SC>,
-    // _p_c2: PhantomData<C2>,
 }
 
-/// A type that holds the verifier key for `CompressedSNARK`
+/// A type that holds the verifier key for `PCDRecursiveSNARK`
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct PCDVerifierKey<G1, G2, SC, S1, S2, const ARITY: usize>
+pub struct PCDVerifierKey<G1, G2, S1, S2>
     where
         G1: Group<Base = <G2 as Group>::Scalar>,
         G2: Group<Base = <G1 as Group>::Scalar>,
-        SC: StepCircuit<G1::Scalar>,
         S1: LinearCommittedCCSTrait<G1>,
         S2: RelaxedR1CSSNARKTrait<G2>,
 {
-    // F_arity_primary: usize,
-    // F_arity_secondary: usize,
     ro_consts_primary: ROConstants<G1>,
     ro_consts_secondary: ROConstants<G2>,
     digest: G1::Scalar,
     vk_primary: S1::VerifierKey,
     vk_secondary: S2::VerifierKey,
-    _p_c: PhantomData<SC>,
-    // _p_c2: PhantomData<C2>,
 }
 
 /// A SNARK that proves the knowledge of a valid `RecursiveSNARK`
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub struct PCDCompressedSNARK<G1, G2, SC, S1, S2>
+pub struct PCDCompressedSNARK<G1, G2, SC, S1, S2, const ARITY: usize, const R: usize>
     where
         G1: Group<Base = <G2 as Group>::Scalar>,
         G2: Group<Base = <G1 as Group>::Scalar>,
-        SC: StepCircuit<G1::Scalar>,
+        SC: PCDStepCircuit<G1::Scalar, ARITY, R>,
         S1: LinearCommittedCCSTrait<G1>,
         S2: RelaxedR1CSSNARKTrait<G2>,
 {
@@ -222,55 +189,50 @@ pub struct PCDCompressedSNARK<G1, G2, SC, S1, S2>
     zn_primary: Vec<G1::Scalar>,
 
     _p_c: PhantomData<SC>,
-    // _p_c2: PhantomData<C2>,
 }
 
-impl<G1, G2, SC, S1, S2> PCDCompressedSNARK<G1, G2, SC, S1, S2>
+impl<G1, G2, SC, S1, S2, const ARITY: usize, const R: usize> PCDCompressedSNARK<G1, G2, SC, S1, S2, ARITY, R, >
     where
         G1: Group<Base = <G2 as Group>::Scalar>,
         G2: Group<Base = <G1 as Group>::Scalar>,
-        SC: StepCircuit<G1::Scalar>,
+        SC: PCDStepCircuit<G1::Scalar, ARITY, R>,
         S1: LinearCommittedCCSTrait<G1>,
         S2: RelaxedR1CSSNARKTrait<G2>,
 {
+    const TRANSCRIPT_INIT_STR:&'static [u8; 4] = b"init";
+
     /// Creates prover and verifier keys for `CompressedSNARK`
-    pub fn setup<const ARITY: usize, const R: usize>(
-        pp: &PCDPublicParams<G1, G2, SC, ARITY, R>,
-    ) -> Result<
+    pub fn setup(pp: &PCDPublicParams<G1, G2, SC, ARITY, R>) -> Result<
         (
-            PCDProverKey<G1, G2, SC, S1, S2>,
-            PCDVerifierKey<G1, G2, SC, S1, S2, ARITY>,
+            PCDProverKey<G1, G2, S1, S2>,
+            PCDVerifierKey<G1, G2, S1, S2>,
         ),
         NovaError,
     > {
-        let (pk_primary, vk_primary) = S1::setup(&pp.ck_primary, &pp.augmented_circuit_params_primary.ccs)?;
-        let (pk_secondary, vk_secondary) = S2::setup(&pp.ck_secondary, &pp.augmented_circuit_params_secondary.r1cs_shape)?;
+        let (pk_primary, vk_primary) = S1::setup(&pp.ck_primary, &pp.primary_circuit_params.ccs)?;
+        let (pk_secondary, vk_secondary) = S2::setup(&pp.ck_secondary, &pp.secondary_circuit_params.r1cs_shape)?;
 
         let pk = PCDProverKey {
             pk_primary,
             pk_secondary,
-            _p_c: Default::default(),
         };
 
         let vk = PCDVerifierKey {
             ro_consts_primary: pp.ro_consts_primary.clone(),
             ro_consts_secondary: pp.ro_consts_secondary.clone(),
-            digest: pp.augmented_circuit_params_primary.digest,
+            digest: pp.primary_circuit_params.digest,
             vk_primary,
             vk_secondary,
-            _p_c: Default::default(),
         };
 
         Ok((pk, vk))
     }
 
-    const TRANSCRIPT_INIT_STR:&'static [u8; 4] = b"init";
-
     /// Create a new `CompressedSNARK`
-    pub fn prove<const ARITY: usize, const R: usize>(
+    pub fn prove(
         pp: &PCDPublicParams<G1, G2, SC, ARITY, R>,
-        pk: &PCDProverKey<G1, G2, SC, S1, S2>,
-        recursive_snark: &PCDRecursiveSNARK<G1, G2, SC>,
+        pk: &PCDProverKey<G1, G2, S1, S2>,
+        recursive_snark: &PCDRecursiveSNARK<G1, G2, SC, ARITY, R>,
     ) -> Result<Self, NovaError> {
         // Prover's transcript
         let mut transcript_p = G1::TE::new(Default::default(), b"multifolding");
@@ -321,15 +283,15 @@ impl<G1, G2, SC, S1, S2> PCDCompressedSNARK<G1, G2, SC, S1, S2>
     }
 
     /// Verify the correctness of the `CompressedSNARK`
-    pub fn verify<const ARITY: usize>(
+    pub fn verify(
         &self,
-        vk: &PCDVerifierKey<G1, G2, SC, S1, S2, ARITY>,
+        vk: &PCDVerifierKey<G1, G2, S1, S2>,
         z0_primary: Vec<G1::Scalar>,
     ) -> Result<Vec<G1::Scalar>, NovaError> {
         // check if the instances have two public outputs
         if self.r_u_primary.x.len() != 1
             || self.r_U_primary.x.len() != 1
-            || self.r_U_secondary.X.len() != 1
+            || self.r_U_secondary.X.len() != 16
         {
             return Err(NovaError::ProofVerifyError);
         }
@@ -348,6 +310,7 @@ impl<G1, G2, SC, S1, S2> PCDCompressedSNARK<G1, G2, SC, S1, S2>
                 hasher.absorb(*e);
             }
             self.r_U_primary.absorb_in_ro::<G2>(&mut hasher);
+            self.r_U_secondary.absorb_in_ro(&mut hasher);
 
             hasher.squeeze(NUM_HASH_BITS)
         };
@@ -371,13 +334,11 @@ impl<G1, G2, SC, S1, S2> PCDCompressedSNARK<G1, G2, SC, S1, S2>
         // check the satisfiability of the folded instances using SNARKs proving the knowledge of their satisfying witnesses
         let (res_primary, res_secondary) = rayon::join(
             || {
-                self
-                    .f_W_snark_primary
+                self.f_W_snark_primary
                     .verify(&vk.vk_primary, &f_U_primary)
             },
             || {
-                self
-                    .r_W_snark_secondary
+                self.r_W_snark_secondary
                     .verify(&vk.vk_secondary, &self.r_U_secondary)
             },
         );

@@ -5,12 +5,9 @@ use serde::{Deserialize, Serialize};
 use crate::{CE, Commitment, CommitmentKey};
 use crate::errors::NovaError;
 use crate::nimfs::ccs::ccs::{CCSError, CCS};
-use crate::nimfs::ccs::util::compute_sum_Mz;
 use crate::nimfs::espresso::virtual_polynomial::VirtualPolynomial;
 use crate::nimfs::util::hypercube::BooleanHypercube;
-use crate::nimfs::util::mle::matrix_to_mle;
 use crate::nimfs::util::mle::vec_to_mle;
-use crate::r1cs::R1CSShape;
 use crate::traits::commitment::{CommitmentEngineTrait, CommitmentTrait};
 use crate::traits::Group;
 
@@ -25,8 +22,8 @@ pub struct CCSWitness<C: Group> {
 }
 
 impl<C: Group> CCSWitness<C> {
-    pub fn new(S: &R1CSShape<C>, W: &[C::Scalar]) -> Result<Self, NovaError> {
-        if S.num_vars != W.len() {
+    pub fn new(S: &CCS<C>, W: &[C::Scalar]) -> Result<Self, NovaError> {
+        if S.n != W.len() {
             Err(NovaError::InvalidWitnessLength)
         } else {
             Ok(Self { w: W.to_owned(), r_w: Default::default() })
@@ -103,16 +100,14 @@ impl<C: Group> CCCS<C> {
     /// Computes q(x) = \sum^q c_i * \prod_{j \in S_i} ( \sum_{y \in {0,1}^s'} M_j(x, y) * z(y) )
     /// polynomial over x
     pub fn compute_q(&self, z: &Vec<C::Scalar>) -> VirtualPolynomial<C::Scalar> {
-        let z_mle = vec_to_mle(self.ccs.s_prime, z);
         let mut q = VirtualPolynomial::<C::Scalar>::new(self.ccs.s);
 
         for i in 0..self.ccs.q {
             let mut prod: VirtualPolynomial<C::Scalar> =
                 VirtualPolynomial::<C::Scalar>::new(self.ccs.s);
             for j in self.ccs.S[i].clone() {
-                let M_j = matrix_to_mle(&self.ccs.M[j]);
-
-                let sum_Mz = compute_sum_Mz(M_j, &z_mle, self.ccs.s_prime);
+                let Mz = self.ccs.M[j].multiply_vec(z);
+                let sum_Mz = vec_to_mle(self.ccs.s, &Mz);
 
                 // Fold this sum into the running product
                 if prod.products.is_empty() {
