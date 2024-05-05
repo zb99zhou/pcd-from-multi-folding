@@ -64,7 +64,7 @@ impl<Scalar: PrimeField> ExtendFunc<Scalar> for AllocatedNum<Scalar> {
         let tmp = AllocatedNum::alloc(
             cs.namespace(|| "alloc tmp"),
             || self.get_value()
-                .and_then(|v| other.get_value().map(|o| v - o))
+                .and_then(|v| other.get_value().map(|o| v + o))
                 .get()
                 .copied()
         )?;
@@ -129,9 +129,9 @@ impl<Scalar: PrimeField> ExtendFunc<Scalar> for AllocatedNum<Scalar> {
                 .copied()
         )?;
         cs.enforce(
-            || "constraints tmp = self * constant * other",
+            || "constraints tmp = self  * other",
             |lc| lc + self.get_variable(),
-            |_lc| other.lc(Scalar::ZERO),
+            |_lc| other.lc(Scalar::ONE),
             |lc| lc + tmp.get_variable(),
         );
         Ok(tmp)
@@ -164,7 +164,7 @@ impl<Scalar: PrimeField> ExtendFunc<Scalar> for AllocatedNum<Scalar> {
         let inv = AllocatedNum::alloc(
             cs.namespace(|| "alloc tmp"),
             || self.get_value()
-                .map(|v| v.invert().unwrap())
+                .map(|v| (v * scale).invert().unwrap())
                 .get()
                 .copied()
         )?;

@@ -2,6 +2,7 @@
 use core::fmt::Debug;
 use bellpepper_core::SynthesisError;
 use thiserror::Error;
+use crate::nimfs::ccs::ccs::CCSError;
 use crate::nimfs::espresso::errors::ArithErrors;
 
 /// Errors returned by Nova
@@ -13,6 +14,9 @@ pub enum NovaError {
   /// returned if the supplied input is not even-sized
   #[error("OddInputLength")]
   OddInputLength,
+  /// returned if the supplied input is incorrect
+  #[error("InvalidInput")]
+  InvalidInput,
   /// returned if the supplied input is not of the right length
   #[error("InvalidInputLength")]
   InvalidInputLength,
@@ -79,6 +83,9 @@ pub enum NovaError {
   /// Circuit Error: {0}
   #[error("CircuitErrors")]
   CircuitErrors(SynthesisError),
+  /// CCS Error: {0}
+  #[error("CCSErrors")]
+  CCSErrors(CCSError),
 }
 
 impl From<ArithErrors> for NovaError {
@@ -90,5 +97,11 @@ impl From<ArithErrors> for NovaError {
 impl From<SynthesisError> for NovaError {
   fn from(e: SynthesisError) -> Self {
     Self::CircuitErrors(e)
+  }
+}
+
+impl From<CCSError> for NovaError {
+  fn from(e: CCSError) -> Self {
+    Self::CCSErrors(e)
   }
 }

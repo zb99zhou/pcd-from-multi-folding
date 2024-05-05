@@ -1,11 +1,12 @@
 use bellpepper::gadgets::Assignment;
 use bellpepper_core::{ConstraintSystem, SynthesisError};
-use bellpepper_core::boolean::Boolean;
+use bellpepper_core::boolean::{AllocatedBit, Boolean};
 use bellpepper_core::num::{AllocatedNum, Num};
 use ff::PrimeField;
 
 use crate::gadgets::ext_allocated_num::ExtendFunc;
 use crate::gadgets::nonnative::util::as_allocated_num;
+use crate::gadgets::utils::multi_and;
 use crate::nimfs::ccs::ccs::CCS;
 use crate::nimfs::espresso::sum_check::verifier::u64_factorial;
 use crate::nimfs::espresso::virtual_polynomial::VPAuxInfo;
@@ -34,7 +35,7 @@ impl<G: Group> AllocatedProof<G> {
             proofs.push(AllocatedIOPProverMessage {
                 evaluations: (0..default_ccs.d + 2)
                     .map(|j|AllocatedNum::alloc(
-                        cs.namespace(|| format!("alloc {i}-{j}th sigmas")),
+                        cs.namespace(|| format!("alloc {i}-{j}th iop message")),
                         || proof_witness.get().map(|n| n.proofs[i][j])
                     ))
                     .collect::<Result<Vec<_>, SynthesisError>>()?
@@ -156,7 +157,7 @@ impl<G: Group> AllocatedIOPVerifierState<G> {
         &mut self,
         mut cs: CS,
         asserted_sum: &AllocatedNum<G::Base>,
-    ) -> Result<AllocatedSumCheckSubClaim<G>, SynthesisError> {
+    ) -> Result<(AllocatedSumCheckSubClaim<G>, AllocatedBit), SynthesisError> {
         assert!(self.finished);
         assert_eq!(self.polynomials_received.len(), self.num_vars);
 
@@ -176,27 +177,34 @@ impl<G: Group> AllocatedIOPVerifierState<G> {
         // insert the asserted_sum to the first position of the expected vector
         expected_vec.insert(0, asserted_sum.clone());
 
-        for (evaluations, expected) in self
+        let mut checks_eval = Vec::new();
+        for (i, (evaluations, expected)) in self
             .polynomials_received
             .iter()
             .zip(expected_vec.iter())
             .take(self.num_vars)
+            .enumerate()
         {
             // the deferred check during the interactive phase:
             // 1. check if the received 'P(0) + P(1) = expected`.
-            cs.enforce(
-                || "Prover message must be consistent with the claim",
-                |lc| lc + evaluations[0].get_variable() + evaluations[1].get_variable(),
-                |lc| lc + CS::one(),
-                |lc| lc + expected.get_variable(),
-            );
+            use crate::gadgets::nonnative::util::Num;
+            let evaluation_0_lc = Num::from(&evaluations[0]) + &evaluations[1];
+            let expected_lc = Num::from(expected.clone());
+            checks_eval.push(Boolean::from(evaluation_0_lc.equal(
+                cs.namespace(|| format!("{i}th prover message must be consistent with the claim")),
+                &expected_lc
+            )?));
         }
-        Ok(AllocatedSumCheckSubClaim {
-            point: self.challenges.clone(),
-            // the last expected value (not checked within this function) will be included in the
-            // subclaim
-            expected_evaluation: expected_vec[self.num_vars].clone(),
-        })
+
+        Ok((
+            AllocatedSumCheckSubClaim {
+                point: self.challenges.clone(),
+                // the last expected value (not checked within this function) will be included in the
+                // subclaim
+                expected_evaluation: expected_vec[self.num_vars].clone(),
+            },
+            multi_and(cs.namespace(|| "check prover evaluation"), &checks_eval)?
+        ))
     }
 }
 
@@ -206,7 +214,7 @@ pub fn sumcheck_verify<CS: ConstraintSystem<<G as Group>::Base>, G: Group>(
     proof: &AllocatedIOPProof<G>,
     aux_info: &VPAuxInfo<G::Base>,
     transcript: &mut G::TECircuit,
-) -> Result<AllocatedSumCheckSubClaim<G>, SynthesisError> {
+) -> Result<(AllocatedSumCheckSubClaim<G>, AllocatedBit), SynthesisError> {
     transcript.absorb(cs.namespace(|| "absorb num_variables"), b"aux info", aux_info)?;
 
     let mut verifier_state = AllocatedIOPVerifierState::verifier_init(aux_info);
@@ -375,7 +383,7 @@ pub fn enforce_eq_eval<CS: ConstraintSystem<F>, F: PrimeField>(
 ) -> Result<AllocatedNum<F>, SynthesisError> {
     assert_eq!(x.len(), y.len());
     
-    let mut res = AllocatedNum::alloc(cs.namespace(|| "alloc one"), || Ok(F::ONE))?;
+    let mut res = AllocatedNum::one(cs.namespace(|| "alloc one"))?;
     for (i, (xi, yi)) in x.iter().zip(y.iter()).enumerate() {
         let mut cs = cs.namespace(||format!("calc {}th eq eval", i));
         let xi_yi = xi.mul(cs.namespace(|| "xi * yi"), yi)?;
@@ -385,10 +393,7 @@ pub fn enforce_eq_eval<CS: ConstraintSystem<F>, F: PrimeField>(
             .add(&Num::from(xi.clone()).scale(-F::ONE))
             .add(&Num::from(yi.clone()).scale(-F::ONE))
             .add_bool_with_coeff(CS::one(), &Boolean::Constant(true), F::ONE);
-        res = res.mul_lc(
-            cs.namespace(|| "update eq eval result"),
-            lc
-        )?;
+        res = res.mul_lc(cs.namespace(|| "update eq eval result"), lc)?;
     }
     
     Ok(res)

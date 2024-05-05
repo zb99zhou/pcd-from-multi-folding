@@ -9,7 +9,7 @@ use crate::gadgets::cccs::{AllocatedCCCS, AllocatedCCCSPrimaryPart, AllocatedLCC
 use crate::gadgets::ext_allocated_num::ExtendFunc;
 use crate::gadgets::r1cs::{AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance};
 use crate::gadgets::sumcheck::{AllocatedProof, enforce_compute_c_from_sigmas_and_thetas, enforce_interpolate_uni_poly, sumcheck_verify};
-use crate::gadgets::utils::{alloc_num_equals, alloc_scalar_as_base,alloc_zero,conditionally_select_vec_allocated_num,le_bits_to_num, multi_and};
+use crate::gadgets::utils::{alloc_num_equals, alloc_scalar_as_base, conditionally_select_vec_allocated_num, le_bits_to_num, multi_and};
 // use crate::gadgets::utils::{alloc_num_equals, alloc_scalar_as_base,le_bits_to_num, multi_and};
 use crate::nimfs::ccs::cccs::{CCCSForBase, PointForScalar};
 use crate::nimfs::ccs::ccs::CCS;
@@ -166,7 +166,7 @@ where
         )?;
 
         let nimfs_proof = AllocatedProof::from_witness::<_, R>(
-            cs.namespace(|| "params"),
+            cs.namespace(|| "nimfs_proof"),
             self.inputs.as_ref().and_then(|i| i.proof.as_ref()),
         )?;
 
@@ -328,15 +328,19 @@ where
         ) = self.alloc_witness(cs.namespace(|| "allocate the circuit witness"))?;
 
         // Compute variable indicating if this is the base case
-        let zero = alloc_zero(cs.namespace(|| "zero"))?;
-        let mut is_base_case_flags = Vec::new();
-        for (i, l) in lcccs.iter().enumerate() {
-            is_base_case_flags.push(l.is_null(cs.namespace(|| format!("{}th lcccs", i)), &zero)?);
-        }
-        for (i, c) in cccs.iter().enumerate() {
-            is_base_case_flags.push(c.is_null(cs.namespace(|| format!("{}th cccs", i)), &zero)?);
-        }
-        let is_base_case = Boolean::from(multi_and(cs.namespace(|| "is base case"), &is_base_case_flags)?);
+        let zero = crate::gadgets::utils::alloc_zero(cs.namespace(|| "zero"))?;
+        // let mut is_base_case_flags = Vec::new();
+        // for (i, l) in lcccs.iter().enumerate() {
+        //     is_base_case_flags.push(l.is_null(cs.namespace(|| format!("{}th lcccs", i)), &zero)?);
+        // }
+        // for (i, c) in cccs.iter().enumerate() {
+        //     is_base_case_flags.push(c.is_null(cs.namespace(|| format!("{}th cccs", i)), &zero)?);
+        // }
+        // for (i, c) in relaxed_r1cs_inst.iter().enumerate() {
+        //     is_base_case_flags.push(c.is_null(cs.namespace(|| format!("{}th relaxed_r1cs_inst", i)), &zero)?);
+        // }
+        let is_base_case = Boolean::from(alloc_num_equals(cs.namespace(|| "Check if base case"), &relaxed_r1cs_inst[0].W.x, &zero)?);
+        // let is_base_case = Boolean::from(multi_and(cs.namespace(|| "is base case"), &is_base_case_flags)?);
 
         let is_correct_public_input = self.check_public_input(
             cs.namespace(|| "is_correct_public_input"),
@@ -347,16 +351,17 @@ where
             &lcccs,
             &relaxed_r1cs_inst
         )?;
+        println!("is_correct_public_input: {:?}", is_correct_public_input.get_value());
+        println!("is_base_case: {:?}", is_base_case.get_value());
         Boolean::enforce_equal(
             cs.namespace(|| "is_correct_public_input or is_base case"),
             &is_correct_public_input,
             &is_base_case.not()
         )?;
 
-        // cs.print_vers_cons();
         // Synthesize the circuit for the base case and get the new running instance
         let lcccs_base = self.synthesize_genesis_based_nimfs(cs.namespace(|| "generate base case based nimfs"))?;
-        // cs.print_vers_cons();
+
         // Synthesize the circuit for the non-base case and get the new running
         // instance along with a boolean indicating if all checks have passed
         let (new_lcccs_primary_part, check_non_base_pass) = self
@@ -372,7 +377,7 @@ where
         // Either check_non_base_pass=true or we are in the base case
         Boolean::enforce_equal(
             cs.namespace(|| "check_non_base_pass nor base_case"),
-            &check_non_base_pass.into(),
+            &Boolean::from(check_non_base_pass).not(),
             &is_base_case,
         )?;
 
@@ -416,6 +421,7 @@ where
             ));
         }
 
+        println!("relaxed_r1cs_inst: {:#?}", relaxed_r1cs_inst);
         let hash = self.commit_explicit_public_input(
             cs.namespace(|| "commit public input"),
             &params,
@@ -424,10 +430,9 @@ where
             &new_lcccs,
             &relaxed_r1cs_inst
         )?;
+        println!("public input hash: {:?}", hash.get_value());
         hash.inputize(cs.namespace(|| "output new hash of this circuit"))?; // this circuit's public input
-        // let hash = AllocatedNum::<<G1 as Group>::Scalar>::one(cs.namespace(|| "")).unwrap();
-        // hash.inputize(cs.namespace(|| "output new hash of this circuit"))?; // this circuit's public input
-        // let new_z = vec![AllocatedNum::<<G1 as Group>::Scalar>::one(cs.namespace(|| "")).unwrap(); ARITY];
+
         Ok(new_z)
     }
 
@@ -451,6 +456,8 @@ where
             cs.namespace(|| "init NIMFS transcript"),
             b"multifolding"
         );
+        transcript.squeeze(cs.namespace(|| "squeeze init"), b"init")?;
+
         // Step 1: Get some challenges
         let gamma = transcript.squeeze(cs.namespace(|| "alloc gamma"), b"gamma")?;
         let beta = transcript.batch_squeeze(
@@ -464,6 +471,7 @@ where
         let mut sum_v_j_gamma_lc = Num::zero();
         for (i, running_instance) in lcccs.iter().enumerate() {
             for j in 0..running_instance.Vs.len() {
+                let mut cs = cs.namespace(|| format!("{i}th lcccs's sum_v_{j}"));
                 let gamma_j = gamma.pow_constant(cs.namespace(|| "alloc gamma_j"), i * params.ccs.t + j)?;
                 let res = running_instance.Vs[j].mul(cs.namespace(|| "v * gamma_j"), &gamma_j)?;
                 sum_v_j_gamma_lc = sum_v_j_gamma_lc.add(&res.into());
@@ -485,7 +493,7 @@ where
             num_variables: params.ccs.s,
             phantom: std::marker::PhantomData::<G::Base>,
         };
-        let sumcheck_subclaim = sumcheck_verify(
+        let (sumcheck_subclaim, check_sumcheck_v) = sumcheck_verify(
             cs.namespace(|| "verify sumcheck proof"),
             &sum_v_j_gamma,
             &proof.sum_check_proof,
@@ -558,6 +566,11 @@ where
             &check_pass,
             &check_pass3,
         )?;
+        let check_pass = AllocatedBit::and(
+            cs.namespace(|| "check pass 1 and 2 and 3 and check_sumcheck_v"),
+            &check_pass,
+            &check_sumcheck_v,
+        )?;
 
         Ok((new_lcccs, check_pass))
     }
@@ -615,9 +628,8 @@ where
         relaxed_r1cs_inst: &[AllocatedRelaxedR1CSInstance<G>],
     ) -> Result<Boolean, SynthesisError> {
         let mut is_correct = Vec::new();
-        for (i, c) in cccs.iter()
-            .enumerate()
-        {
+        for (i, c) in cccs.iter().enumerate() {
+            let mut cs = cs.namespace(|| format!("check {i}th cccs"));
             let public_hash = self.commit_explicit_public_input(
                 cs.namespace(|| "commit public input"),
                 params,

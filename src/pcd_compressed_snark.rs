@@ -15,7 +15,7 @@ use crate::nimfs::multifolding::{MultiFolding, NIMFS, Proof};
 use crate::nimfs::pcd_aux_circuit::{NovaAuxiliaryInputs, NovaAuxiliaryParams, NovaAuxiliarySecondCircuit};
 use crate::nimfs::pcd_circuit::{PCDUnitParams, PCDUnitPrimaryCircuit};
 use crate::r1cs::{RelaxedR1CSInstance, RelaxedR1CSWitness};
-use crate::traits::{Group, ROConstants, ROConstantsCircuit, ROTrait, TEConstantsCircuit, TranscriptEngineTrait};
+use crate::traits::{AbsorbInROTrait, Group, ROConstants, ROConstantsCircuit, ROTrait, TEConstantsCircuit, TranscriptEngineTrait};
 use crate::traits::circuit::PCDStepCircuit;
 use crate::traits::snark::{LinearCommittedCCSTrait, RelaxedR1CSSNARKTrait};
 
@@ -46,6 +46,7 @@ where
     SC: PCDStepCircuit<G1::Scalar, ARITY, R>,
 {
     pub fn setup(circuit: &SC) -> Self {
+        println!("Created secondary pp!");
         let ro_consts_primary: ROConstants<G1> = Default::default();
         let ro_consts_secondary: ROConstants<G2> = Default::default();
         let ro_consts_circuit_primary: ROConstantsCircuit<G2> = Default::default();
@@ -58,12 +59,10 @@ where
         let mut cs_aux_helper: ShapeCS<G2> = ShapeCS::new();
         let _ = aux_circuit_setup.synthesize(&mut cs_aux_helper);
         let (aux_r1cs_shape, ck_secondary) = cs_aux_helper.r1cs_shape();
-        println!("Created secondary pp!");
-
-        let circuit_params_primary_for_setup: PCDUnitParams<G1, ARITY, R> = PCDUnitParams::default_for_pcd(BN_LIMB_WIDTH, BN_N_LIMBS);
         let secondary_circuit_params: NovaAuxiliaryParams<G2> = NovaAuxiliaryParams::new(aux_r1cs_shape, ARITY);
 
         println!("Created primary pp!");
+        let circuit_params_primary_for_setup: PCDUnitParams<G1, ARITY, R> = PCDUnitParams::default_for_pcd(BN_LIMB_WIDTH, BN_N_LIMBS);
         let pcd_circuit_setup = PCDUnitPrimaryCircuit::<'_, G2, G1, SC, ARITY, R>::new(
             &circuit_params_primary_for_setup,
             None,
@@ -311,6 +310,7 @@ impl<G1, G2, SC, S1, S2, const ARITY: usize, const R: usize> PCDCompressedSNARK<
                 hasher.absorb(*e);
             }
             self.r_U_primary.absorb_in_ro::<G2>(&mut hasher);
+            self.r_U_secondary.absorb_in_ro(&mut hasher);
 
             hasher.squeeze(NUM_HASH_BITS)
         };

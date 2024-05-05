@@ -14,6 +14,10 @@ use core::{
 use ff::Field;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use crate::constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
+use crate::gadgets::nonnative::bignat::nat_to_limbs;
+use crate::gadgets::nonnative::util::f_to_nat;
+use crate::gadgets::utils::scalar_as_base;
 
 /// A type that holds commitment generators
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -88,6 +92,19 @@ impl<G: Group> AbsorbInROTrait<G> for Commitment<G> {
     } else {
       G::Base::ZERO
     });
+  }
+
+  fn absorb_in_g2_ro<G2: Group<Base=<G as Group>::Scalar>>(&self, ro: &mut G2::RO) {
+    let (x, y, _infinite) = self.to_coordinates();
+    let x_limbs: Vec<G2::Scalar> = nat_to_limbs(&f_to_nat(&x), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
+    for limb in x_limbs {
+      ro.absorb(scalar_as_base::<G2>(limb));
+    }
+
+    let y_limbs: Vec<G2::Scalar> = nat_to_limbs(&f_to_nat(&y), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
+    for limb in y_limbs {
+      ro.absorb(scalar_as_base::<G2>(limb));
+    }
   }
 }
 

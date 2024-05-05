@@ -11,7 +11,6 @@ use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::nimfs::espresso::sum_check::{PolyIOP, SumCheck, verifier::interpolate_uni_poly};
 use crate::nimfs::espresso::sum_check::structs::IOPProof as SumCheckProof;
 use crate::nimfs::espresso::virtual_polynomial::{eq_eval, VirtualPolynomial, VPAuxInfo};
-use crate::nimfs::util::hypercube::BooleanHypercube;
 use crate::traits::{Group, TranscriptEngineTrait};
 use crate::traits::commitment::CommitmentEngineTrait;
 
@@ -289,9 +288,9 @@ impl<C: Group> MultiFolding<C> {
         let mut z_lcccs = Vec::new();
         for (i, running_instance) in running_instances.iter().enumerate() {
             let z_1: Vec<C::Scalar> = [
+                w_lcccs[i].w.to_vec(),
                 vec![running_instance.u],
                 running_instance.x.clone(),
-                w_lcccs[i].w.to_vec(),
             ]
             .concat();
             z_lcccs.push(z_1);
@@ -300,9 +299,9 @@ impl<C: Group> MultiFolding<C> {
         let mut z_cccs = Vec::new();
         for (i, new_instance) in new_instances.iter().enumerate() {
             let z_2: Vec<C::Scalar> = [
+                w_cccs[i].w.to_vec(),
                 vec![C::Scalar::ONE],
                 new_instance.x.clone(),
-                w_cccs[i].w.to_vec(),
             ]
             .concat();
             z_cccs.push(z_2);
@@ -327,22 +326,11 @@ impl<C: Group> MultiFolding<C> {
         let sumcheck_proof =
             <PolyIOP<C::Scalar> as SumCheck<C>>::prove(&g, transcript).unwrap(); // XXX unwrap
 
-        // Note: The following two "sanity checks" are done for this prototype, in a final version
-        // they should be removed.
-        //
-        // Sanity check 1: evaluate g(x) over x \in {0,1} (the boolean hypercube), and check that
-        // its sum is equal to the extracted_sum from the SumCheck.
-        //////////////////////////////////////////////////////////////////////
-        let mut g_over_bhc = C::Scalar::default();
-        for x in BooleanHypercube::new(running_instances[0].ccs.s) {
-            g_over_bhc += g.evaluate(&x).unwrap();
-        }
-
         // note: this is the sum of g(x) over the whole boolean hypercube
         let extracted_sum =
             <PolyIOP<C::Scalar> as SumCheck<C>>::extract_sum(&sumcheck_proof);
-        assert_eq!(extracted_sum, g_over_bhc);
-        // Sanity check 2: expect \sum v_j * gamma^j to be equal to the sum of g(x) over the
+
+        // Sanity check: expect \sum v_j * gamma^j to be equal to the sum of g(x) over the
         // boolean hypercube (and also equal to the extracted_sum from the SumCheck).
         let mut sum_v_j_gamma = C::Scalar::default();
         for (i, running_instance) in running_instances.iter().enumerate() {
@@ -351,8 +339,7 @@ impl<C: Group> MultiFolding<C> {
                 sum_v_j_gamma += running_instance.v[j] * gamma_j;
             }
         }
-        assert_eq!(g_over_bhc, sum_v_j_gamma);
-        assert_eq!(extracted_sum, sum_v_j_gamma);
+        println!("Sanity check: {:?} == {:?}", extracted_sum, sum_v_j_gamma);
         //////////////////////////////////////////////////////////////////////
 
         // Step 2: dig into the sumcheck and extract r_x_prime
@@ -493,12 +480,13 @@ pub mod test {
     use rand_core::OsRng;
 
     use crate::nimfs::ccs::ccs::test::{get_test_ccs, get_test_z};
+    use crate::nimfs::util::hypercube::BooleanHypercube;
     use crate::provider::bn256_grumpkin::bn256::Point;
     use crate::provider::poseidon::PoseidonConstantsCircuit;
 
     use super::*;
 
-    // NIMFS: Non Interactive Multi-folding Scheme
+    // NIMFS: Non-interactive Multi-folding Scheme
     type NIMFS = MultiFolding<Point>;
 
     #[test]

@@ -10,7 +10,7 @@ use crate::nimfs::espresso::virtual_polynomial::VirtualPolynomial;
 use crate::nimfs::util::mle::vec_to_mle;
 use crate::spartan::math::Math;
 use crate::traits::commitment::{CommitmentEngineTrait, CommitmentTrait};
-use crate::traits::{Group, ROTrait, TranscriptReprTrait};
+use crate::traits::{AbsorbInROTrait, Group, ROTrait, TranscriptReprTrait};
 
 /// Linearized Committed CCS instance
 #[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
@@ -70,7 +70,7 @@ impl<G: Group> LCCCS<G> {
     pub fn default_for_pcd(ccs: CCS<G>) -> Self {
          Self {
             C: Commitment::<G>::default(),
-            u: G::Scalar::ZERO,
+            u: G::Scalar::ONE,
             x: vec![G::Scalar::ZERO],
             r_x: vec![G::Scalar::ZERO; ccs.s],
             v: vec![G::Scalar::ZERO; ccs.t],
@@ -134,7 +134,7 @@ where
         &self,
         ro: &mut G2::RO,
     ) {
-        // self.C.absorb_in_ro(ro);
+        self.C.absorb_in_g2_ro::<G2>(ro);
         ro.absorb(self.u);
 
         for x in &self.x {

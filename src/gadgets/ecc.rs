@@ -1,5 +1,7 @@
 //! This module implements various elliptic curve gadgets
 #![allow(non_snake_case)]
+
+use std::fmt::{Debug, Formatter};
 use crate::{
   gadgets::utils::{
     alloc_num_equals, alloc_one, alloc_zero, conditionally_select, conditionally_select2,
@@ -23,13 +25,20 @@ use crate::traits::ROCircuitTrait;
 
 /// `AllocatedPoint` provides an elliptic curve abstraction inside a circuit.
 #[derive(Clone)]
-pub struct AllocatedPoint<G>
-where
-  G: Group,
-{
+pub struct AllocatedPoint<G: Group> {
   pub(crate) x: AllocatedNum<G::Base>,
   pub(crate) y: AllocatedNum<G::Base>,
   pub(crate) is_infinity: AllocatedNum<G::Base>,
+}
+
+impl<G: Group> Debug for AllocatedPoint<G> {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("AllocatedPoint")
+        .field("x", &self.x.get_value())
+        .field("y", &self.y.get_value())
+        .field("is_infinity", &self.is_infinity.get_value())
+        .finish()
+  }
 }
 
 impl<G> AllocatedPoint<G>
@@ -814,6 +823,16 @@ pub struct AllocatedSimulatedPoint<G: Group> {
   pub(crate) is_infinity: AllocatedNum<G::Base>,
 }
 
+impl<G: Group> Debug for AllocatedSimulatedPoint<G> {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("AllocatedSimulatedPoint")
+        .field("x", &self.x.value.as_ref().map(|v| format!("{:x}", v)))
+        .field("y", &self.y.value.as_ref().map(|v| format!("{:x}", v)))
+        .field("is_infinity", &self.is_infinity.get_value())
+        .finish()
+  }
+}
+
 impl<G: Group> AllocatedSimulatedPoint<G> {
   /// Allocates a default point on the curve.
   pub fn default<CS>(mut cs: CS, limb_width: usize, n_limbs: usize) -> Result<Self, SynthesisError>
@@ -852,13 +871,13 @@ impl<G: Group> AllocatedSimulatedPoint<G> {
         CS: ConstraintSystem<G::Base>,
   {
     let x = BigNat::alloc_from_nat(
-      cs.namespace(|| "allocate X[0]"),
+      cs.namespace(|| "allocate x"),
       || Ok(f_to_nat(&coords.map_or(G::Scalar::ZERO, |inst| inst.0))),
       limb_width,
       n_limbs,
     )?;
     let y = BigNat::alloc_from_nat(
-      cs.namespace(|| "allocate X[0]"),
+      cs.namespace(|| "allocate y"),
       || Ok(f_to_nat(&coords.map_or(G::Scalar::ZERO, |inst| inst.1))),
       limb_width,
       n_limbs,
@@ -942,7 +961,6 @@ impl<G: Group> AllocatedSimulatedPoint<G> {
     for limb in Y_bn {
       ro.absorb(&limb);
     }
-    ro.absorb(&self.is_infinity);
 
     Ok(())
   }
