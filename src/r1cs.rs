@@ -484,10 +484,10 @@ impl<G: Group> RelaxedR1CSWitness<G> {
         }
     }
 
-    pub fn default_for_ccs(ccs: &CCS<G>) -> Self {
+    pub fn default_for_ccs(n:usize, m:usize) -> Self {
         Self {
-            W: vec![G::Scalar::ZERO; ccs.n],
-            E: vec![G::Scalar::ZERO; ccs.m],
+            W: vec![G::Scalar::ZERO; n],
+            E: vec![G::Scalar::ZERO; m],
         }
     }
 

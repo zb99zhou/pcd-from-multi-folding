@@ -1,7 +1,6 @@
 use bellpepper_core::ConstraintSystem;
 use bellpepper_core::test_cs::TestConstraintSystem;
 use ff::Field;
-use rand_core::OsRng;
 use crate::bellpepper::solver::SatisfyingAssignment;
 use crate::Commitment;
 use crate::bellpepper::r1cs::NovaWitness;
@@ -192,10 +191,18 @@ impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
         pp.primary_circuit_params.ccs.check_relation(&z).unwrap();
 
         let (lcccs, lcccs_witness) = if IS_GENESIS {
-            pp.primary_circuit_params.ccs.to_lcccs(OsRng, &pp.ck_primary, &z)
+            (LCCCS::default_for_pcd(pp.primary_circuit_params.ccs.clone()), CCSWitness::default_for_pcd(&pp.primary_circuit_params.ccs))
+            // pp.primary_circuit_params.ccs.to_lcccs(OsRng, &pp.ck_primary, &z)
         } else {
             (lcccs, lcccs_witness)
         };
+
+        let (relaxed_r1cs_instance, relaxed_r1cs_witness) = if IS_GENESIS {
+            (RelaxedR1CSInstance::<G2>::default_for_pcd(pp.primary_circuit_params.ccs.l), RelaxedR1CSWitness::<G2>::default_for_ccs(pp.primary_circuit_params.ccs.n, pp.primary_circuit_params.ccs.m))
+        } else {
+            (relaxed_r1cs_instance, relaxed_r1cs_witness)
+        };
+
         Ok((
             lcccs,
             cccs,

@@ -33,7 +33,7 @@ impl<C: Group> CCSWitness<C> {
     pub fn default_for_pcd(ccs: &CCS<C>) -> Self
     {
         Self {
-            w: vec![C::Scalar::ZERO; ccs.n],
+            w: vec![C::Scalar::ZERO; ccs.n - ccs.l - 1],
             r_w: Default::default(),
         }
     }

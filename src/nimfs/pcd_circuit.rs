@@ -361,6 +361,7 @@ where
 
         // Synthesize the circuit for the base case and get the new running instance
         let lcccs_base = self.synthesize_genesis_based_nimfs(cs.namespace(|| "generate base case based nimfs"))?;
+        let relaxed_r1cs_inst_base = self.synthesize_genesis_based_nifs(cs.namespace(|| "generate base case based nifs"))?;
 
         // Synthesize the circuit for the non-base case and get the new running
         // instance along with a boolean indicating if all checks have passed
@@ -383,17 +384,25 @@ where
 
         // Update the lcccs and relaxed R1CS instance
         let new_lcccs = lcccs_base.conditionally_select(
-            cs.namespace(|| "compute U_new"),
+            cs.namespace(|| "compute lcccs_new"),
             &new_lcccs,
             &Boolean::from(is_base_case.clone()),
         )?;
-        let relaxed_r1cs_inst = self.synthesize_based_nifs(
+
+        let new_relaxed_r1cs_inst = self.synthesize_based_nifs(
             cs.namespace(|| "generate non base case based nifs"),
             &params,
             relaxed_r1cs_inst,
             &r1cs_inst,
             T,
         )?;
+
+        let new_relaxed_r1cs_inst = relaxed_r1cs_inst_base.conditionally_select(
+            cs.namespace(|| "compute U_new"),
+            &new_relaxed_r1cs_inst,
+            &Boolean::from(is_base_case.clone()),
+        )?;
+
 
         // select correct z
         let z_input = z_i
@@ -421,14 +430,14 @@ where
             ));
         }
 
-        println!("relaxed_r1cs_inst: {:#?}", relaxed_r1cs_inst);
+        println!("relaxed_r1cs_inst: {:#?}", new_relaxed_r1cs_inst);
         let hash = self.commit_explicit_public_input(
             cs.namespace(|| "commit public input"),
             &params,
             &z_0,
             &new_z,
             &new_lcccs,
-            &relaxed_r1cs_inst
+            &new_relaxed_r1cs_inst,
         )?;
         println!("public input hash: {:?}", hash.get_value());
         hash.inputize(cs.namespace(|| "output new hash of this circuit"))?; // this circuit's public input
@@ -638,11 +647,17 @@ where
                 &lcccs[i],
                 &relaxed_r1cs_inst[i]
             )?;
+            if let Some(hash) = public_hash.get_value(){
+                println!("public_hash = {:?}", hash);
+            }
             let is_eq = alloc_num_equals(
                 cs.namespace(|| "check public_hash"),
                 &public_hash,
                 &c.primary_part.Xs[0]
             )?;
+            if let Some(value) = c.primary_part.Xs[0].get_value(){
+                println!("c.primary_part_Xs[0] = {:?}",value);
+            }
             is_correct.push(is_eq.into())
         }
         multi_and(cs.namespace(|| "is correct public inputs"), &is_correct).map(Into::into)
