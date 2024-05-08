@@ -3,6 +3,7 @@ use bellpepper_core::{ConstraintSystem, SynthesisError};
 use bellpepper_core::boolean::{AllocatedBit, Boolean};
 use bellpepper_core::num::{AllocatedNum, Num};
 use ff::Field;
+use num_traits::Zero;
 use serde::Serialize;
 use crate::constants::NUM_HASH_BITS;
 use crate::gadgets::cccs::{AllocatedCCCS, AllocatedCCCSPrimaryPart, AllocatedLCCCS, AllocatedLCCCSPrimaryPart, multi_folding_with_primary_part};
@@ -13,7 +14,7 @@ use crate::gadgets::utils::{alloc_num_equals, alloc_scalar_as_base, conditionall
 // use crate::gadgets::utils::{alloc_num_equals, alloc_scalar_as_base,le_bits_to_num, multi_and};
 use crate::nimfs::ccs::cccs::{CCCSForBase, PointForScalar};
 use crate::nimfs::ccs::ccs::CCS;
-use crate::nimfs::ccs::lcccs::LCCCSForBase;
+use crate::nimfs::ccs::lcccs::{LCCCS, LCCCSForBase};
 use crate::nimfs::espresso::virtual_polynomial::VPAuxInfo;
 use crate::nimfs::multifolding::NIMFSProof;
 use crate::traits::{Group, ROCircuitTrait, ROConstantsCircuit, TEConstantsCircuit, TranscriptCircuitEngineTrait};
@@ -112,8 +113,8 @@ impl<G: Group> PCDUnitInputs<G> {
 #[derive(Clone)]
 pub struct PCDUnitPrimaryCircuit<'a, G, G1, SC, const ARITY: usize, const R: usize>
 where
-    G: Group,
-    G1: Group,
+    G: Group<Base = <G1 as Group>::Scalar>,
+    G1: Group<Base = <G as Group>::Scalar>,
     SC: PCDStepCircuit<G::Base, ARITY, R>
 {
     params: &'a PCDUnitParams<G1, ARITY, R>,
@@ -125,8 +126,8 @@ where
 
 impl<'a, G, G1, SC, const ARITY: usize, const R: usize> PCDUnitPrimaryCircuit<'a, G, G1, SC, ARITY, R>
 where
-    G: Group,
-    G1: Group,
+    G: Group<Base = <G1 as Group>::Scalar>,
+    G1: Group<Base = <G as Group>::Scalar>,
     SC: PCDStepCircuit<G::Base, ARITY, R>
 {
     /// Create a new verification circuit for the input relaxed r1cs instances
@@ -281,19 +282,16 @@ where
         &self,
         mut cs: CS,
     ) -> Result<AllocatedLCCCS<G>, SynthesisError> {
-        let primary_part = AllocatedLCCCSPrimaryPart::default(
-            cs.namespace(|| "Allocate lcccs default"),
-            ARITY,
-            self.params.ccs.s,
-            self.params.ccs.t,
-        )?;
-        let second_part = AllocatedSimulatedPoint::default(
-            cs.namespace(|| "Allocate second part default Simulated Point"),
-            self.params.limb_width,
-            self.params.n_limbs,
-        )?;
+        let default_lcccs = LCCCSForBase::<G>::from(LCCCS::<G1>::default_for_pcd(self.params.ccs.clone()));
+        let lcccs = AllocatedLCCCS::alloc(
+                    cs.namespace(|| "allocate default instance lcccs to fold"),
+                    Some(&default_lcccs),
+                    ARITY,
+                    (self.params.ccs.t, self.params.ccs.s),
+                    (self.params.limb_width, self.params.n_limbs),
+                )?;
+        Ok(lcccs)
 
-        Ok(AllocatedLCCCS::new(primary_part, second_part))
     }
 
     /// Synthesizes base case and returns the new `relaxed r1cs instance`
@@ -328,7 +326,7 @@ where
         ) = self.alloc_witness(cs.namespace(|| "allocate the circuit witness"))?;
 
         // Compute variable indicating if this is the base case
-        let zero = crate::gadgets::utils::alloc_zero(cs.namespace(|| "zero"))?;
+        // let zero = crate::gadgets::utils::alloc_zero(cs.namespace(|| "zero"))?;
         // let mut is_base_case_flags = Vec::new();
         // for (i, l) in lcccs.iter().enumerate() {
         //     is_base_case_flags.push(l.is_null(cs.namespace(|| format!("{}th lcccs", i)), &zero)?);
@@ -339,7 +337,7 @@ where
         // for (i, c) in relaxed_r1cs_inst.iter().enumerate() {
         //     is_base_case_flags.push(c.is_null(cs.namespace(|| format!("{}th relaxed_r1cs_inst", i)), &zero)?);
         // }
-        let is_base_case = Boolean::from(alloc_num_equals(cs.namespace(|| "Check if base case"), &relaxed_r1cs_inst[0].W.x, &zero)?);
+        let is_base_case = Boolean::from(AllocatedBit::alloc(cs.namespace(|| "Check if base case"), new_lcccs_second_part.x.value.as_ref().map(|v| v.is_zero()))?);
         // let is_base_case = Boolean::from(multi_and(cs.namespace(|| "is base case"), &is_base_case_flags)?);
 
         let is_correct_public_input = self.check_public_input(
@@ -575,6 +573,7 @@ where
             &check_pass,
             &check_pass3,
         )?;
+        println!("check_pass: {:?}", check_pass.get_value());
         let check_pass = AllocatedBit::and(
             cs.namespace(|| "check pass 1 and 2 and 3 and check_sumcheck_v"),
             &check_pass,

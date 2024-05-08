@@ -142,7 +142,7 @@ impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
         println!("Finish NIFS prove_with_multi_relaxed");
 
         let pcd_circuit_input = PCDUnitInputs::<G2>::new(
-            scalar_as_base::<G1>(pp.primary_circuit_params.digest),
+            pp.secondary_circuit_params.digest,
             self.z0.clone(),
             self.zi.clone(),
             Some(self.lcccs.iter().cloned().map(Into::into).collect()),
@@ -192,13 +192,12 @@ impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
 
         let (lcccs, lcccs_witness) = if IS_GENESIS {
             (LCCCS::default_for_pcd(pp.primary_circuit_params.ccs.clone()), CCSWitness::default_for_pcd(&pp.primary_circuit_params.ccs))
-            // pp.primary_circuit_params.ccs.to_lcccs(OsRng, &pp.ck_primary, &z)
         } else {
             (lcccs, lcccs_witness)
         };
 
         let (relaxed_r1cs_instance, relaxed_r1cs_witness) = if IS_GENESIS {
-            (RelaxedR1CSInstance::<G2>::default_for_pcd(pp.primary_circuit_params.ccs.l), RelaxedR1CSWitness::<G2>::default_for_ccs(pp.primary_circuit_params.ccs.n, pp.primary_circuit_params.ccs.m))
+            (RelaxedR1CSInstance::<G2>::default(&pp.ck_secondary, &pp.secondary_circuit_params.r1cs_shape), RelaxedR1CSWitness::<G2>::default(&pp.secondary_circuit_params.r1cs_shape))
         } else {
             (relaxed_r1cs_instance, relaxed_r1cs_witness)
         };
@@ -381,6 +380,34 @@ mod test {
         test_pcd_with::<G1, G2, R, ARITY>().unwrap();
     }
 
+    fn test_for_dbg_with<G1, G2, const R: usize, const IO_NUM: usize>()
+        where
+            G1: Group<Base = <G2 as Group>::Scalar>,
+            G2: Group<Base = <G1 as Group>::Scalar>,
+    {
+        // let z0 = vec![G1::Scalar::ZERO; IO_NUM];
+        let test_circuit = TrivialTestCircuit::<<G2 as Group>::Base>::default();
+        let pp = PCDPublicParams::<G1, G2, _, IO_NUM, R>::setup(&test_circuit);
+
+        let rng = OsRng;
+        let mut z = vec![G1::Scalar::ZERO; pp.primary_circuit_params.ccs.n];
+        z[pp.primary_circuit_params.ccs.n - pp.primary_circuit_params.ccs.l - 1] = G1::Scalar::ONE;
+        let (default_lcccs, default_w_lcccs) = pp.primary_circuit_params.ccs.to_lcccs(rng, &pp.ck_primary, &z);
+        println!("lcccs: {:#?}", default_lcccs);
+        println!("w_lcccs.r_w: {:#?}", default_w_lcccs.r_w);
+        let res = default_lcccs.check_relation(&pp.ck_primary, &default_w_lcccs);
+        assert!(res.is_ok())
+    }
+
+    #[test]
+    fn test_for_dbg() {
+        type G1 = pasta_curves::pallas::Point;
+        type G2 = pasta_curves::vesta::Point;
+        const ARITY: usize = 1;
+        const R: usize = 2;
+        test_for_dbg_with::<G1, G2, R, ARITY>();
+
+    }
     fn test_pcd_with_compressed_verify_with<
         G1, G2,
         const R: usize, const IO_NUM: usize,
@@ -454,7 +481,7 @@ mod test {
             node_3_lcccs, node_3_cccs, node_3_relaxed_r1cs_instance,
             node_3_lcccs_witness, node_3_cccs_witness, node_3_folded_relaxed_r1cs_witness,
             node_3_zi
-        ) = node_3.prove_step::<_, false>(&pp, &test_circuit).map_err(|_| NovaError::SynthesisError)?;
+        ) = node_3.prove_step::<_, false>(&pp, &test_circuit).unwrap();
 
 
         let recursive_snark = PCDRecursiveSNARK::<G1, G2, _, IO_NUM, R>::new(

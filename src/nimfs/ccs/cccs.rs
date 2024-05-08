@@ -1,6 +1,6 @@
 use std::ops::{Add};
 use std::sync::Arc;
-use ff::Field;
+use ff::{Field, PrimeField};
 use serde::{Deserialize, Serialize};
 use crate::{CE, Commitment, CommitmentKey};
 use crate::errors::NovaError;
@@ -34,7 +34,7 @@ impl<C: Group> CCSWitness<C> {
     {
         Self {
             w: vec![C::Scalar::ZERO; ccs.n - ccs.l - 1],
-            r_w: Default::default(),
+            r_w: C::Scalar::from_str_vartime("8886671747404192712895062849838258214865667155493532575623653592245279062559").unwrap(),
         }
     }
 

@@ -150,7 +150,7 @@ impl<Scalar: PrimeField> ExtendFunc<Scalar> for AllocatedNum<Scalar> {
         let constant_bits_num = constant.log_2();
 
         let mut temp = self.clone();
-        for i in 0..constant_bits_num {
+        for i in 0..constant_bits_num+1 {
             if constant >> i & 1 == 1{
                 res = res.mul(cs.namespace(|| format!("mul step: {}", i)), &temp)?;
             }
