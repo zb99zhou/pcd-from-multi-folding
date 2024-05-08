@@ -159,6 +159,45 @@ impl<G: Group> NIFS<G> {
     // return the folded instance
     Ok(U)
   }
+
+  pub fn verify_with_multi_relaxed(
+    nifs_vec: &[NIFS<G>],
+    ro_consts: &ROConstants<G>,
+    pp_digest: &G::Scalar,
+    U1: &[RelaxedR1CSInstance<G>],
+    U2: &R1CSInstance<G>,
+  ) -> Result<RelaxedR1CSInstance<G>, NovaError> {
+    // initialize a new RO
+    let mut ro = G::RO::new(ro_consts.clone(), NUM_FE_FOR_RO);
+
+    // append the digest of pp to the transcript
+    ro.absorb(scalar_as_base::<G>(*pp_digest));
+
+    // append U1 and U2 to transcript
+    for U in U1.iter(){
+      U.absorb_in_ro(&mut ro);
+    }
+    U2.absorb_in_ro(&mut ro);
+
+    let mut U_in_calc = U1[0].clone();
+    for (U_now, nifs) in U1.iter().skip(1).zip(&nifs_vec[..nifs_vec.len()-1]) {
+      let comm_T = Commitment::<G>::decompress(&nifs.comm_T)?;
+      comm_T.absorb_in_ro(&mut ro);
+      let r = ro.squeeze(NUM_CHALLENGE_BITS);
+      U_in_calc = U_in_calc.fold_with_relaxed_r1cs(U_now, &comm_T, &r)?;
+    }
+
+    let comm_T = Commitment::<G>::decompress(&nifs_vec[nifs_vec.len()-1].comm_T)?;
+    comm_T.absorb_in_ro(&mut ro);
+    // compute a challenge from the RO
+    let r = ro.squeeze(NUM_CHALLENGE_BITS);
+
+    // fold the instance using `r` and `comm_T`
+    let U = U_in_calc.fold(U2, &comm_T, &r)?;
+
+    // return the folded instance
+    Ok(U)
+  }
 }
 
 #[cfg(test)]
@@ -255,6 +294,71 @@ mod tests {
     test_tiny_r1cs_bellpepper_with::<G>();
 
     test_tiny_r1cs_bellpepper_with::<crate::provider::bn256_grumpkin::bn256::Point>();
+  }
+
+  fn execute_sequence_with_multi_relaxed<G>(
+    ck: &CommitmentKey<G>,
+    ro_consts: &<<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants,
+    pp_digest: &<G as Group>::Scalar,
+    shape: &R1CSShape<G>,
+    U1: &R1CSInstance<G>,
+    W1: &R1CSWitness<G>,
+  ) where
+    G: Group,
+  {
+    let r_W = vec![RelaxedR1CSWitness::default(shape), RelaxedR1CSWitness::default(shape)];
+    let r_U = vec![RelaxedR1CSInstance::default(ck, shape), RelaxedR1CSInstance::default(ck, shape)];
+
+    // produce a step SNARK with (W1, U1) as the first incoming witness-instance pair
+    let res = NIFS::prove_with_multi_relaxed(ck, ro_consts, pp_digest, shape, &r_U, &r_W, U1, W1);
+    assert!(res.is_ok());
+    let (nifs, (_U, W)) = res.unwrap();
+
+    // verify the step SNARK with U1 as the first incoming instance
+    let res = NIFS::<G>::verify_with_multi_relaxed(&nifs, ro_consts, pp_digest, &r_U, U1);
+    assert!(res.is_ok());
+    let U = res.unwrap();
+
+    assert_eq!(U, _U);
+    assert!(shape.is_sat_relaxed(ck, &U, &W).is_ok());
+
+  }
+
+  fn test_multi_relaxed_with<G>()
+  where
+    G: Group,
+  {
+    use crate::bellpepper::{
+      r1cs::{NovaShape, NovaWitness},
+      solver::SatisfyingAssignment,
+      test_shape_cs::TestShapeCS,
+    };
+
+    // First create the shape
+    let mut cs: TestShapeCS<G> = TestShapeCS::new();
+    let _ = synthesize_tiny_r1cs_bellpepper(&mut cs, None);
+    let (shape, ck) = cs.r1cs_shape();
+    let ro_consts =
+        <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::default();
+
+    let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
+    let _ = synthesize_tiny_r1cs_bellpepper(&mut cs, Some(G::Scalar::from(5)));
+    let (U1, W1) = cs.r1cs_instance_and_witness(&shape, &ck).unwrap();
+
+    execute_sequence_with_multi_relaxed(
+      &ck,
+      &ro_consts,
+      &<G as Group>::Scalar::ZERO,
+      &shape,
+      &U1,
+      &W1,
+    );
+
+  }
+
+  #[test]
+  fn test_multi_relaxed() {
+    test_multi_relaxed_with::<G>();
   }
 
   #[allow(clippy::too_many_arguments)]
