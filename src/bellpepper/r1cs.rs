@@ -10,8 +10,11 @@ use crate::{
   CommitmentKey,
 };
 use bellpepper_core::{Index, LinearCombination};
-use ff::PrimeField;
+use ff::{Field, PrimeField};
+use rand_core::OsRng;
 use crate::nimfs::ccs::cccs::{CCCS, CCSWitness};
+use crate::nimfs::ccs::ccs::CCS;
+use crate::traits::commitment::CommitmentEngineTrait;
 
 /// `NovaWitness` provide a method for acquiring an `R1CSInstance` and `R1CSWitness` from implementers.
 pub trait NovaWitness<G: Group> {
@@ -25,7 +28,7 @@ pub trait NovaWitness<G: Group> {
   /// Return an instance and witness, given a shape and ck.
   fn cccs_and_witness(
     &self,
-    shape: &R1CSShape<G>,
+    ccs: CCS<G>,
     ck: &CommitmentKey<G>,
   ) -> Result<(CCCS<G>, CCSWitness<G>), NovaError>;
 }
@@ -48,17 +51,21 @@ impl<G: Group> NovaWitness<G> for SatisfyingAssignment<G> {
 
   fn cccs_and_witness(
     &self,
-    shape: &R1CSShape<G>,
+    ccs: CCS<G>,
     ck: &CommitmentKey<G>,
   ) -> Result<(CCCS<G>, CCSWitness<G>), NovaError> {
-    let C = CCSWitness::<G>::new(shape, &self.aux_assignment)?;
-    let X = &self.input_assignment[1..];
+    let w = self.aux_assignment.to_vec();
+    let r_w = G::Scalar::random(OsRng);
+    let C = G::CE::commit(ck, &w);
 
-    let comm_C = C.commit(ck);
-
-    let instance = CCCS::<G>::new(shape, comm_C, X);
-
-    Ok((instance, C))
+    Ok((
+      CCCS::<G> {
+        ccs,
+        C,
+        x: self.input_assignment[1..].to_vec(),
+      },
+      CCSWitness::<G> { w, r_w },
+    ))
   }
 }
 

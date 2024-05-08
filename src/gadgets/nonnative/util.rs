@@ -8,6 +8,7 @@ use ff::PrimeField;
 use num_bigint::{BigInt, Sign};
 use std::convert::From;
 use std::io::{self, Write};
+use std::ops::Add;
 use bellpepper::gadgets::Assignment;
 use bellpepper_core::boolean::{AllocatedBit, Boolean};
 
@@ -70,13 +71,51 @@ pub struct Num<Scalar: PrimeField> {
   pub value: Option<Scalar>,
 }
 
-impl<Scalar: PrimeField> Num<Scalar> {
-  pub const fn new(value: Option<Scalar>, num: LinearCombination<Scalar>) -> Self {
+impl<Scalar: PrimeField> Add for Num<Scalar> {
+  type Output = Num<Scalar>;
+
+  fn add(self, rhs: Self) -> Self::Output {
+    let num = self.num + &rhs.num;
+    let value = match (self.value, rhs.value) {
+      (Some(v1), Some(v2)) => {
+        let mut tmp = v1;
+        tmp.add_assign(&v2);
+        Some(tmp)
+      }
+      (Some(v), None) | (None, Some(v)) => Some(v),
+      (None, None) => None,
+    };
+
     Self { value, num }
   }
+}
 
+impl<Scalar: PrimeField> Add<&AllocatedNum<Scalar>> for Num<Scalar> {
+  type Output = Num<Scalar>;
+
+  fn add(self, rhs: &AllocatedNum<Scalar>) -> Self::Output {
+    let num = self.num + rhs.get_variable();
+    let value = match (self.value, rhs.get_value()) {
+      (Some(v1), Some(v2)) => {
+        let mut tmp = v1;
+        tmp.add_assign(&v2);
+        Some(tmp)
+      }
+      (Some(v), None) | (None, Some(v)) => Some(v),
+      (None, None) => None,
+    };
+
+    Self { value, num }
+  }
+}
+
+impl<Scalar: PrimeField> Num<Scalar> {
   pub fn zero() -> Self {
     Self { value: Some(Scalar::ZERO), num: LinearCombination::default() }
+  }
+
+  pub const fn new(value: Option<Scalar>, num: LinearCombination<Scalar>) -> Self {
+    Self { value, num }
   }
 
   pub fn add_bool_with_coeff(self, one: Variable, bit: &Boolean, coeff: Scalar) -> Self {
@@ -299,6 +338,12 @@ impl<Scalar: PrimeField> Num<Scalar> {
 
 impl<Scalar: PrimeField> From<AllocatedNum<Scalar>> for Num<Scalar> {
   fn from(a: AllocatedNum<Scalar>) -> Self {
+    Self::new(a.get_value(), LinearCombination::zero() + a.get_variable())
+  }
+}
+
+impl<Scalar: PrimeField> From<&AllocatedNum<Scalar>> for Num<Scalar> {
+  fn from(a: &AllocatedNum<Scalar>) -> Self {
     Self::new(a.get_value(), LinearCombination::zero() + a.get_variable())
   }
 }

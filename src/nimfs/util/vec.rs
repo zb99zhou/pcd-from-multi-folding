@@ -3,6 +3,7 @@ use ff::PrimeField;
 use rayon::iter::IndexedParallelIterator;
 use rayon::iter::IntoParallelRefIterator;
 use rayon::iter::ParallelIterator;
+use crate::nimfs::util::spare_matrix::SparseMatrix;
 
 /// A sparse representation of constraint matrices.
 pub type Matrix<F> = Vec<Vec<F>>;
@@ -13,15 +14,13 @@ pub fn hadamard<F: PrimeField>(a: &Vec<F>, b: &Vec<F>) -> Vec<F> {
 }
 
 // Multiply matrix by vector
-pub fn mat_vec_mul<F: PrimeField>(mat: &Matrix<F>, vec: &[F]) -> Vec<F> {
+pub fn mat_vec_mul<F: PrimeField>(mat: &SparseMatrix<F>, vec: &[F]) -> Vec<F> {
     // matrices are lists of rows
     // rows are (value, idx) pairs
-    let mut result = vec![F::default(); mat.len()];
-    for (r, mat_row) in mat.iter().enumerate() {
-        for (c, mat_val) in mat_row.iter().enumerate() {
-            assert!(c < vec.len());
-            result[r] += *mat_val * vec[c];
-        }
+    let mut result = vec![F::default(); mat.rows];
+    for (r, c, mat_val) in mat.iter() {
+        assert!(c < vec.len());
+        result[r] += mat_val * vec[c];
     }
     result
 }
@@ -113,7 +112,7 @@ mod test {
         ];
         let v = vec![bn256::Scalar::from(19u64), bn256::Scalar::from(55u64), bn256::Scalar::from(50u64)];
 
-        let result = mat_vec_mul(&A, &v);
+        let result = mat_vec_mul(&(&A).into(), &v);
         assert_eq!(
             result,
             vec![bn256::Scalar::from(403u64), bn256::Scalar::from(1381u64), bn256::Scalar::from(1328u64)]

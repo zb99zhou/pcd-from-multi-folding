@@ -115,10 +115,15 @@ pub trait CompressedGroup:
 pub trait AbsorbInROTrait<G: Group> {
   /// Absorbs the value in the provided RO
   fn absorb_in_ro(&self, ro: &mut G::RO);
+
+  /// Absorbs the value in the provided RO
+  fn absorb_in_g2_ro<G2: Group<Base = <G as Group>::Scalar>>(&self, _ro: &mut G2::RO) {
+    unimplemented!()
+  }
 }
 
 /// A helper trait that defines the behavior of a hash function that we use as an RO
-pub trait ROTrait<Base: PrimeField, Scalar> {
+pub trait ROTrait<Base: PrimeFieldBits, Scalar> {
   /// The circuit alter ego of this trait impl - this constrains it to use the same constants
   type CircuitRO: ROCircuitTrait<Base, Constants = Self::Constants>;
 
@@ -145,9 +150,9 @@ pub trait ROTrait<Base: PrimeField, Scalar> {
 }
 
 /// A helper trait that defines the behavior of a hash function that we use as an RO in the circuit model
-pub trait ROCircuitTrait<Base: PrimeField> {
+pub trait ROCircuitTrait<Base: PrimeFieldBits> {
   /// the vanilla alter ego of this trait - this constrains it to use the same constants
-  type NativeRO<T: PrimeField>: ROTrait<Base, T, Constants = Self::Constants>;
+  type NativeRO<T: PrimeFieldBits>: ROTrait<Base, T, Constants = Self::Constants>;
 
   /// A type representing constants/parameters associated with the hash function on this Base field
   type Constants: Default + Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
@@ -231,7 +236,7 @@ pub trait TranscriptReprTrait<G: Group>: Send + Sync {
   }
 
   /// returns a circuit allocated number representation of self to be added to the transcript
-  fn to_transcript_nums(&self) -> Vec<AllocatedNum<G::Base>> {
+  fn to_transcript_nums<CS: ConstraintSystem<G::Base>>(&self, _cs: CS) -> Result<Vec<AllocatedNum<G::Base>>, SynthesisError> {
     unimplemented!()
   }
 }
@@ -255,6 +260,9 @@ pub trait TranscriptEngineTrait<G: Group>: Send + Sync {
 
   /// adds a domain separator
   fn dom_sep(&mut self, bytes: &'static [u8]);
+
+  /// get last state
+  fn get_last_state(&self) -> G::Scalar;
 }
 
 /// This trait defines the behavior of a transcript circuit engine compatible with Spartan

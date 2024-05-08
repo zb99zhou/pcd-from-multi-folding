@@ -1,31 +1,80 @@
 use bellpepper::gadgets::Assignment;
 use bellpepper_core::{ConstraintSystem, SynthesisError};
 use bellpepper_core::num::AllocatedNum;
-
-use crate::constants::NUM_HASH_BITS;
+use ff::Field;
+use serde::Serialize;
+use crate::compute_digest;
 use crate::gadgets::cccs::{AllocatedCCCSSecondPart, AllocatedLCCCSSecondPart};
-use crate::gadgets::utils::le_bits_to_num;
 use crate::nimfs::ccs::cccs::CCCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
-use crate::traits::{Group, ROCircuitTrait, ROConstantsCircuit};
+use crate::r1cs::R1CSShape;
+use crate::traits::Group;
 
+#[derive(Clone)]
 pub struct NovaAuxiliaryInputs<G: Group> {
-    params: G::Base, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
-    // i: G::Base,
-    z0: Vec<G::Base>,
-    zi: Option<Vec<G::Base>>,
+    params: Option<G::Base>, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
     lcccs: Option<Vec<LCCCS<G>>>,
     cccs: Option<Vec<CCCS<G>>>,
     rho: Option<G::Base>,
-    r: usize
+    r: usize // the number of multi-folding PCD node at once
 }
 
-struct NovaAuxiliarySecondCircuit<G: Group> {
-    ro_consts: ROConstantsCircuit<G>,
+#[derive(Clone)]
+pub struct NovaAuxiliarySecondCircuit<G: Group> {
     inputs: NovaAuxiliaryInputs<G>,
 }
 
+impl<G: Group> NovaAuxiliaryInputs<G>{
+    pub fn new(
+        params: Option<G::Base>,
+        lcccs: Option<Vec<LCCCS<G>>>,
+        cccs: Option<Vec<CCCS<G>>>,
+        rho: Option<G::Base>,
+        r: usize
+    ) -> Self{
+        Self{
+            params,
+            lcccs,
+            cccs,
+            rho,
+            r,
+        }
+    }
+}
+
+#[derive(Serialize)]
+pub struct NovaAuxiliaryParams<G: Group>{
+    pub(crate) r1cs_shape: R1CSShape<G>,
+    pub(crate) io_num: usize,
+    pub(crate) digest: G::Scalar,
+}
+
+impl<G: Group> NovaAuxiliaryParams<G> {
+    pub fn new(
+        r1cs_shape: R1CSShape<G>,
+        io_num: usize,
+    ) -> Self {
+        let mut pp = Self {
+            r1cs_shape,
+            io_num,
+            digest: G::Scalar::ZERO,
+        };
+        pp.digest = compute_digest::<G, NovaAuxiliaryParams<G>>(&pp);
+
+        pp
+    }
+
+}
+
 impl<G: Group> NovaAuxiliarySecondCircuit<G> {
+    pub fn new(
+        inputs: NovaAuxiliaryInputs<G>,
+    ) -> Self{
+        Self{
+            inputs,
+        }
+    }
+
     /// Allocate all witnesses and return
     fn alloc_witness<CS: ConstraintSystem<<G as Group>::Base>>(
         &self,
@@ -49,7 +98,7 @@ impl<G: Group> NovaAuxiliarySecondCircuit<G> {
         // Allocate the instance to be folded in
         let cccs = (0..self.inputs.r)
             .map(|i |AllocatedCCCSSecondPart::alloc(
-                cs.namespace(|| format!("Allocate {i}th lcccs")),
+                cs.namespace(|| format!("Allocate {i}th cccs")),
                 self.inputs.cccs.get().as_ref().map_or(None, |U| Some(&U[i]))
             ))
             .collect::<Result<Vec<_>, SynthesisError>>()?;
@@ -68,7 +117,7 @@ impl<G: Group> NovaAuxiliarySecondCircuit<G> {
     pub fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
         self,
         cs: &mut CS,
-    ) -> Result<AllocatedNum<G::Base>, SynthesisError> {
+    ) -> Result<(), SynthesisError> {
         // Allocate all witnesses
         let (lcccs, cccs, rho)
             = self.alloc_witness(cs.namespace(|| "allocate the circuit witness"))?;
@@ -77,22 +126,20 @@ impl<G: Group> NovaAuxiliarySecondCircuit<G> {
             cs.namespace(|| "calc new lcccs"),
             &lcccs,
             &cccs,
-            rho
+            &rho
         )?;
 
-        let mut ro = G::ROCircuit::new(self.ro_consts, (lcccs.len() + cccs.len() + 1) * 3);
-        for c in lcccs {
-            c.absorb_in_ro(&mut ro)?;
+        // TODO: compress ecc point to x0, x1, x2, ... , ys_parity(the bit that expresses the parity of all y encode to element)
+        // public input
+        rho.inputize(cs.namespace(|| "pub rho"))?;
+        for (i, x) in lcccs.into_iter().enumerate() {
+            x.C.inputize(cs.namespace(|| format!("{i}th lcccs")))?;
         }
-        for c in cccs {
-            c.absorb_in_ro(&mut ro)?;
+        for (i, x) in cccs.into_iter().enumerate() {
+            x.C.inputize(cs.namespace(|| format!("{i}th cccs")))?;
         }
-        new_lcccs.absorb_in_ro(&mut ro)?;
-        let hash_bits = ro.squeeze(cs.namespace(|| "output hash bits"), NUM_HASH_BITS)?;
-        let hash = le_bits_to_num(cs.namespace(|| "convert hash to num"), &hash_bits)?;
+        new_lcccs.C.inputize(cs.namespace(|| "pub new lcccs"))?;
 
-        hash.inputize(cs.namespace(|| "output new hash of this circuit"))?; // this circuit's x1
-
-        Ok(hash)
+        Ok(())
     }
 }

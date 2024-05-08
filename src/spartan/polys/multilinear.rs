@@ -152,7 +152,7 @@ impl<Scalar: PrimeField> Index<usize> for MultiLinearPolynomial<Scalar> {
 /// The sparse polynomial only store the non-zero values, [(3, 1), (5, 1), (7, 2)].
 /// In the tuple, the first is index, the second is value.
 pub(crate) struct SparsePolynomial<Scalar: PrimeField> {
-  num_vars: usize,
+  pub(crate) num_vars: usize,
   Z: Vec<(usize, Scalar)>,
 }
 

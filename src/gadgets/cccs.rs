@@ -1,14 +1,9 @@
 //! This module implements various gadgets necessary for folding R1CS types.
-use super::nonnative::{
-    bignat::BigNat,
-    util::{f_to_nat, Num},
-};
+use std::fmt::{Debug, Formatter};
 use crate::{
     gadgets::{
-        scalar_ecc::AllocatedPoint,
-        utils::{
-            alloc_bignat_constant, alloc_one, conditionally_select,
-        },
+        ecc::AllocatedPoint,
+        utils::conditionally_select,
     },
     traits::Group,
 };
@@ -16,12 +11,147 @@ use bellpepper::gadgets::{boolean::Boolean, num::AllocatedNum, Assignment};
 use bellpepper_core::{ConstraintSystem, SynthesisError};
 use bellpepper_core::boolean::AllocatedBit;
 use ff::Field;
+use crate::gadgets::ecc::AllocatedSimulatedPoint;
 use crate::gadgets::ext_allocated_num::ExtendFunc;
-use crate::gadgets::utils::{alloc_num_equals, alloc_vec_num_equals_zero, alloc_vec_number_equals_zero, conditionally_select_vec_allocated_num, multi_and, scalar_as_base, vec_conditionally_select_big_nat};
-use crate::nimfs::ccs::cccs::CCCS;
-use crate::nimfs::ccs::lcccs::LCCCS;
+use crate::gadgets::utils::{alloc_num_equals, alloc_vec_number_equals_zero, conditionally_select_vec_allocated_num, multi_and};
+use crate::nimfs::ccs::cccs::{CCCS, CCCSForBase};
+use crate::nimfs::ccs::lcccs::{LCCCS, LCCCSForBase};
 use crate::traits::commitment::CommitmentTrait;
 use crate::traits::ROCircuitTrait;
+
+// TODO: split lcccs and cccs to two file
+/// An Allocated Linear Committed CCS instance
+#[derive(Clone)]
+pub struct AllocatedLCCCS<G: Group> {
+    pub primary_part: AllocatedLCCCSPrimaryPart<G>,
+    pub C: AllocatedSimulatedPoint<G>,
+}
+
+impl<G: Group> Debug for AllocatedLCCCS<G> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AllocatedLCCCS")
+            .field("primary_part", &self.primary_part)
+            .field("C", &self.C)
+            .finish()
+    }
+}
+
+impl<G: Group> AllocatedLCCCS<G> {
+    pub fn new(primary_part: AllocatedLCCCSPrimaryPart<G>, C: AllocatedSimulatedPoint<G>) -> Self {
+        Self { primary_part, C }
+    }
+
+    pub fn is_null<CS: ConstraintSystem<G::Base>>(&self, mut cs: CS, zero: &AllocatedNum<G::Base>) -> Result<Boolean, SynthesisError> {
+        let is_null1 = self.primary_part.is_null(cs.namespace(|| "self.C"), zero)?;
+        let is_null2 = self.C.is_null(cs.namespace(|| "self.C"))?;
+        multi_and(cs.namespace(|| "lcccs is null"), &[is_null1, is_null2]).map(Into::into)
+    }
+
+    /// Allocates the given `LCCCS` as a witness of the circuit
+    pub fn alloc<CS: ConstraintSystem<<G as Group>::Base>>(
+        mut cs: CS,
+        inst: Option<&LCCCSForBase<G>>,
+        io_num: usize,
+        (t, s): (usize, usize),
+        (limb_width, n_limbs): (usize, usize),
+    ) -> Result<Self, SynthesisError> {
+
+        let primary_part = AllocatedLCCCSPrimaryPart::alloc(
+            cs.namespace(|| "alloc lcccs primary part"),
+            inst,
+            io_num,
+            t,
+            s
+        )?;
+        let C = AllocatedSimulatedPoint::alloc(
+            cs.namespace(|| "alloc C"),
+            inst.as_ref().map(|c| c.C.clone()),
+            limb_width,
+            n_limbs
+        )?;
+
+        Ok(Self { primary_part, C })
+    }
+
+    /// If the condition is true then returns this otherwise it returns the other
+    pub fn conditionally_select<CS: ConstraintSystem<<G as Group>::Base>>(
+        &self,
+        mut cs: CS,
+        other: &Self,
+        condition: &Boolean,
+    ) -> Result<AllocatedLCCCS<G>, SynthesisError> {
+        let primary_part = self.primary_part.conditionally_select(
+            cs.namespace(|| "select primary_part"),
+            &other.primary_part,
+            condition
+        )?;
+        let C = self.C.conditionally_select(
+            cs.namespace(|| "select C"),
+            &other.C,
+            condition
+        )?;
+
+        Ok(Self { primary_part, C })
+    }
+
+    pub fn absorb_in_ro<CS: ConstraintSystem<<G as Group>::Base>>(
+        &self,
+        cs: CS,
+        ro: &mut G::ROCircuit,
+    ) -> Result<(), SynthesisError> {
+        self.C.absorb_in_ro(cs, ro)?;
+        self.primary_part.absorb_in_ro(ro)?;
+        Ok(())
+    }
+
+    pub fn element_num(&self) -> usize {
+        2 * self.C.x.params.n_limbs
+            + 1 + self.primary_part.r_x.len() + self.primary_part.Xs.len() + self.primary_part.Vs.len()
+    }
+}
+
+/// An Allocated Committed CCS instance
+#[derive(Clone)]
+pub struct AllocatedCCCS<G: Group> {
+    pub primary_part: AllocatedCCCSPrimaryPart<G>,
+    pub C: AllocatedSimulatedPoint<G>,
+}
+
+impl<G: Group> AllocatedCCCS<G> {
+    pub fn new(Xs: Vec<AllocatedNum<G::Base>>, C: AllocatedSimulatedPoint<G>) -> Self {
+        Self { primary_part: AllocatedCCCSPrimaryPart{ Xs }, C }
+    }
+
+    /// Takes the CCCS instance and creates a new allocated CCCS instance
+    pub fn alloc<CS: ConstraintSystem<<G as Group>::Base>>(
+        mut cs: CS,
+        cccs: Option<&CCCSForBase<G>>,
+        limb_width: usize,
+        n_limbs: usize,
+        io_num: usize
+    ) -> Result<Self, SynthesisError> {
+        let Xs = (0..io_num).map(|i|{
+            AllocatedNum::alloc(
+                cs.namespace(|| format!("allocate X[{}]", i)),
+                || Ok(cccs.get().map_or(G::Base::ZERO, |u| u.x[i])),
+            )
+        }).collect::<Result<Vec<_>, SynthesisError>>()?;
+        let C = AllocatedSimulatedPoint::alloc(
+            cs.namespace(|| "alloc C"),
+            cccs.as_ref().map(|c| c.C.clone()),
+            limb_width,
+            n_limbs
+        )?;
+
+        Ok(AllocatedCCCS::new(Xs, C))
+    }
+
+    pub fn is_null<CS: ConstraintSystem<G::Base>>(&self, mut cs: CS, zero: &AllocatedNum<G::Base>) -> Result<Boolean, SynthesisError> {
+        let is_null1 = self.primary_part.is_null(cs.namespace(|| "self.C"), zero)?;
+        let is_null2 = self.C.is_null(cs.namespace(|| "self.C"))?;
+        multi_and(cs.namespace(|| "lcccs is null"), &[is_null1, is_null2]).map(Into::into)
+    }
+}
 
 /// An Allocated Committed CCS instance
 #[derive(Clone)]
@@ -37,13 +167,13 @@ impl<G: Group> AllocatedCCCSPrimaryPart<G> {
     /// Takes the CCCS instance and creates a new allocated CCCS instance
     pub fn alloc<CS: ConstraintSystem<<G as Group>::Base>>(
         mut cs: CS,
-        cccs: Option<&CCCS<G>>,
+        cccs: Option<&CCCSForBase<G>>,
         io_num: usize
     ) -> Result<Self, SynthesisError> {
         let Xs = (0..io_num).map(|i|{
             AllocatedNum::alloc(
                 cs.namespace(|| format!("allocate X[{}]", i)),
-                || Ok(cccs.get().map_or(G::Base::ZERO, |u| scalar_as_base::<G>(u.x[i]))),
+                || Ok(cccs.get().map_or(G::Base::ZERO, |u| u.x[i])),
             )
         }).collect::<Result<Vec<_>, SynthesisError>>()?;
 
@@ -84,75 +214,89 @@ impl<G: Group> AllocatedCCCSSecondPart<G> {
     }
 }
 
-
 /// An Allocated Linearized Committed CCS instance
 #[derive(Clone)]
 pub struct AllocatedLCCCSPrimaryPart<G: Group> {
     pub u: AllocatedNum<G::Base>,
-    pub Xs: Vec<BigNat<G::Base>>,
+    pub Xs: Vec<AllocatedNum<G::Base>>,
     pub Vs: Vec<AllocatedNum<G::Base>>,
     pub r_x: Vec<AllocatedNum<G::Base>>,
+}
+
+impl<G: Group> Debug for AllocatedLCCCSPrimaryPart<G> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AllocatedLCCCSPrimaryPart")
+            .field("u", &self.u.get_value())
+            .field("Xs", &self.Xs.iter().map(|x| x.get_value()).collect::<Vec<_>>())
+            .field("Vs", &self.Vs.iter().map(|v| v.get_value()).collect::<Vec<_>>())
+            .field("r_x", &self.r_x.iter().map(|r| r.get_value()).collect::<Vec<_>>())
+            .finish()
+    }
 }
 
 impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
     pub fn is_null<CS: ConstraintSystem<G::Base>>(&self, mut cs: CS, zero: &AllocatedNum<G::Base>) -> Result<Boolean, SynthesisError> {
         let is_u_zero = alloc_num_equals(cs.namespace(|| "alloc is_null"), &self.u, zero)?.into();
 
-        let Xs_num = self.Xs.iter().flat_map(|x| x.as_limbs()).collect::<Vec<_>>();
-        let is_Xs_zero = alloc_vec_num_equals_zero(cs.namespace(|| "is Xs zero"), &Xs_num)?.into();
+        let Xs_num = alloc_vec_number_equals_zero(cs.namespace(|| "is Xs zero"), &self.Xs, &zero)?.into();
         let is_Vs_zero = alloc_vec_number_equals_zero(cs.namespace(|| "is Vs zero"), &self.Vs, &zero)?.into();
         let is_r_x_zero = alloc_vec_number_equals_zero(cs.namespace(|| "is r_x zero"), &self.r_x, &zero)?.into();
 
-        multi_and(cs.namespace(|| "final result"), &[is_u_zero, is_Xs_zero, is_Vs_zero, is_r_x_zero]).map(Into::into)
+        multi_and(cs.namespace(|| "final result"), &[is_u_zero, Xs_num, is_Vs_zero, is_r_x_zero]).map(Into::into)
     }
 
     /// Allocates the given `LCCCS` as a witness of the circuit
     pub fn alloc<CS: ConstraintSystem<<G as Group>::Base>>(
         mut cs: CS,
-        inst: Option<&LCCCS<G>>,
+        inst: Option<&LCCCSForBase<G>>,
         io_num: usize,
-        limb_width: usize,
-        n_limbs: usize,
+        t: usize,
+        s: usize,
     ) -> Result<Self, SynthesisError> {
         // u << |G::Base| despite the fact that u is a scalar.
         // So we parse all of its bytes as a G::Base element
         let u = AllocatedNum::alloc(
             cs.namespace(|| "allocate u"),
-            || Ok(inst.get().map_or(G::Base::ZERO, |inst| scalar_as_base::<G>(inst.u))),
+            || Ok(inst.map_or(G::Base::ZERO, |inst| inst.u)),
         )?;
 
-        // Allocate X0..Xn. If the input instance is None, then allocate default values 0.
         let Xs = (0..io_num).map(|i|{
-            BigNat::alloc_from_nat(
+            AllocatedNum::alloc(
                 cs.namespace(|| format!("allocate x[{}]", i)),
-                || Ok(f_to_nat(&inst.map_or(G::Base::ZERO, |inst| scalar_as_base::<G>(inst.x[i])))),
-                limb_width,
-                n_limbs,
+                || Ok(inst.map_or(G::Base::ZERO, |inst| inst.x[i])),
+            )
+        }).collect::<Result<Vec<_>, SynthesisError>>()?;
+        let Vs = (0..t).map(|i|{
+            AllocatedNum::alloc(
+                cs.namespace(|| format!("allocate v[{}]", i)),
+                || Ok(inst.map_or(G::Base::ZERO, |inst| inst.v[i])),
+            )
+        }).collect::<Result<Vec<_>, SynthesisError>>()?;
+        let r_x = (0..s).map(|i|{
+            AllocatedNum::alloc(
+                cs.namespace(|| format!("allocate r[{}]", i)),
+                || Ok(inst.map_or(G::Base::ZERO, |inst| inst.r_x[i])),
             )
         }).collect::<Result<Vec<_>, SynthesisError>>()?;
 
-        Ok(AllocatedLCCCSPrimaryPart { u, Xs, r_x: vec![], Vs: vec![] })
+        Ok(AllocatedLCCCSPrimaryPart { u, Xs, r_x, Vs })
     }
 
-    /// Allocates the hardcoded default `RelaxedR1CSInstance` in the circuit.
+    /// Allocates the hardcoded default `LCCCS` in the circuit.
     /// C = 0, u = 0, X0 = X1 = ... = Xn = 0
     pub fn default<CS: ConstraintSystem<<G as Group>::Base>>(
         mut cs: CS,
         io_num: usize,
         s: usize,
         t: usize,
-        limb_width: usize,
-        n_limbs: usize,
     ) -> Result<Self, SynthesisError> {
         // let u = C.x.clone(); // In the default case, W.x = u = 0
         let u = AllocatedNum::zero(cs.namespace(|| "alloc zero`"))?;
 
         let Xs = (0..io_num).map(|i|{
-            BigNat::alloc_from_nat(
+            AllocatedNum::alloc(
                 cs.namespace(|| format!("allocate x[{}]", i)),
-                || Ok(f_to_nat(&G::Base::ZERO)),
-                limb_width,
-                n_limbs,
+                || Ok(G::Base::ZERO),
             )
         }).collect::<Result<Vec<_>, SynthesisError>>()?;
         let Vs = (0..t).map(|i|{
@@ -163,7 +307,7 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
         }).collect::<Result<Vec<_>, SynthesisError>>()?;
         let r_x = (0..s).map(|i|{
             AllocatedNum::alloc(
-                cs.namespace(|| format!("allocate v[{}]", i)),
+                cs.namespace(|| format!("allocate r[{}]", i)),
                 || Ok(G::Base::ZERO),
             )
         }).collect::<Result<Vec<_>, SynthesisError>>()?;
@@ -171,60 +315,19 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
         Ok(AllocatedLCCCSPrimaryPart { u, Xs, r_x, Vs })
     }
 
-    /// Allocates the CCCS Instance as a LCCCS in the circuit.
-    pub fn from_cccs<CS: ConstraintSystem<<G as Group>::Base>>(
-        mut cs: CS,
-        inst: AllocatedCCCSPrimaryPart<G>,
-        limb_width: usize,
-        n_limbs: usize,
-    ) -> Result<Self, SynthesisError> {
-        let u = alloc_one(cs.namespace(|| "one"))?;
-
-        let Xs = inst.Xs
-            .into_iter()
-            .enumerate()
-            .map(|(i, num)|{
-                BigNat::from_num(
-                    cs.namespace(|| format!("allocate x[{}]", i)),
-                    &Num::from(num),
-                    limb_width,
-                    n_limbs,
-                )
-            }).collect::<Result<Vec<_>, SynthesisError>>()?;
-
-        Ok(AllocatedLCCCSPrimaryPart {
-            u,
-            Xs,
-            r_x: vec![],
-            Vs: vec![],
-        })
-    }
-
     /// Absorb the provided instance in the RO
-    pub fn absorb_in_ro<CS: ConstraintSystem<<G as Group>::Base>>(
+    pub fn absorb_in_ro(
         &self,
-        mut cs: CS,
         ro: &mut G::ROCircuit,
     ) -> Result<(), SynthesisError> {
         ro.absorb(&self.u);
 
         for X in self.Xs.iter() {
-            let X_bn = X.as_limbs()
-                .iter()
-                .enumerate()
-                .map(|(i, limb)| {
-                    limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of X_r[0] to num")))
-                }).collect::<Result<Vec<_>, SynthesisError>>()?;
-            // absorb each of the limbs of Xs
-            for limb in X_bn {
-                ro.absorb(&limb);
-            }
+            ro.absorb(X);
         }
-
         for v in self.Vs.iter() {
             ro.absorb(v);
         }
-
         for r in self.r_x.iter() {
             ro.absorb(r);
         }
@@ -246,7 +349,7 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
             condition,
         )?;
 
-        let Xs = vec_conditionally_select_big_nat(
+        let Xs = conditionally_select_vec_allocated_num(
             cs.namespace(|| "Xs"),
             &self.Xs,
             &other.Xs,
@@ -277,17 +380,13 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
         lcccs: &AllocatedLCCCSPrimaryPart<G>,
         rho_i: &AllocatedNum<G::Base>,
         sigmas: &[AllocatedNum<G::Base>],
-        limb_width: usize,
-        n_limbs: usize,
     ) -> Result<(), SynthesisError> {
         self.folding(
             cs.namespace(|| " folding with lcccs"),
             rho_i,
             &lcccs.u,
             &lcccs.Xs,
-            &sigmas,
-            limb_width,
-            n_limbs
+            &sigmas
         )
     }
 
@@ -298,28 +397,14 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
         cccs: &AllocatedCCCSPrimaryPart<G>,
         rho_i: &AllocatedNum<G::Base>,
         thetas: &[AllocatedNum<G::Base>],
-        limb_width: usize,
-        n_limbs: usize,
     ) -> Result<(), SynthesisError> {
-        let one = AllocatedNum::alloc(cs.namespace(|| "alloc"), || Ok(G::Base::ZERO))?;
-        let Xs_bn = cccs.Xs
-            .iter()
-            .enumerate()
-            .map(|(i, X)|BigNat::from_num(
-                cs.namespace(|| format!("allocate x[{}]", i)),
-                &Num::from(X.clone()),
-                limb_width,
-                n_limbs,
-            ))
-            .collect::<Result<Vec<_>, SynthesisError>>()?;
+        let one = AllocatedNum::one(cs.namespace(|| "alloc"))?;
         self.folding(
             cs.namespace(|| " folding with cccs"),
             rho_i,
             &one,
-            &Xs_bn,
-            &thetas,
-            limb_width,
-            n_limbs
+            &cccs.Xs,
+            &thetas
         )
     }
 
@@ -329,10 +414,8 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
         mut cs: CS,
         rho_i: &AllocatedNum<G::Base>,
         u: &AllocatedNum<G::Base>,
-        x: &[BigNat<G::Base>],
+        x: &[AllocatedNum<G::Base>],
         v: &[AllocatedNum<G::Base>],
-        limb_width: usize,
-        n_limbs: usize,
     ) -> Result<(), SynthesisError> {
         // u_fold = self.u + rho_i * u
         let u_fold = AllocatedNum::alloc(
@@ -347,36 +430,20 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
         );
 
         // Fold the IO:
-        // Analyze r into limbs
-        let rho_i_bn = BigNat::from_num(
-            cs.namespace(|| "allocate rho_i_bn"),
-            &Num::from(rho_i.clone()),
-            limb_width,
-            n_limbs,
-        )?;
-
-        // Allocate the order of the non-native field as a constant
-        let m_bn = alloc_bignat_constant(
-            cs.namespace(|| "alloc m"),
-            &G::get_curve_params().2,
-            limb_width,
-            n_limbs,
-        )?;
-
         let mut Xs_folded = Vec::new();
-        for (i, (X_folded, X_bn)) in self.Xs.iter().zip(x.iter()).enumerate() {
+        for (i, (X_folded, X)) in self.Xs.iter().zip(x.iter()).enumerate() {
             let mut cs = cs.namespace(|| format!("folding {}th x", i));
             // Fold lcccs.X + r * lccc.X
-            let (_, r_0) = X_bn.mult_mod(cs.namespace(|| "r*X"), &rho_i_bn, &m_bn)?;
-            let r_new_0 = X_folded.add(&r_0)?;
-            Xs_folded.push(r_new_0.red_mod(cs.namespace(|| "reduce folded X"), &m_bn)?);
+            let r_0 = X.mul(cs.namespace(|| "r * X"), &rho_i)?;
+            let r_new_0 = X_folded.add(cs.namespace(|| "X_folded + r * X"), &r_0)?;
+            Xs_folded.push(r_new_0);
         }
 
         let mut vs_folded = Vec::new();
         for (i, (v_folded, v)) in self.Vs.iter().zip(v.iter()).enumerate() {
             let mut cs = cs.namespace(|| format!("folding {}th v", i));
             // Fold lcccs.v + r * lccc.v
-            let r_0 = v.mul(cs.namespace(|| "r * v"), rho_i)?;
+            let r_0 = v.mul(cs.namespace(|| "r * v"), &rho_i)?;
             let r_new_0 = v_folded.add(cs.namespace(|| "v_folded + r * v"), &r_0)?;
             vs_folded.push(r_new_0);
         }
@@ -513,8 +580,6 @@ pub fn multi_folding_with_primary_part<CS: ConstraintSystem<<G as Group>::Base>,
     rho: AllocatedNum<G::Base>,
     sigmas: &[Vec<AllocatedNum<G::Base>>],
     thetas: &[Vec<AllocatedNum<G::Base>>],
-    limb_width: usize,
-    n_limbs: usize,
 ) -> Result<AllocatedLCCCSPrimaryPart<G>, SynthesisError> {
     // init
     let mut lcccs_folded = lcccs[0].clone();
@@ -523,25 +588,21 @@ pub fn multi_folding_with_primary_part<CS: ConstraintSystem<<G as Group>::Base>,
 
     // folding
     for (i, lcccs) in lcccs.iter().enumerate().skip(1) {
-        rho_i = rho_i.square(cs.namespace(|| format!("alloc {}th squared rho_i in folding lcccs", i)))?;
+        rho_i = rho_i.mul(cs.namespace(|| format!("alloc {}th squared rho_i in folding lcccs", i)), &rho)?;
         lcccs_folded.folding_with_lcccs_primary_part(
             cs.namespace(|| format!("folding {}th lcccs", i)),
             lcccs,
             &rho_i,
-            &sigmas[i],
-            limb_width,
-            n_limbs
+            &sigmas[i]
         )?;
     }
     for (i, cccs) in cccs.iter().enumerate() {
-        rho_i = rho_i.square(cs.namespace(|| format!("alloc {}th squared rho_i in folding cccs", i)))?;
+        rho_i = rho_i.mul(cs.namespace(|| format!("alloc {}th squared rho_i in folding cccs", i)), &rho)?;
         lcccs_folded.folding_with_cccs_primary_part(
             cs.namespace(|| format!("folding {}th cccs", i)),
             cccs,
             &rho_i,
-            &thetas[i],
-            limb_width,
-            n_limbs
+            &thetas[i]
         )?;
     }
     Ok(lcccs_folded)
@@ -552,7 +613,7 @@ pub fn multi_folding_with_second_part<CS: ConstraintSystem<<G as Group>::Base>, 
     mut cs: CS,
     lcccs: &[AllocatedLCCCSSecondPart<G>],
     cccs: &[AllocatedCCCSSecondPart<G>],
-    rho: AllocatedNum<G::Base>,
+    rho: &AllocatedNum<G::Base>,
 ) -> Result<AllocatedLCCCSSecondPart<G>, SynthesisError> {
     // init
     let mut lcccs_folded = lcccs[0].clone();

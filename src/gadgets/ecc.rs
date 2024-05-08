@@ -1,5 +1,7 @@
 //! This module implements various elliptic curve gadgets
 #![allow(non_snake_case)]
+
+use std::fmt::{Debug, Formatter};
 use crate::{
   gadgets::utils::{
     alloc_num_equals, alloc_one, alloc_zero, conditionally_select, conditionally_select2,
@@ -15,16 +17,28 @@ use bellpepper_core::{
   ConstraintSystem, SynthesisError,
 };
 use ff::{Field, PrimeField};
+use num_traits::Zero;
+use crate::gadgets::nonnative::bignat::BigNat;
+use crate::gadgets::nonnative::util::f_to_nat;
+use crate::gadgets::utils::{alloc_bignat_constant, conditionally_select_bignat};
+use crate::traits::ROCircuitTrait;
 
 /// `AllocatedPoint` provides an elliptic curve abstraction inside a circuit.
 #[derive(Clone)]
-pub struct AllocatedPoint<G>
-where
-  G: Group,
-{
+pub struct AllocatedPoint<G: Group> {
   pub(crate) x: AllocatedNum<G::Base>,
   pub(crate) y: AllocatedNum<G::Base>,
   pub(crate) is_infinity: AllocatedNum<G::Base>,
+}
+
+impl<G: Group> Debug for AllocatedPoint<G> {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("AllocatedPoint")
+        .field("x", &self.x.get_value())
+        .field("y", &self.y.get_value())
+        .field("is_infinity", &self.is_infinity.get_value())
+        .finish()
+  }
 }
 
 impl<G> AllocatedPoint<G>
@@ -61,6 +75,52 @@ where
     );
 
     Ok(AllocatedPoint { x, y, is_infinity })
+  }
+
+  /// checks if `self` is on the curve or if it is infinity
+  pub fn check_on_curve<CS>(&self, mut cs: CS) -> Result<(), SynthesisError>
+    where
+        CS: ConstraintSystem<G::Base>,
+  {
+    // check that (x,y) is on the curve if it is not infinity
+    // we will check that (1- is_infinity) * y^2 = (1-is_infinity) * (x^3 + Ax + B)
+    // note that is_infinity is already restricted to be in the set {0, 1}
+    let y_square = self.y.square(cs.namespace(|| "y_square"))?;
+    let x_square = self.x.square(cs.namespace(|| "x_square"))?;
+    let x_cube = self.x.mul(cs.namespace(|| "x_cube"), &x_square)?;
+
+    let rhs = AllocatedNum::alloc(cs.namespace(|| "rhs"), || {
+      if *self.is_infinity.get_value().get()? == G::Base::ONE {
+        Ok(G::Base::ZERO)
+      } else {
+        Ok(
+          *x_cube.get_value().get()?
+              + *self.x.get_value().get()? * G::get_curve_params().0
+              + G::get_curve_params().1,
+        )
+      }
+    })?;
+
+    cs.enforce(
+      || "rhs = (1-is_infinity) * (x^3 + Ax + B)",
+      |lc| {
+        lc + x_cube.get_variable()
+            + (G::get_curve_params().0, self.x.get_variable())
+            + (G::get_curve_params().1, CS::one())
+      },
+      |lc| lc + CS::one() - self.is_infinity.get_variable(),
+      |lc| lc + rhs.get_variable(),
+    );
+
+    // check that (1-infinity) * y_square = rhs
+    cs.enforce(
+      || "check that y_square * (1 - is_infinity) = rhs",
+      |lc| lc + y_square.get_variable(),
+      |lc| lc + CS::one() - self.is_infinity.get_variable(),
+      |lc| lc + rhs.get_variable(),
+    );
+
+    Ok(())
   }
 
   /// Allocates a default point on the curve.
@@ -551,6 +611,17 @@ where
 
     Ok(Self { x, y, is_infinity })
   }
+
+  /// Make the point io
+  pub fn inputize<CS: ConstraintSystem<G::Base>>(
+    &self,
+    mut cs: CS,
+  ) -> Result<(), SynthesisError> {
+    self.x.inputize(cs.namespace(|| "Input point.x"))?;
+    self.y.inputize(cs.namespace(|| "Input point.y"))?;
+    self.is_infinity.inputize(cs.namespace(|| "Input point.is_infinity"))?;
+    Ok(())
+  }
 }
 
 #[derive(Clone)]
@@ -742,6 +813,156 @@ where
     let y = conditionally_select(cs.namespace(|| "select y"), &a.y, &b.y, condition)?;
 
     Ok(Self { x, y })
+  }
+}
+
+#[derive(Clone)]
+pub struct AllocatedSimulatedPoint<G: Group> {
+  pub(crate) x: BigNat<G::Base>,
+  pub(crate) y: BigNat<G::Base>,
+  pub(crate) is_infinity: AllocatedNum<G::Base>,
+}
+
+impl<G: Group> Debug for AllocatedSimulatedPoint<G> {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    f.debug_struct("AllocatedSimulatedPoint")
+        .field("x", &self.x.value.as_ref().map(|v| format!("{:x}", v)))
+        .field("y", &self.y.value.as_ref().map(|v| format!("{:x}", v)))
+        .field("is_infinity", &self.is_infinity.get_value())
+        .finish()
+  }
+}
+
+impl<G: Group> AllocatedSimulatedPoint<G> {
+  /// Allocates a default point on the curve.
+  pub fn default<CS>(mut cs: CS, limb_width: usize, n_limbs: usize) -> Result<Self, SynthesisError>
+    where
+        CS: ConstraintSystem<G::Base>,
+  {
+    let zero = alloc_bignat_constant(
+      cs.namespace(|| "zero"),
+      &Zero::zero(),
+      limb_width,
+      n_limbs
+    )?;
+    let one = alloc_one(cs.namespace(|| "one"))?;
+
+    Ok(AllocatedSimulatedPoint {
+      x: zero.clone(),
+      y: zero,
+      is_infinity: one,
+    })
+  }
+
+  pub fn is_null<CS: ConstraintSystem<G::Base>>(&self, mut cs: CS) -> Result<Boolean, SynthesisError> {
+    let one = alloc_one(cs.namespace(|| "one"))?;
+    alloc_num_equals(cs.namespace(|| "is infinity"), &self.is_infinity, &one).map(Into::into)
+  }
+
+  /// Allocates a new point on the curve using coordinates provided by `coords`.
+  /// If coords = None, it allocates the default infinity point
+  pub fn alloc<CS>(
+    mut cs: CS,
+    coords: Option<(G::Scalar, G::Scalar, bool)>,
+    limb_width: usize,
+    n_limbs: usize,
+  ) -> Result<Self, SynthesisError>
+    where
+        CS: ConstraintSystem<G::Base>,
+  {
+    let x = BigNat::alloc_from_nat(
+      cs.namespace(|| "allocate x"),
+      || Ok(f_to_nat(&coords.map_or(G::Scalar::ZERO, |inst| inst.0))),
+      limb_width,
+      n_limbs,
+    )?;
+    let y = BigNat::alloc_from_nat(
+      cs.namespace(|| "allocate y"),
+      || Ok(f_to_nat(&coords.map_or(G::Scalar::ZERO, |inst| inst.1))),
+      limb_width,
+      n_limbs,
+    )?;
+    let is_infinity = AllocatedNum::alloc(
+      cs.namespace(|| "is_infinity"),
+      || Ok(
+        if coords.map_or(true, |c| c.2) {
+          G::Base::ONE
+        } else {
+          G::Base::ZERO
+        }
+      )
+    )?;
+    cs.enforce(
+      || "is_infinity is bit",
+      |lc| lc + is_infinity.get_variable(),
+      |lc| lc + CS::one() - is_infinity.get_variable(),
+      |lc| lc,
+    );
+
+    Ok(Self { x, y, is_infinity })
+  }
+
+  /// If the condition is true then returns this otherwise it returns the other
+  pub fn conditionally_select<CS: ConstraintSystem<<G as Group>::Base>>(
+    &self,
+    mut cs: CS,
+    other: &Self,
+    condition: &Boolean,
+  ) -> Result<AllocatedSimulatedPoint<G>, SynthesisError> {
+    let x = conditionally_select_bignat(
+      cs.namespace(|| "select is x"),
+      &self.x,
+      &other.x,
+      condition
+    )?;
+    let y = conditionally_select_bignat(
+      cs.namespace(|| "select is y"),
+      &self.y,
+      &other.y,
+      condition
+    )?;
+    let is_infinity = conditionally_select(
+      cs.namespace(|| "select is infinity"),
+      &self.is_infinity,
+      &other.is_infinity,
+      condition
+    )?;
+
+    Ok(AllocatedSimulatedPoint {
+      x,
+      y,
+      is_infinity,
+    })
+  }
+
+  pub fn absorb_in_ro<CS: ConstraintSystem<<G as Group>::Base>>(
+    &self,
+    mut cs: CS,
+    ro: &mut G::ROCircuit
+  ) -> Result<(), SynthesisError> {
+    let X_bn = self.x.as_limbs()
+        .iter()
+        .enumerate()
+        .map(|(i, limb)| {
+          limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of X_r[0] to num")))
+        }).collect::<Result<Vec<_>, SynthesisError>>()?;
+    // absorb each of the limbs of Xs
+    for limb in X_bn {
+      ro.absorb(&limb);
+    }
+
+    let Y_bn = self.y.as_limbs()
+        .iter()
+        .enumerate()
+        .map(|(i, limb)| {
+          limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of Y_r[0] to num")))
+        }).collect::<Result<Vec<_>, SynthesisError>>()?;
+    // absorb each of the limbs of Xs
+    for limb in Y_bn {
+      ro.absorb(&limb);
+    }
+
+    Ok(())
   }
 }
 

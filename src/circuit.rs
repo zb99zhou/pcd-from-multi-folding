@@ -241,7 +241,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
     let hash = le_bits_to_num(cs.namespace(|| "bits to hash"), &hash_bits)?;
     let check_pass = alloc_num_equals(
       cs.namespace(|| "check consistency of u.X[0] with H(params, U, i, z0, zi)"),
-      &u.X0,
+      &u.X[0],
       &hash,
     )?;
 
@@ -274,7 +274,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
 
     // Compute variable indicating if this is the base case
     let zero = alloc_zero(cs.namespace(|| "zero"))?;
-    let is_base_case = alloc_num_equals(cs.namespace(|| "Check if base case"), &i.clone(), &zero)?;
+    let is_base_case = alloc_num_equals(cs.namespace(|| "Check if base case"), &i, &zero)?;
 
     // Synthesize the circuit for the base case and get the new running instance
     let Unew_base = self.synthesize_base_case(cs.namespace(|| "base case"), u.clone())?;
@@ -357,7 +357,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
     let hash = le_bits_to_num(cs.namespace(|| "convert hash to num"), &hash_bits)?;
 
     // Outputs the computed hash and u.X[1] that corresponds to the hash of the other circuit
-    u.X1.inputize(cs.namespace(|| "Output unmodified hash of the other circuit"))?; // this circuit's x0
+    u.X[1].inputize(cs.namespace(|| "Output unmodified hash of the other circuit"))?; // this circuit's x0
     hash.inputize(cs.namespace(|| "output new hash of this circuit"))?; // this circuit's x1
 
     Ok(z_next)

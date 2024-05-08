@@ -17,6 +17,7 @@ mod constants;
 mod nifs;
 mod nimfs;
 mod r1cs;
+mod utils;
 
 // public modules
 pub mod errors;
@@ -25,6 +26,7 @@ pub mod provider;
 pub mod spartan;
 pub mod traits;
 pub mod pcd_compressed_snark;
+pub mod pcd_node;
 
 use crate::bellpepper::{
   r1cs::{NovaShape, NovaWitness},
@@ -816,6 +818,7 @@ fn compute_digest<G: Group, T: Serialize>(o: &T) -> G::Scalar {
   digest
 }
 
+
 #[cfg(test)]
 mod tests {
   use crate::provider::bn256_grumpkin::{bn256, grumpkin};
@@ -834,6 +837,7 @@ mod tests {
   use core::marker::PhantomData;
   use ff::PrimeField;
   use traits::circuit::TrivialTestCircuit;
+
 
   #[derive(Clone, Debug, Default)]
   struct CubicCircuit<F: PrimeField> {
@@ -1506,4 +1510,5 @@ mod tests {
     test_ivc_base_with::<bn256::Point, grumpkin::Point>();
     test_ivc_base_with::<secp256k1::Point, secq256k1::Point>();
   }
+
 }
