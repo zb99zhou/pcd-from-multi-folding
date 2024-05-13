@@ -25,12 +25,9 @@ pub struct PCDPublicParams<G1, G2, SC, const ARITY: usize, const R: usize>
         G2: Group<Base = <G1 as Group>::Scalar>,
         SC: PCDStepCircuit<G1::Scalar, ARITY, R>,
 {
-    pub(crate) ro_consts_primary: ROConstants<G1>,
-    pub(crate) ro_consts_secondary: ROConstants<G2>,
+    pub(crate) ro_consts_primary: ROConstants<G2>,
     pub(crate) ro_consts_circuit_primary: ROConstantsCircuit<G2>,
-    pub(crate) ro_consts_circuit_secondary: ROConstantsCircuit<G1>,
     pub(crate) te_consts_circuit_primary: TEConstantsCircuit<G2>,
-    pub(crate) te_consts_circuit_secondary: TEConstantsCircuit<G1>,
     pub(crate) ck_primary: CommitmentKey<G1>,
     pub(crate) ck_secondary: CommitmentKey<G2>,
     pub(crate) primary_circuit_params: PCDUnitParams<G1, ARITY, R>,
@@ -47,24 +44,23 @@ where
 {
     pub fn setup(circuit: &SC) -> Self {
         println!("Created secondary pp!");
-        let ro_consts_primary: ROConstants<G1> = Default::default();
-        let ro_consts_secondary: ROConstants<G2> = Default::default();
+        let ro_consts_primary: ROConstants<G2> = Default::default();
         let ro_consts_circuit_primary: ROConstantsCircuit<G2> = Default::default();
-        let ro_consts_circuit_secondary: ROConstantsCircuit<G1> = Default::default();
         let te_consts_circuit_primary: TEConstantsCircuit<G2> = Default::default();
-        let te_consts_circuit_secondary: TEConstantsCircuit<G1> = Default::default();
 
         let aux_circuit_setup_input = NovaAuxiliaryInputs::<G1>::new(None, None, None, None, R);
         let aux_circuit_setup = NovaAuxiliarySecondCircuit::<G1>::new(aux_circuit_setup_input);
         let mut cs_aux_helper: ShapeCS<G2> = ShapeCS::new();
         let _ = aux_circuit_setup.synthesize(&mut cs_aux_helper);
         let (aux_r1cs_shape, ck_secondary) = cs_aux_helper.r1cs_shape();
-        let secondary_circuit_params: NovaAuxiliaryParams<G2> = NovaAuxiliaryParams::new(aux_r1cs_shape, ARITY);
+        dbg!(aux_r1cs_shape.num_io);
+        let secondary_circuit_params: NovaAuxiliaryParams<G2> = NovaAuxiliaryParams::new(aux_r1cs_shape, R * BN_N_LIMBS * 2);
 
         println!("Created primary pp!");
         let circuit_params_primary_for_setup: PCDUnitParams<G1, ARITY, R> = PCDUnitParams::default_for_pcd(BN_LIMB_WIDTH, BN_N_LIMBS);
         let pcd_circuit_setup = PCDUnitPrimaryCircuit::<'_, G2, G1, SC, ARITY, R>::new(
             &circuit_params_primary_for_setup,
+            &secondary_circuit_params,
             None,
             circuit,
             ro_consts_circuit_primary.clone(),
@@ -74,15 +70,12 @@ where
         let _ = pcd_circuit_setup.synthesize(&mut cs_pcd_helper);
         let (r1cs_shape_primary, ck_primary) = cs_pcd_helper.r1cs_shape();
         let ccs_primary = CCS::<G1>::from(r1cs_shape_primary);
-        let primary_circuit_params = PCDUnitParams::<G1, ARITY, R>::new(BN_LIMB_WIDTH, BN_N_LIMBS, ccs_primary);
+        let primary_circuit_params = PCDUnitParams::<G1, ARITY, R>::new(BN_LIMB_WIDTH, BN_N_LIMBS, dbg!(ccs_primary));
 
         Self{
             ro_consts_primary,
-            ro_consts_secondary,
             ro_consts_circuit_primary,
-            ro_consts_circuit_secondary,
             te_consts_circuit_primary,
-            te_consts_circuit_secondary,
             ck_primary,
             ck_secondary,
             primary_circuit_params,
@@ -160,8 +153,7 @@ pub struct PCDVerifierKey<G1, G2, S1, S2>
         S1: LinearCommittedCCSTrait<G1>,
         S2: RelaxedR1CSSNARKTrait<G2>,
 {
-    ro_consts_primary: ROConstants<G1>,
-    ro_consts_secondary: ROConstants<G2>,
+    ro_consts: ROConstants<G2>,
     digest: G1::Scalar,
     vk_primary: S1::VerifierKey,
     vk_secondary: S2::VerifierKey,
@@ -218,8 +210,7 @@ impl<G1, G2, SC, S1, S2, const ARITY: usize, const R: usize> PCDCompressedSNARK<
         };
 
         let vk = PCDVerifierKey {
-            ro_consts_primary: pp.ro_consts_primary.clone(),
-            ro_consts_secondary: pp.ro_consts_secondary.clone(),
+            ro_consts: pp.ro_consts_primary.clone(),
             digest: pp.primary_circuit_params.digest,
             vk_primary,
             vk_secondary,
@@ -293,13 +284,13 @@ impl<G1, G2, SC, S1, S2, const ARITY: usize, const R: usize> PCDCompressedSNARK<
             || self.r_U_primary.x.len() != 1
             || self.r_U_secondary.X.len() != 16
         {
-            return Err(NovaError::ProofVerifyError);
+            return Err(NovaError::InvalidInputLength);
         }
 
         // check if the output hashes in R1CS instances point to the right running instances
         let hash_primary = {
             let mut hasher = <G2 as Group>::RO::new(
-                vk.ro_consts_secondary.clone(),
+                vk.ro_consts.clone(),
                 NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * ARITY,
             );
             hasher.absorb(vk.digest);
@@ -316,16 +307,16 @@ impl<G1, G2, SC, S1, S2, const ARITY: usize, const R: usize> PCDCompressedSNARK<
         };
 
         if scalar_as_base::<G2>(hash_primary) != self.r_u_primary.x[0] {
-            return Err(NovaError::ProofVerifyError);
+            return Err(NovaError::InvalidInput);
         }
 
-        // Prover's transcript
-        let mut transcript_p = G1::TE::new(Default::default(), b"multifolding");
-        transcript_p.squeeze(Self::TRANSCRIPT_INIT_STR).unwrap();
+        // Verifier's transcript
+        let mut transcript_v = G1::TE::new(Default::default(), b"multifolding");
+        transcript_v.squeeze(Self::TRANSCRIPT_INIT_STR).unwrap();
 
         // fold the running instance and last instance to get a folded instance
         let f_U_primary = NIMFS::verify(
-            &mut transcript_p,
+            &mut transcript_v,
             &[self.r_U_primary.clone()],
             &[self.r_u_primary.clone()],
             self.nimfs_proof.clone(),

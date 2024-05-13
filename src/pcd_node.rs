@@ -73,11 +73,10 @@ impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
             Vec<G1::Scalar>
         ), NovaError
     > {
-        let mut transcript_p = <G1 as Group>::TE::new(Default::default(), b"multifolding");
-        transcript_p.squeeze(b"init").unwrap();
-
         // First, handling PCD auxiliary secondary circuit
         println!("=================================================proving NIMFS=================================================");
+        let mut transcript_p = <G1 as Group>::TE::new(Default::default(), b"multifolding");
+        transcript_p.squeeze(b"init").unwrap();
         let (nimfs_proof, lcccs, lcccs_witness) =
             NIMFS::prove(
                 &mut transcript_p,
@@ -126,12 +125,12 @@ impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
         )?;
         pp.secondary_circuit_params.r1cs_shape.is_sat(&pp.ck_secondary, &aux_r1cs_instance, &aux_r1cs_witness)?;
 
-        println!("=================================================proving NIFS=================================================");
         // Then, handling the PCD primary circuit
+        println!("=================================================proving NIFS=================================================");
         let (nifs_proof, (relaxed_r1cs_instance, relaxed_r1cs_witness)) =
             NIFS::prove_with_multi_relaxed(
                 &pp.ck_secondary,
-                &pp.ro_consts_secondary,
+                &pp.ro_consts_primary,
                 &pp.secondary_circuit_params.digest,
                 &pp.secondary_circuit_params.r1cs_shape,
                 self.relaxed_r1cs_instance.as_ref().unwrap(),
@@ -139,9 +138,20 @@ impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
                 &aux_r1cs_instance,
                 &aux_r1cs_witness,
             )?;
-        println!("Finish NIFS prove_with_multi_relaxed");
+        if !IS_GENESIS {
+            let verified_relaxed_r1cs_instance = NIFS::verify_with_multi_relaxed(
+                &nifs_proof,
+                &pp.ro_consts_primary,
+                &pp.secondary_circuit_params.digest,
+                self.relaxed_r1cs_instance.as_ref().unwrap(),
+                &aux_r1cs_instance,
+            ).unwrap();
+            assert_eq!(verified_relaxed_r1cs_instance, relaxed_r1cs_instance);
+            println!("Finish NIFS verification: {:#?}", relaxed_r1cs_instance);
+        }
 
         let pcd_circuit_input = PCDUnitInputs::<G2>::new(
+            scalar_as_base::<G1>(pp.primary_circuit_params.digest),
             pp.secondary_circuit_params.digest,
             self.z0.clone(),
             self.zi.clone(),
@@ -161,6 +171,7 @@ impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
 
         let pcd_circuit = PCDUnitPrimaryCircuit::<'_, G2, G1, _, ARITY, R>::new(
             &pp.primary_circuit_params,
+            &pp.secondary_circuit_params,
             Some(pcd_circuit_input),
             pcd_step_circuit,
             pp.ro_consts_circuit_primary.clone(),
@@ -201,6 +212,7 @@ impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
         } else {
             (relaxed_r1cs_instance, relaxed_r1cs_witness)
         };
+        cccs.check_relation(&pp.ck_primary, &cccs_witness).unwrap();
 
         Ok((
             lcccs,
@@ -224,12 +236,13 @@ impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
         U: &RelaxedR1CSInstance<G2>,
         W: &RelaxedR1CSWitness<G2>,
     ) -> Result<Vec<G1::Scalar>, NovaError> {
+        println!("================================PCD verify===================================");
         if U.X.len() != 16  && lcccs.x.len() != 1 && cccs.x.len() != 1 {
             return Err(NovaError::ProofVerifyError);
         }
 
         let mut hasher = <G2 as Group>::RO::new(
-            pp.ro_consts_secondary.clone(),
+            pp.ro_consts_primary.clone(),
             NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * ARITY,
         );
         hasher.absorb(pp.primary_circuit_params.digest);
@@ -240,7 +253,12 @@ impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
             hasher.absorb(*e);
         }
         lcccs.absorb_in_ro::<G2>(&mut hasher);
+        println!("lcccs: {:#?}", lcccs);
         U.absorb_in_ro(&mut hasher);
+        println!("relaxed_r1cs_inst.comm_W: {:?}", U.comm_W.to_coordinates());
+        println!("relaxed_r1cs_inst.comm_E: {:?}", U.comm_E.to_coordinates());
+        println!("relaxed_r1cs_inst.u: {:?}", U.u);
+        println!("relaxed_r1cs_inst.X: {:?}", U.X);
 
         if hasher.squeeze(NUM_HASH_BITS) != scalar_as_base::<G1>(cccs.x[0]) {
             return Err(NovaError::InvalidInput);
@@ -353,7 +371,7 @@ mod test {
             node_3_lcccs, node_3_cccs, node_3_relaxed_r1cs_instance,
             node_3_lcccs_witness, node_3_cccs_witness, node_3_relaxed_r1cs_witness,
             node_3_zi
-        ) = node_3.prove_step::<_, false>(&pp, &test_circuit).map_err(|_| NovaError::SynthesisError)?;
+        ) = node_3.prove_step::<_, false>(&pp, &test_circuit).unwrap();
 
         let res = node_3.verify(
             &pp,
@@ -482,7 +500,6 @@ mod test {
             node_3_lcccs_witness, node_3_cccs_witness, node_3_folded_relaxed_r1cs_witness,
             node_3_zi
         ) = node_3.prove_step::<_, false>(&pp, &test_circuit).unwrap();
-
 
         let recursive_snark = PCDRecursiveSNARK::<G1, G2, _, IO_NUM, R>::new(
             node_3_cccs_witness,

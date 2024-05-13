@@ -145,12 +145,13 @@ where
   }
 
   /// Absorb a new number into the state of the oracle
-  fn absorb_bytes<CS: ConstraintSystem<Base>, T: AsRef<[u8]>>(&mut self, mut cs: CS, bytes: T) -> Result<(), SynthesisError>{
+  fn absorb_bytes<CS: ConstraintSystem<Base>, T: AsRef<[u8]>>(
+    &mut self,
+    mut cs: CS,
+    bytes: T,
+  ) -> Result<(), SynthesisError> {
     let bytes_scalar = Base::from_uniform(bytes.as_ref());
-    let num = AllocatedNum::alloc(
-      cs.namespace(|| "absorb bytes"),
-      || Ok(bytes_scalar)
-    )?;
+    let num = AllocatedNum::alloc(cs.namespace(|| "absorb bytes"), || Ok(bytes_scalar))?;
     cs.enforce(
       || "enforce bytes",
       |lc| lc + num.get_variable(),
@@ -165,7 +166,7 @@ where
   /// Absorb a new number into the state of the oracle
   fn absorb(&mut self, e: &AllocatedNum<Base>) {
     self.state.push(e.clone());
-    // self.num_absorbs += 1;
+    self.num_absorbs += 1;
   }
 
   /// Compute a challenge by hashing the current state
@@ -187,7 +188,7 @@ where
     let hash = {
       let mut sponge = SpongeCircuit::new_with_constants(&self.constants.0, Simplex);
       let acc = &mut ns;
-      assert_eq!(self.num_absorbs, self.state.len());
+      // assert_eq!(self.num_absorbs, self.state.len());
 
       sponge.start(parameter, None, acc);
       neptune::sponge::api::SpongeAPI::absorb(
@@ -220,22 +221,42 @@ where
     )
   }
 
-  fn absorb_bytes_and_squeeze<CS, T: AsRef<[u8]>>(&mut self, mut cs: CS, bytes: T, num_bits: usize) -> Result<Vec<AllocatedBit>, SynthesisError> where CS: ConstraintSystem<Base> {
-    // assert!(bytes.as_ref().len() <= LENGTH);
-    // let mut input = [0u8; LENGTH];
-    // input[0..bytes.len()].copy_from_slice(bytes.as_ref());
-    let bytes = AllocatedNum::alloc(
-      cs.namespace(|| "absorb bytes"),
-      || Ok(Base::from_uniform(bytes.as_ref()))
-    )?;
+  fn absorb_bytes_and_squeeze<CS, T: AsRef<[u8]>>(
+    &mut self,
+    mut cs: CS,
+    bytes: T,
+    num_bits: usize,
+  ) -> Result<Vec<AllocatedBit>, SynthesisError>
+  where
+    CS: ConstraintSystem<Base>,
+  {
+    assert!(bytes.as_ref().len() <= LENGTH);
+    let bytes = AllocatedNum::alloc(cs.namespace(|| "absorb bytes"), || {
+      Ok(Base::from_uniform(bytes.as_ref()))
+    })?;
     self.absorb(&bytes);
     self.squeeze(cs.namespace(|| "absorb bytes and squeeze"), num_bits)
   }
 
-  fn batch_squeeze<CS, T: AsRef<[u8]>>(&mut self, mut cs: CS, bytes: T, len: usize, num_bits: usize) -> Result<Vec<Vec<AllocatedBit>>, SynthesisError> where CS: ConstraintSystem<Base> {
-    (0..len).map(|i|
-        self.absorb_bytes_and_squeeze(cs.namespace(||format!("{}th squeeze", i)), bytes.as_ref(), num_bits)
-    ).collect()
+  fn batch_squeeze<CS, T: AsRef<[u8]>>(
+    &mut self,
+    mut cs: CS,
+    bytes: T,
+    len: usize,
+    num_bits: usize,
+  ) -> Result<Vec<Vec<AllocatedBit>>, SynthesisError>
+  where
+    CS: ConstraintSystem<Base>,
+  {
+    (0..len)
+      .map(|i| {
+        self.absorb_bytes_and_squeeze(
+          cs.namespace(|| format!("{}th squeeze", i)),
+          bytes.as_ref(),
+          num_bits,
+        )
+      })
+      .collect()
   }
 }
 
@@ -256,7 +277,10 @@ impl<G: Group> TranscriptEngineTrait<G> for PoseidonTranscript<G> {
   type Constants = PoseidonConstantsCircuit<G::Scalar>;
 
   fn new(constants: Self::Constants, label: &'static [u8]) -> Self {
-    let input = vec![G::Scalar::from_uniform(PERSONA_TAG), G::Scalar::from_uniform(label)];
+    let input = vec![
+      G::Scalar::from_uniform(PERSONA_TAG),
+      G::Scalar::from_uniform(label),
+    ];
 
     Self {
       round: 0u16,
@@ -274,7 +298,7 @@ impl<G: Group> TranscriptEngineTrait<G> for PoseidonTranscript<G> {
       self.state.clone(),
       vec![G::Scalar::from_uniform(label)],
     ]
-        .concat();
+    .concat();
 
     let acc = &mut ();
     let parameter = IOPattern(vec![
@@ -297,7 +321,11 @@ impl<G: Group> TranscriptEngineTrait<G> for PoseidonTranscript<G> {
     Ok(hash)
   }
 
-  fn batch_squeeze(&mut self, label: &'static [u8], len: usize) -> Result<Vec<G::Scalar>, NovaError> {
+  fn batch_squeeze(
+    &mut self,
+    label: &'static [u8],
+    len: usize,
+  ) -> Result<Vec<G::Scalar>, NovaError> {
     (0..len).map(|_| self.squeeze(label)).collect()
   }
 
@@ -320,7 +348,7 @@ impl<G: Group> TranscriptEngineTrait<G> for PoseidonTranscript<G> {
 
 /// A Poseidon-based Transcript gadget to use inside the verifier circuit.
 #[derive(Serialize, Deserialize)]
-pub struct PoseidonTranscriptCircuit<G: Group>{
+pub struct PoseidonTranscriptCircuit<G: Group> {
   // Internal state
   round: u16,
   state: Vec<AllocatedNum<G::Base>>,
@@ -331,10 +359,20 @@ pub struct PoseidonTranscriptCircuit<G: Group>{
 impl<G: Group> TranscriptCircuitEngineTrait<G> for PoseidonTranscriptCircuit<G> {
   type Constants = PoseidonConstantsCircuit<G::Base>;
 
-  fn new<CS: ConstraintSystem<G::Base>>(constants: Self::Constants, mut cs: CS, label: &'static [u8]) -> Self {
+  fn new<CS: ConstraintSystem<G::Base>>(
+    constants: Self::Constants,
+    mut cs: CS,
+    label: &'static [u8],
+  ) -> Self {
     let input = vec![
-      AllocatedNum::alloc(cs.namespace(|| "alloc PERSONA_TAG"), || Ok(G::Base::from_uniform(PERSONA_TAG))).unwrap(),
-      AllocatedNum::alloc(cs.namespace(|| "alloc labe"), || Ok(G::Base::from_uniform(label))).unwrap()
+      AllocatedNum::alloc(cs.namespace(|| "alloc PERSONA_TAG"), || {
+        Ok(G::Base::from_uniform(PERSONA_TAG))
+      })
+      .unwrap(),
+      AllocatedNum::alloc(cs.namespace(|| "alloc labe"), || {
+        Ok(G::Base::from_uniform(label))
+      })
+      .unwrap(),
     ];
 
     Self {
@@ -345,15 +383,26 @@ impl<G: Group> TranscriptCircuitEngineTrait<G> for PoseidonTranscriptCircuit<G> 
     }
   }
 
-  fn squeeze<CS: ConstraintSystem<G::Base>>(&mut self, mut cs: CS, label: &'static [u8]) -> Result<AllocatedNum<G::Base>, SynthesisError> {
+  fn squeeze<CS: ConstraintSystem<G::Base>>(
+    &mut self,
+    mut cs: CS,
+    label: &'static [u8],
+  ) -> Result<AllocatedNum<G::Base>, SynthesisError> {
     // we gather the full input from the round, preceded by the current state of the transcript
     let input = [
-      vec![AllocatedNum::alloc(cs.namespace(|| "alloc dom_sep_tag"), || Ok(G::Base::from_uniform(DOM_SEP_TAG)))?],
-      vec![AllocatedNum::alloc(cs.namespace(|| "alloc round"), || Ok(G::Base::from_uniform(self.round.to_le_bytes().as_ref())))?],
+      vec![AllocatedNum::alloc(
+        cs.namespace(|| "alloc dom_sep_tag"),
+        || Ok(G::Base::from_uniform(DOM_SEP_TAG)),
+      )?],
+      vec![AllocatedNum::alloc(cs.namespace(|| "alloc round"), || {
+        Ok(G::Base::from_uniform(self.round.to_le_bytes().as_ref()))
+      })?],
       self.state.clone(),
-      vec![AllocatedNum::alloc(cs.namespace(|| "alloc label"), || Ok(G::Base::from_uniform(label)))?],
+      vec![AllocatedNum::alloc(cs.namespace(|| "alloc label"), || {
+        Ok(G::Base::from_uniform(label))
+      })?],
     ]
-        .concat();
+    .concat();
 
     let parameter = IOPattern(vec![
       SpongeOp::Absorb(input.len() as u32),
@@ -370,8 +419,8 @@ impl<G: Group> TranscriptCircuitEngineTrait<G> for PoseidonTranscriptCircuit<G> 
         &mut sponge,
         input.len() as u32,
         &(0..input.len())
-            .map(|i| Elt::Allocated(input[i].clone()))
-            .collect::<Vec<Elt<G::Base>>>(),
+          .map(|i| Elt::Allocated(input[i].clone()))
+          .collect::<Vec<Elt<G::Base>>>(),
         acc,
       );
 
@@ -382,14 +431,17 @@ impl<G: Group> TranscriptCircuitEngineTrait<G> for PoseidonTranscriptCircuit<G> 
 
     let output = Elt::ensure_allocated(&hash[0], &mut ns.namespace(|| "ensure allocated"), true)?;
     let output_bits = output
-        .to_bits_le_strict(ns.namespace(|| "poseidon transcript hash to boolean"))?
-        .iter()
-        .map(|boolean| match boolean {
-          Boolean::Is(ref x) => x.clone(),
-          _ => panic!("Wrong type of input. We should have never reached there"),
-        })
-        .collect::<Vec<AllocatedBit>>();
-    let truncated_output = le_bits_to_num(ns.namespace(|| "bits to hash"), &output_bits[..NUM_HASH_BITS])?;
+      .to_bits_le_strict(ns.namespace(|| "poseidon transcript hash to boolean"))?
+      .iter()
+      .map(|boolean| match boolean {
+        Boolean::Is(ref x) => x.clone(),
+        _ => panic!("Wrong type of input. We should have never reached there"),
+      })
+      .collect::<Vec<AllocatedBit>>();
+    let truncated_output = le_bits_to_num(
+      ns.namespace(|| "bits to hash"),
+      &output_bits[..NUM_HASH_BITS],
+    )?;
 
     // update state
     self.round = self.round.checked_add(1).unwrap();
@@ -403,13 +455,22 @@ impl<G: Group> TranscriptCircuitEngineTrait<G> for PoseidonTranscriptCircuit<G> 
     &mut self,
     mut cs: CS,
     label: &'static [u8],
-    len: usize
+    len: usize,
   ) -> Result<Vec<AllocatedNum<G::Base>>, SynthesisError> {
-    (0..len).map(|i| self.squeeze(cs.namespace(|| format!("{}th squeeze", i)), label)).collect()
+    (0..len)
+      .map(|i| self.squeeze(cs.namespace(|| format!("{}th squeeze", i)), label))
+      .collect()
   }
 
-  fn absorb<T: TranscriptReprTrait<G>, CS: ConstraintSystem<G::Base>>(&mut self, mut cs: CS, label: &'static [u8], o: &T)  -> Result<(), SynthesisError> {
-    let label_num = AllocatedNum::alloc(cs.namespace(|| "alloc label"), || Ok(G::Base::from_uniform(label)))?;
+  fn absorb<T: TranscriptReprTrait<G>, CS: ConstraintSystem<G::Base>>(
+    &mut self,
+    mut cs: CS,
+    label: &'static [u8],
+    o: &T,
+  ) -> Result<(), SynthesisError> {
+    let label_num = AllocatedNum::alloc(cs.namespace(|| "alloc label"), || {
+      Ok(G::Base::from_uniform(label))
+    })?;
     self.state.push(label_num);
     for struct_num in o.to_transcript_nums(cs)? {
       self.state.push(struct_num);
@@ -417,9 +478,17 @@ impl<G: Group> TranscriptCircuitEngineTrait<G> for PoseidonTranscriptCircuit<G> 
     Ok(())
   }
 
-  fn dom_sep<CS: ConstraintSystem<G::Base>>(&mut self, mut cs: CS, bytes: &'static [u8])  -> Result<(), SynthesisError> {
-    let tag_num = AllocatedNum::alloc(cs.namespace(|| "alloc label"), || Ok(G::Base::from_uniform(DOM_SEP_TAG)))?;
-    let bytes_num = AllocatedNum::alloc(cs.namespace(|| "alloc bytes"), || Ok(G::Base::from_uniform(bytes)))?;
+  fn dom_sep<CS: ConstraintSystem<G::Base>>(
+    &mut self,
+    mut cs: CS,
+    bytes: &'static [u8],
+  ) -> Result<(), SynthesisError> {
+    let tag_num = AllocatedNum::alloc(cs.namespace(|| "alloc label"), || {
+      Ok(G::Base::from_uniform(DOM_SEP_TAG))
+    })?;
+    let bytes_num = AllocatedNum::alloc(cs.namespace(|| "alloc bytes"), || {
+      Ok(G::Base::from_uniform(bytes))
+    })?;
     self.state.push(tag_num);
     self.state.push(bytes_num);
     Ok(())

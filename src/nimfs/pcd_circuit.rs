@@ -5,7 +5,7 @@ use bellpepper_core::num::{AllocatedNum, Num};
 use ff::Field;
 use num_traits::Zero;
 use serde::Serialize;
-use crate::constants::NUM_HASH_BITS;
+use crate::constants::{NUM_CHALLENGE_BITS, NUM_HASH_BITS};
 use crate::gadgets::cccs::{AllocatedCCCS, AllocatedCCCSPrimaryPart, AllocatedLCCCS, AllocatedLCCCSPrimaryPart, multi_folding_with_primary_part};
 use crate::gadgets::ext_allocated_num::ExtendFunc;
 use crate::gadgets::r1cs::{AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance};
@@ -21,6 +21,7 @@ use crate::traits::{Group, ROCircuitTrait, ROConstantsCircuit, TEConstantsCircui
 use crate::traits::circuit::PCDStepCircuit;
 use crate::{Commitment, compute_digest};
 use crate::gadgets::ecc::{AllocatedPoint, AllocatedSimulatedPoint};
+use crate::nimfs::pcd_aux_circuit::NovaAuxiliaryParams;
 use crate::r1cs::{R1CSInstance, RelaxedR1CSInstance};
 use crate::traits::commitment::CommitmentTrait;
 
@@ -69,6 +70,7 @@ impl<G: Group, const ARITY: usize, const R: usize> PCDUnitParams<G, ARITY, R> {
 #[derive(Clone)]
 pub struct PCDUnitInputs<G: Group> {
     params: G::Scalar, // Hash(Shape of u2, Gens for u2). Needed for computing the challenge.
+    secondary_params: G::Scalar,
     z0: Vec<G::Base>,
     zi: Option<Vec<Vec<G::Base>>>,
     lcccs: Option<Vec<LCCCSForBase<G>>>,
@@ -85,6 +87,7 @@ impl<G: Group> PCDUnitInputs<G> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         params: G::Scalar,
+        secondary_params: G::Scalar,
         z0: Vec<G::Base>,
         zi: Option<Vec<Vec<G::Base>>>,
         lcccs: Option<Vec<LCCCSForBase<G>>>,
@@ -97,6 +100,7 @@ impl<G: Group> PCDUnitInputs<G> {
     ) -> Self {
         Self {
             params,
+            secondary_params,
             z0,
             zi,
             lcccs,
@@ -118,6 +122,7 @@ where
     SC: PCDStepCircuit<G::Base, ARITY, R>
 {
     params: &'a PCDUnitParams<G1, ARITY, R>,
+    secondary_params: &'a NovaAuxiliaryParams<G>,
     ro_consts: ROConstantsCircuit<G>, // random oracle
     te_consts: TEConstantsCircuit<G>, // Transcript Engine
     inputs: Option<PCDUnitInputs<G>>,
@@ -133,6 +138,7 @@ where
     /// Create a new verification circuit for the input relaxed r1cs instances
     pub const fn new(
         params: &'a PCDUnitParams<G1, ARITY, R>,
+        secondary_params: &'a NovaAuxiliaryParams<G>,
         inputs: Option<PCDUnitInputs<G>>,
         step_circuit: &'a SC,
         ro_consts: ROConstantsCircuit<G>,
@@ -144,6 +150,7 @@ where
             step_circuit,
             ro_consts,
             te_consts,
+            secondary_params,
         }
     }
 
@@ -153,7 +160,8 @@ where
         mut cs: CS,
     ) -> Result<
         (
-            AllocatedNum<G::Base>, Vec<AllocatedNum<G::Base>>, Vec<Vec<AllocatedNum<G::Base>>>,
+            AllocatedNum<G::Base>, AllocatedNum<G::Base>,
+            Vec<AllocatedNum<G::Base>>, Vec<Vec<AllocatedNum<G::Base>>>,
             Vec<AllocatedLCCCS<G>>, Vec<AllocatedCCCS<G>>, AllocatedProof<G>,
             Vec<AllocatedRelaxedR1CSInstance<G>>, AllocatedR1CSInstance<G>,
             AllocatedSimulatedPoint<G>, Vec<AllocatedPoint<G>>,
@@ -161,9 +169,13 @@ where
         SynthesisError,
     > {
         // Allocate the params
-        let params = alloc_scalar_as_base::<G, _>(
-            cs.namespace(|| "params"),
+        let primary_params = alloc_scalar_as_base::<G, _>(
+            cs.namespace(|| "primary_params"),
             self.inputs.get().map_or(None, |inputs| Some(inputs.params)),
+        )?;
+        let secondary_params = alloc_scalar_as_base::<G, _>(
+            cs.namespace(|| "secondary_params"),
+            self.inputs.get().map_or(None, |inputs| Some(inputs.secondary_params)),
         )?;
 
         let nimfs_proof = AllocatedProof::from_witness::<_, R>(
@@ -233,6 +245,7 @@ where
                     self.inputs.as_ref().and_then(|inputs| {
                         inputs.relaxed_r1cs_instance.as_ref().and_then(|U| Some(&U[i]))
                     }),
+                    self.secondary_params.io_num,
                     self.params.limb_width,
                     self.params.n_limbs,
                 )
@@ -243,6 +256,7 @@ where
             self.inputs.as_ref().and_then(|inputs| {
                 inputs.r1cs_instance.as_ref().and_then(|u| Some(u))
             }),
+            self.secondary_params.io_num,
         )?;
 
         let new_lcccs_C = AllocatedSimulatedPoint::alloc(
@@ -271,7 +285,7 @@ where
         }
 
         Ok((
-            params, z_0, z_i,
+            primary_params, secondary_params, z_0, z_i,
             lcccs, cccs, nimfs_proof,
             relaxed_r1cs_inst, r1cs_inst, new_lcccs_C, T
         ))
@@ -284,12 +298,12 @@ where
     ) -> Result<AllocatedLCCCS<G>, SynthesisError> {
         let default_lcccs = LCCCSForBase::<G>::from(LCCCS::<G1>::default_for_pcd(self.params.ccs.clone()));
         let lcccs = AllocatedLCCCS::alloc(
-                    cs.namespace(|| "allocate default instance lcccs to fold"),
-                    Some(&default_lcccs),
-                    ARITY,
-                    (self.params.ccs.t, self.params.ccs.s),
-                    (self.params.limb_width, self.params.n_limbs),
-                )?;
+            cs.namespace(|| "allocate default instance lcccs to fold"),
+            Some(&default_lcccs),
+            ARITY,
+            (self.params.ccs.t, self.params.ccs.s),
+            (self.params.limb_width, self.params.n_limbs),
+        )?;
         Ok(lcccs)
 
     }
@@ -303,6 +317,7 @@ where
             cs.namespace(|| "Allocate relaxed r1cs instance default"),
             self.params.limb_width,
             self.params.n_limbs,
+            self.secondary_params.io_num,
         )
     }
 }
@@ -320,7 +335,7 @@ where
     ) -> Result<Vec<AllocatedNum<G::Base>>, SynthesisError> {
         // Allocate all witnesses
         let (
-            params, z_0, z_i,
+            primary_params, secondary_params, z_0, z_i,
             lcccs, cccs, nimfs_proof,
             relaxed_r1cs_inst, r1cs_inst, new_lcccs_second_part, T
         ) = self.alloc_witness(cs.namespace(|| "allocate the circuit witness"))?;
@@ -343,7 +358,7 @@ where
         let is_correct_public_input = self.check_public_input(
             cs.namespace(|| "is_correct_public_input"),
             &cccs,
-            &params,
+            &primary_params,
             &z_0,
             &z_i,
             &lcccs,
@@ -373,6 +388,14 @@ where
             )?;
         let new_lcccs = AllocatedLCCCS::new(new_lcccs_primary_part, new_lcccs_second_part);
 
+        let new_relaxed_r1cs_inst = self.synthesize_based_nifs(
+            cs.namespace(|| "generate non base case based nifs"),
+            &secondary_params,
+            relaxed_r1cs_inst,
+            &r1cs_inst,
+            T,
+        )?;
+
         // Either check_non_base_pass=true or we are in the base case
         Boolean::enforce_equal(
             cs.namespace(|| "check_non_base_pass nor base_case"),
@@ -386,15 +409,6 @@ where
             &new_lcccs,
             &Boolean::from(is_base_case.clone()),
         )?;
-
-        let new_relaxed_r1cs_inst = self.synthesize_based_nifs(
-            cs.namespace(|| "generate non base case based nifs"),
-            &params,
-            relaxed_r1cs_inst,
-            &r1cs_inst,
-            T,
-        )?;
-
         let new_relaxed_r1cs_inst = relaxed_r1cs_inst_base.conditionally_select(
             cs.namespace(|| "compute U_new"),
             &new_relaxed_r1cs_inst,
@@ -428,16 +442,17 @@ where
             ));
         }
 
+        println!("===========================before commit=====================");
+        println!("new_lcccs: {:#?}", new_lcccs);
         println!("relaxed_r1cs_inst: {:#?}", new_relaxed_r1cs_inst);
         let hash = self.commit_explicit_public_input(
             cs.namespace(|| "commit public input"),
-            &params,
+            &primary_params,
             &z_0,
             &new_z,
             &new_lcccs,
             &new_relaxed_r1cs_inst,
         )?;
-        println!("public input hash: {:?}", hash.get_value());
         hash.inputize(cs.namespace(|| "output new hash of this circuit"))?; // this circuit's public input
 
         Ok(new_z)
@@ -595,28 +610,47 @@ where
         mut T: Vec<AllocatedPoint<G>>,
     ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
         assert!(!U.is_empty());
+        // Compute r
+        let _num_for_ro = 1 + 2 * (3 + 3 + 1 + 2 * self.params.n_limbs);
+        let mut ro = G::ROCircuit::new(self.ro_consts.clone(), 0);
+        ro.absorb(params);
+        println!("ro pp_digest: {:?}", params.get_value());
+        println!("U compare");
+        for (i, U) in U.iter().enumerate() {
+            U.absorb_in_ro(cs.namespace(|| format!("absorb {i}th running instance")), &mut ro)?;
+        }
+        println!("u compare");
+        u.absorb_in_ro(&mut ro);
+
         let last_T = T.pop().unwrap();
         let mut U_folded_U = U.remove(0);
 
         // Run NIFS Verifier
         use itertools::Itertools;
-        for (U, T) in U.into_iter().zip_eq(T){
+        for (i, (U, T)) in U.into_iter().zip_eq(T).enumerate() {
+            let mut cs = cs.namespace(|| format!("{i}th folded U"));
+            ro.absorb(&T.x);
+            ro.absorb(&T.y);
+            ro.absorb(&T.is_infinity);
+            let r_bits = ro.squeeze(cs.namespace(|| "r bits"), NUM_CHALLENGE_BITS)?;
             U_folded_U = U_folded_U.fold_with_relaxed_r1cs(
                 cs.namespace(|| "compute fold of U and U"),
-                params,
                 &U,
                 &T,
-                self.ro_consts.clone(),
+                r_bits,
                 self.params.limb_width,
                 self.params.n_limbs
             )?;
         }
+        ro.absorb(&last_T.x);
+        ro.absorb(&last_T.y);
+        ro.absorb(&last_T.is_infinity);
+        let r_bits = ro.squeeze(cs.namespace(|| "r bits"), NUM_CHALLENGE_BITS)?;
         let U_folded = U_folded_U.fold_with_r1cs(
             cs.namespace(|| "compute fold of U and u"),
-            params,
             u,
             &last_T,
-            self.ro_consts.clone(),
+            r_bits,
             self.params.limb_width,
             self.params.n_limbs,
         )?;
@@ -646,17 +680,11 @@ where
                 &lcccs[i],
                 &relaxed_r1cs_inst[i]
             )?;
-            if let Some(hash) = public_hash.get_value(){
-                println!("public_hash = {:?}", hash);
-            }
             let is_eq = alloc_num_equals(
                 cs.namespace(|| "check public_hash"),
                 &public_hash,
                 &c.primary_part.Xs[0]
             )?;
-            if let Some(value) = c.primary_part.Xs[0].get_value(){
-                println!("c.primary_part_Xs[0] = {:?}",value);
-            }
             is_correct.push(is_eq.into())
         }
         multi_and(cs.namespace(|| "is correct public inputs"), &is_correct).map(Into::into)
@@ -672,8 +700,8 @@ where
         lcccs: &AllocatedLCCCS<G>,
         relaxed_r1cs_inst: &AllocatedRelaxedR1CSInstance<G>,
     ) -> Result<AllocatedNum<G::Base>, SynthesisError> {
-        let num_absorbs = 1 + 2 * ARITY + lcccs.element_num() + relaxed_r1cs_inst.element_num();
-        let mut ro = G::ROCircuit::new(self.ro_consts.clone(), num_absorbs);
+        let _num_absorbs = 1 + 2 * ARITY + lcccs.element_num() + relaxed_r1cs_inst.element_num();
+        let mut ro = G::ROCircuit::new(self.ro_consts.clone(), 0);
 
         ro.absorb(params);
         z_0.iter().for_each(|e| ro.absorb(e));

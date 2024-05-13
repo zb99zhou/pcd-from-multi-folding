@@ -23,6 +23,9 @@ use crate::traits::Group;
 pub enum CCSError {
     #[error("Relation not satisfied")]
     NotSatisfied,
+
+    #[error("Witness not matched")]
+    WitnessNotMatched,
 }
 
 /// A CCS structure
@@ -90,11 +93,11 @@ impl<G: Group> CCS<G> {
     /// Create default CCS for R1CS
     pub fn default_r1cs() -> CCS<G>{
         CCS{
-            m: 59592,
-            n: 59834,
+            m: 128604,
+            n: 128765,
             l: 1,
-            s: 16, // TODO: Needs to be tested and then adjusted
-            s_prime: 16, // TODO: Needs to be tested and then adjusted
+            s: 17, // TODO: Needs to be tested and then adjusted
+            s_prime: 17, // TODO: Needs to be tested and then adjusted
             t: 3,
             q: 2,
             d: 2,

@@ -1,4 +1,8 @@
 //! This module provides an implementation of a commitment engine
+use crate::constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
+use crate::gadgets::nonnative::bignat::nat_to_limbs;
+use crate::gadgets::nonnative::util::f_to_nat;
+use crate::gadgets::utils::scalar_as_base;
 use crate::{
   errors::NovaError,
   traits::{
@@ -11,13 +15,10 @@ use core::{
   marker::PhantomData,
   ops::{Add, AddAssign, Mul, MulAssign},
 };
+use std::fmt::Formatter;
 use ff::Field;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use crate::constants::{BN_LIMB_WIDTH, BN_N_LIMBS};
-use crate::gadgets::nonnative::bignat::nat_to_limbs;
-use crate::gadgets::nonnative::util::f_to_nat;
-use crate::gadgets::utils::scalar_as_base;
 
 /// A type that holds commitment generators
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -26,10 +27,16 @@ pub struct CommitmentKey<G: Group> {
 }
 
 /// A type that holds a commitment
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct Commitment<G: Group> {
   pub(crate) comm: G,
+}
+
+impl<G: Group> Debug for Commitment<G> {
+  fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    write!(f, "Point {:?}", self.comm.to_coordinates())
+  }
 }
 
 /// A type that holds a compressed commitment
@@ -94,7 +101,7 @@ impl<G: Group> AbsorbInROTrait<G> for Commitment<G> {
     });
   }
 
-  fn absorb_in_g2_ro<G2: Group<Base=<G as Group>::Scalar>>(&self, ro: &mut G2::RO) {
+  fn absorb_in_g2_ro<G2: Group<Base = <G as Group>::Scalar>>(&self, ro: &mut G2::RO) {
     let (x, y, _infinite) = self.to_coordinates();
     let x_limbs: Vec<G2::Scalar> = nat_to_limbs(&f_to_nat(&x), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
     for limb in x_limbs {

@@ -125,6 +125,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
     ),
     SynthesisError,
   > {
+    const IO_NUM: usize = 2;
     // Allocate the params
     let params = alloc_scalar_as_base::<G, _>(
       cs.namespace(|| "params"),
@@ -159,6 +160,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
       self.inputs.get().as_ref().map_or(None, |inputs| {
         inputs.U.get().as_ref().map_or(None, |U| Some(U))
       }),
+      IO_NUM,
       self.params.limb_width,
       self.params.n_limbs,
     )?;
@@ -169,6 +171,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
       self.inputs.get().as_ref().map_or(None, |inputs| {
         inputs.u.get().as_ref().map_or(None, |u| Some(u))
       }),
+      IO_NUM,
     )?;
 
     // Allocate T
@@ -194,6 +197,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
         cs.namespace(|| "Allocate U_default"),
         self.params.limb_width,
         self.params.n_limbs,
+        2,
       )?
     } else {
       // The secondary circuit returns the incoming R1CS instance
@@ -246,7 +250,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
     )?;
 
     // Run NIFS Verifier
-    let U_fold = U.fold_with_r1cs(
+    let U_fold = U.fold_with_r1cs_contains_r(
       cs.namespace(|| "compute fold of U and u"),
       params,
       u,

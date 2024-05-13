@@ -584,7 +584,7 @@ pub fn multi_folding_with_primary_part<CS: ConstraintSystem<<G as Group>::Base>,
     // init
     let mut lcccs_folded = lcccs[0].clone();
     lcccs_folded.Vs = sigmas[0].to_owned();
-    let mut rho_i = rho.clone();
+  let mut rho_i = AllocatedNum::one(cs.namespace(|| "alloc one"))?;
 
     // folding
     for (i, lcccs) in lcccs.iter().enumerate().skip(1) {

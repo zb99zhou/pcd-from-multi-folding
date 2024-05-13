@@ -468,10 +468,15 @@ impl<G: Group> R1CSInstance<G> {
 
 impl<G: Group> AbsorbInROTrait<G> for R1CSInstance<G> {
     fn absorb_in_ro(&self, ro: &mut G::RO) {
+        println!("RO u.comm_W: {:?}", self.comm_W.to_coordinates());
         self.comm_W.absorb_in_ro(ro);
+        println!();
         for x in &self.X {
+            print!("RO u.x: {:?}", x);
             ro.absorb(scalar_as_base::<G>(*x));
         }
+        println!();
+        println!();
     }
 }
 
@@ -696,12 +701,15 @@ impl<G: Group> AbsorbInROTrait<G> for RelaxedR1CSInstance<G> {
         ro.absorb(scalar_as_base::<G>(self.u));
 
         // absorb each element of self.X in bignum format
+        println!();
         for x in &self.X {
-            println!("self.x: {:?}", x);
+            print!("self.x: {:?}", x);
             let limbs: Vec<G::Scalar> = nat_to_limbs(&f_to_nat(x), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
             for limb in limbs {
                 ro.absorb(scalar_as_base::<G>(limb));
             }
         }
+        println!();
+        println!();
     }
 }

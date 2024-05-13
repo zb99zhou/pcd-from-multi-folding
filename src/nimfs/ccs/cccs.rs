@@ -1,12 +1,12 @@
 use std::ops::{Add};
 use std::sync::Arc;
 use ff::{Field, PrimeField};
+use num_bigint::BigUint;
 use serde::{Deserialize, Serialize};
 use crate::{CE, Commitment, CommitmentKey};
 use crate::errors::NovaError;
 use crate::nimfs::ccs::ccs::{CCSError, CCS};
 use crate::nimfs::espresso::virtual_polynomial::VirtualPolynomial;
-use crate::nimfs::util::hypercube::BooleanHypercube;
 use crate::nimfs::util::mle::vec_to_mle;
 use crate::traits::commitment::{CommitmentEngineTrait, CommitmentTrait};
 use crate::traits::Group;
@@ -30,11 +30,11 @@ impl<C: Group> CCSWitness<C> {
         }
     }
 
-    pub fn default_for_pcd(ccs: &CCS<C>) -> Self
-    {
+    pub fn default_for_pcd(ccs: &CCS<C>) -> Self {
+        let decimal = BigUint::parse_bytes("11ed6ed3d889c293e1430128822cb5cc2709564055661d744d1ed2a78c24aeaf".as_bytes(), 16).unwrap();
         Self {
             w: vec![C::Scalar::ZERO; ccs.n - ccs.l - 1],
-            r_w: C::Scalar::from_str_vartime("8886671747404192712895062849838258214865667155493532575623653592245279062559").unwrap(),
+            r_w: C::Scalar::from_str_vartime(&decimal.to_string()).unwrap(),
         }
     }
 
@@ -149,18 +149,37 @@ impl<C: Group> CCCS<C> {
     ) -> Result<(), CCSError> {
         // check that C is the commitment of w. Notice that this is not verifying a Pedersen
         // opening, but checking that the Commmitment comes from committing to the witness.
-        assert_eq!(self.C, C::CE::commit(&ck, &w.w));
+        if self.C != C::CE::commit(&ck, &w.w) {
+            return Err(CCSError::WitnessNotMatched);
+        }
 
         // check CCCS relation
         let z: Vec<C::Scalar> =
-            [vec![C::Scalar::ONE], self.x.clone(), w.w.to_vec()].concat();
+            [w.w.to_vec(), vec![C::Scalar::ONE], self.x.clone()].concat();
 
-        // A CCCS relation is satisfied if the q(x) multivariate polynomial evaluates to zero in the hypercube
-        let q_x = self.compute_q(&z);
-        for x in BooleanHypercube::new(self.ccs.s) {
-            if bool::from(!q_x.evaluate(&x).unwrap().is_zero()) {
-                return Err(CCSError::NotSatisfied);
+        let Mzs: Vec<_> = self.ccs.M.iter()
+            .map(|M| M.multiply_vec(&z))
+            .collect();
+
+        let mut acc = vec![C::Scalar::ZERO; self.ccs.m];
+        for (c, S) in self.ccs.c.iter().zip(self.ccs.S.iter()) {
+            let mut hadamard_product = vec![*c; self.ccs.m];
+
+            for idx in S {
+                hadamard_product
+                    .iter_mut()
+                    .enumerate()
+                    .for_each(|(j, x)| *x *= Mzs[*idx][j]);
             }
+
+            acc
+                .iter_mut()
+                .enumerate()
+                .for_each(|(i, s)| *s += hadamard_product[i]);
+        }
+
+        if acc.iter().any(|s| (!s.is_zero()).into()) {
+            return Err(CCSError::NotSatisfied);
         }
 
         Ok(())
@@ -173,6 +192,7 @@ pub mod test {
     use super::*;
     use crate::nimfs::ccs::ccs::test::{get_test_ccs, get_test_z};
     use crate::provider::bn256_grumpkin::bn256;
+    use crate::nimfs::util::hypercube::BooleanHypercube;
 
     /// Do some sanity checks on q(x). It's a multivariable polynomial and it should evaluate to zero inside the
     /// hypercube, but to not-zero outside the hypercube.
