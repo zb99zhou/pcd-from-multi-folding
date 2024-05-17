@@ -57,8 +57,11 @@ pub trait Group:
   /// A type that provides a generic Fiat-Shamir transcript to be used when externalizing proofs
   type TE: TranscriptEngineTrait<Self>;
 
-  /// A type that provides a generic Fiat-Shamir transcript to be used when externalizing proofs
+  /// An alternate implementation of `Self::TE` in the circuit model
   type TECircuit: TranscriptCircuitEngineTrait<Self>;
+
+  /// A type that provides a generic Fiat-Shamir transcript to be used when externalizing proofs
+  type TE1: TranscriptEngineTrait<Self>;
 
   /// A type that defines a commitment engine over scalars in the group
   type CE: CommitmentEngineTrait<Self>;
@@ -299,9 +302,16 @@ impl<G: Group, T: TranscriptReprTrait<G>> TranscriptReprTrait<G> for &[T] {
       .flat_map(|t| t.to_transcript_bytes())
       .collect::<Vec<u8>>()
   }
+
+  fn to_transcript_scalars(&self) -> Vec<G::Scalar> {
+    self
+      .iter()
+      .flat_map(|t| t.to_transcript_scalars())
+      .collect()
+  }
 }
 
-impl<G: Group, T: Group> TranscriptReprTrait<G> for T {
+impl<G: Group> TranscriptReprTrait<G> for G {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     let (x, y, is_infinity) = self.to_coordinates();
     let is_infinity_byte = (!is_infinity).into();
@@ -309,6 +319,17 @@ impl<G: Group, T: Group> TranscriptReprTrait<G> for T {
       x.to_transcript_bytes(),
       y.to_transcript_bytes(),
       [is_infinity_byte].to_vec(),
+    ]
+        .concat()
+  }
+
+  fn to_transcript_scalars(&self) -> Vec<G::Scalar> {
+    let (x, y, is_infinity) = self.to_coordinates();
+    let is_infinity_byte = (!is_infinity).into();
+    vec![
+      x.to_transcript_scalars(),
+      y.to_transcript_scalars(),
+      vec![G::Scalar::from_uniform(&[is_infinity_byte])],
     ]
         .concat()
   }

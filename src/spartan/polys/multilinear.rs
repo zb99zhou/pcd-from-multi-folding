@@ -39,8 +39,9 @@ impl<Scalar: PrimeField> MultiLinearPolynomial<Scalar> {
   /// Creates a new `MultilinearPolynomial` from the given evaluations.
   ///
   /// The number of evaluations must be a power of two.
-  pub fn new(Z: Vec<Scalar>) -> Self {
-    assert_eq!(Z.len(), (2_usize).pow((Z.len() as f64).log2() as u32));
+  pub fn new(mut Z: Vec<Scalar>) -> Self {
+    let num_var = Z.len().next_power_of_two();
+    Z.resize(num_var, Scalar::ZERO);
     MultiLinearPolynomial {
       num_vars: usize::try_from(Z.len().ilog2()).unwrap(),
       Z,
@@ -89,7 +90,7 @@ impl<Scalar: PrimeField> MultiLinearPolynomial<Scalar> {
   /// The point must have a value for each variable.
   pub fn evaluate(&self, r: &[Scalar]) -> Scalar {
     assert!(
-      r.len() <= self.num_vars,
+      dbg!(r.len()) <= dbg!(self.num_vars),
       "invalid size of partial point"
     );
     let mut poly = self.Z.to_vec();

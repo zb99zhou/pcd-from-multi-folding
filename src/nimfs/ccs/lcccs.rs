@@ -128,6 +128,17 @@ impl<C: Group> TranscriptReprTrait<C> for LCCCS<C> {
         ]
             .concat()
     }
+
+    fn to_transcript_scalars(&self) -> Vec<C::Scalar> {
+        [
+            self.C.to_transcript_scalars(),
+            self.u.to_transcript_scalars(),
+            self.x.as_slice().to_transcript_scalars(),
+            self.r_x.as_slice().to_transcript_scalars(),
+            self.v.as_slice().to_transcript_scalars(),
+        ]
+            .concat()
+    }
 }
 
 impl<C: Group> LCCCS<C> {

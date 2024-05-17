@@ -5,6 +5,7 @@ use crate::{
     cpu_best_multiexp,
     pedersen::CommitmentEngine,
     poseidon::{PoseidonRO, PoseidonROCircuit, PoseidonTranscript, PoseidonTranscriptCircuit},
+    keccak::Keccak256Transcript
   },
   traits::{CompressedGroup, Group, PrimeFieldExt, TranscriptReprTrait},
 };

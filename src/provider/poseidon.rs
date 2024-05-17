@@ -468,9 +468,10 @@ impl<G: Group> TranscriptCircuitEngineTrait<G> for PoseidonTranscriptCircuit<G> 
     label: &'static [u8],
     o: &T,
   ) -> Result<(), SynthesisError> {
-    let label_num = AllocatedNum::alloc(cs.namespace(|| "alloc label"), || {
-      Ok(G::Base::from_uniform(label))
-    })?;
+    let label_num = AllocatedNum::alloc(
+      cs.namespace(|| "alloc label"),
+      || Ok(G::Base::from_uniform(label))
+    )?;
     self.state.push(label_num);
     for struct_num in o.to_transcript_nums(cs)? {
       self.state.push(struct_num);

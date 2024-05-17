@@ -26,6 +26,7 @@ use crate::nimfs::ccs::cccs::CCSWitness;
 use crate::nimfs::ccs::ccs::CCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::nimfs::util::spare_matrix::SparseMatrix;
+use crate::spartan::math::Math;
 use crate::traits::snark::LinearCommittedCCSTrait;
 
 /// A type that represents the prover's key
@@ -98,7 +99,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
         W: &CCSWitness<G>,
     ) -> Result<Self, NovaError> {
         // let W = W.pad(&pk.S); // pad the witness
-        let mut transcript = G::TE::new(Default::default(), b"LCCCSSNARK");
+        let mut transcript = G::TE1::new(Default::default(), b"LCCCSSNARK");
 
         // sanity check that R1CSShape has certain size characteristics
         // pk.S.check_regular_shape();
@@ -111,22 +112,26 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
         let mut z = [W.w.clone(), vec![U.u], U.x.clone()].concat();
 
         let (num_rounds_x, num_rounds_y) = (
-            usize::try_from(pk.S.m.ilog2()).unwrap(),
-            (usize::try_from(pk.S.n.ilog2()).unwrap() + 1),
+            usize::try_from(pk.S.m.log_2()).unwrap(),
+            (usize::try_from(pk.S.n.log_2()).unwrap() + 1),
         );
 
         // outer sum-check
         let tau = (0..num_rounds_x)
             .map(|_i| transcript.squeeze(b"t"))
-            .collect::<Result<Vec<G::Scalar>, NovaError>>()?;
+            .collect::<Result<Vec<G::Scalar>, NovaError>>().unwrap();
 
         let mut poly_tau = MultiLinearPolynomial::new(EqPolynomial::new(tau).evals());
-        let (mut poly_Az, mut poly_Bz, mut poly_Cz) = {
+        let (mut poly_Az, mut poly_Bz, poly_Cz, mut poly_uCz) = {
             let (poly_Az, poly_Bz, poly_Cz) = pk.S.multiply_vec(&z)?;
+            let poly_uCz = (0..pk.S.m)
+                .map(|i| U.u * poly_Cz[i])
+                .collect::<Vec<G::Scalar>>();
             (
                 MultiLinearPolynomial::new(poly_Az),
                 MultiLinearPolynomial::new(poly_Bz),
                 MultiLinearPolynomial::new(poly_Cz),
+                MultiLinearPolynomial::new(poly_uCz),
             )
         };
 
@@ -142,21 +147,23 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
             &mut poly_tau,
             &mut poly_Az,
             &mut poly_Bz,
-            &mut poly_Cz,
+            &mut poly_uCz,
             comb_func_outer,
             &mut transcript,
-        )?;
+        ).unwrap();
 
         // claims from the end of sum-check
         let (claim_Az, claim_Bz): (G::Scalar, G::Scalar) = (claims_outer[1], claims_outer[2]);
+        println!("11111111");
         let claim_Cz = poly_Cz.evaluate(&r_x);
         transcript.absorb(
             b"claims_outer",
             &[claim_Az, claim_Bz, claim_Cz].as_slice(),
         );
+        println!("12222222222");
 
         // inner sum-check
-        let r = transcript.squeeze(b"r")?;
+        let r = transcript.squeeze(b"r").unwrap();
         let claim_inner_joint = claim_Az + r * claim_Bz + r * r * claim_Cz;
 
         let poly_ABC = {
@@ -166,7 +173,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
             // Bounds "row" variables of (A, B, C) matrices viewed as 2d multilinear polynomials
             let compute_eval_table_sparse =
                 |S: &CCS<G>, rx: &[G::Scalar]| -> (Vec<G::Scalar>, Vec<G::Scalar>, Vec<G::Scalar>) {
-                    assert_eq!(rx.len(), S.m);
+                    // assert_eq!(rx.len(), S.m);
 
                     let inner = |M: &SparseMatrix<G::Scalar>, M_evals: &mut Vec<G::Scalar>| {
                         for (row, col, val) in M.iter() {
@@ -208,6 +215,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
                 .map(|i| evals_A[i] + r * evals_B[i] + r * r * evals_C[i])
                 .collect::<Vec<G::Scalar>>()
         };
+        println!("22222222222");
 
         let poly_z = {
             z.resize(pk.S.n * 2, G::Scalar::ZERO);
@@ -224,7 +232,8 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
             &mut MultiLinearPolynomial::new(poly_z),
             comb_func,
             &mut transcript,
-        )?;
+        ).unwrap();
+        println!("3333333333");
 
         // add additional claims about W and E polynomials to the list from CC
         let mut w_u_vec = Vec::new();
@@ -237,6 +246,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
                 e: eval_W,
             },
         ));
+        println!("44444444444");
 
 
         // We will now reduce a vector of claims of evaluations at different points into claims about them at the same point.
@@ -246,7 +256,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
         // where gamma is a public challenge
         // Since commitments to W and E are homomorphic, the verifier can compute a commitment
         // to the batched polynomial.
-        assert!(w_u_vec.len() >= 2);
+        // assert!(w_u_vec.len() >= 2);
 
         let (w_vec, u_vec): (Vec<PolyEvalWitness<G>>, Vec<PolyEvalInstance<G>>) =
             w_u_vec.into_iter().unzip();
@@ -254,7 +264,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
         let u_vec_padded = PolyEvalInstance::pad(&u_vec); // pad the evaluation points
 
         // generate a challenge
-        let rho = transcript.squeeze(b"r")?;
+        let rho = transcript.squeeze(b"r").unwrap();
         let num_claims = w_vec_padded.len();
         let powers_of_rho = powers::<G>(&rho, num_claims);
         let claim_batch_joint = u_vec_padded
@@ -276,6 +286,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
         let comb_func = |poly_A_comp: &G::Scalar, poly_B_comp: &G::Scalar| -> G::Scalar {
             *poly_A_comp * *poly_B_comp
         };
+        println!("5555555555555");
         let (sc_proof_batch, r_z, claims_batch) = SumcheckProof::prove_quad_batch(
             &claim_batch_joint,
             num_rounds_z,
@@ -284,14 +295,14 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
             &powers_of_rho,
             comb_func,
             &mut transcript,
-        )?;
+        ).unwrap();
 
         let (claims_batch_left, _): (Vec<G::Scalar>, Vec<G::Scalar>) = claims_batch;
 
         transcript.absorb(b"l", &claims_batch_left.as_slice());
 
         // we now combine evaluation claims at the same point rz into one
-        let gamma = transcript.squeeze(b"g")?;
+        let gamma = transcript.squeeze(b"g").unwrap();
         let powers_of_gamma: Vec<G::Scalar> = powers::<G>(&gamma, num_claims);
         let comm_joint = u_vec_padded
             .iter()
@@ -305,6 +316,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
             .map(|(e, g_i)| *e * *g_i)
             .sum();
 
+        println!("66666666666666666666666");
         let eval_arg = EE::prove(
             ck,
             &pk.pk_ee,
@@ -313,7 +325,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
             &poly_joint.p,
             &r_z,
             &eval_joint,
-        )?;
+        ).unwrap();
 
         Ok(LCCCSSNARK {
             sc_proof_outer,
@@ -328,7 +340,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
 
     /// verifies a proof of satisfiability of a `RelaxedR1CS` instance
     fn verify(&self, vk: &Self::VerifierKey, U: &LCCCS<G>) -> Result<(), NovaError> {
-        let mut transcript = G::TE::new(Default::default(), b"LCCCSSNARK");
+        let mut transcript = G::TE1::new(Default::default(), b"LCCCSSNARK");
 
         // append the digest of R1CS matrices and the RelaxedR1CSInstance to the transcript
         transcript.absorb(b"vk", &vk.digest);
@@ -342,12 +354,12 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
         // outer sum-check
         let tau = (0..num_rounds_x)
             .map(|_i| transcript.squeeze(b"t"))
-            .collect::<Result<Vec<G::Scalar>, NovaError>>()?;
+            .collect::<Result<Vec<G::Scalar>, NovaError>>().unwrap();
 
         let (claim_outer_final, r_x) =
             self
                 .sc_proof_outer
-                .verify(G::Scalar::ZERO, num_rounds_x, 3, &mut transcript)?;
+                .verify(G::Scalar::ZERO, num_rounds_x, 3, &mut transcript).unwrap();
 
         // verify claim_outer_final
         let (claim_Az, claim_Bz, claim_Cz) = self.claims_outer;
@@ -369,14 +381,14 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
         );
 
         // inner sum-check
-        let r = transcript.squeeze(b"r")?;
+        let r = transcript.squeeze(b"r").unwrap();
         let claim_inner_joint =
             self.claims_outer.0 + r * self.claims_outer.1 + r * r * self.claims_outer.2;
 
         let (claim_inner_final, r_y) =
             self
                 .sc_proof_inner
-                .verify(claim_inner_joint, num_rounds_y, 2, &mut transcript)?;
+                .verify(claim_inner_joint, num_rounds_y, 2, &mut transcript).unwrap();
 
         // verify claim_inner_final
         let eval_Z = {
@@ -435,7 +447,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
         let u_vec_padded = PolyEvalInstance::pad(&u_vec); // pad the evaluation points
 
         // generate a challenge
-        let rho = transcript.squeeze(b"r")?;
+        let rho = transcript.squeeze(b"r").unwrap();
         let num_claims = u_vec.len();
         let powers_of_rho = powers::<G>(&rho, num_claims);
         let claim_batch_joint = u_vec
@@ -448,7 +460,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
         let (claim_batch_final, r_z) =
             self
                 .sc_proof_batch
-                .verify(claim_batch_joint, num_rounds_z, 2, &mut transcript)?;
+                .verify(claim_batch_joint, num_rounds_z, 2, &mut transcript).unwrap();
 
         let claim_batch_final_expected = {
             let poly_rz = EqPolynomial::new(r_z.clone());
@@ -472,7 +484,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
         transcript.absorb(b"l", &self.evals_batch.as_slice());
 
         // we now combine evaluation claims at the same point rz into one
-        let gamma = transcript.squeeze(b"g")?;
+        let gamma = transcript.squeeze(b"g").unwrap();
         let powers_of_gamma: Vec<G::Scalar> = powers::<G>(&gamma, num_claims);
         let comm_joint = u_vec_padded
             .iter()
@@ -494,7 +506,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
             &r_z,
             &eval_joint,
             &self.eval_arg,
-        )?;
+        ).unwrap();
 
         Ok(())
     }

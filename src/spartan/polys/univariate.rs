@@ -111,6 +111,11 @@ impl<G: Group> TranscriptReprTrait<G> for UniPoly<G::Scalar> {
     let coeffs = self.compress().coeffs_except_linear_term;
     coeffs.as_slice().to_transcript_bytes()
   }
+
+  fn to_transcript_scalars(&self) -> Vec<G::Scalar> {
+    let coeffs = self.compress().coeffs_except_linear_term;
+    coeffs.as_slice().to_transcript_scalars()
+  }
 }
 #[cfg(test)]
 mod tests {

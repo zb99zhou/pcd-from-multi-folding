@@ -5,6 +5,7 @@ use crate::{
     cpu_best_multiexp,
     pedersen::CommitmentEngine,
     poseidon::{PoseidonRO, PoseidonROCircuit, PoseidonTranscript, PoseidonTranscriptCircuit},
+    keccak::Keccak256Transcript
   },
   traits::{CompressedGroup, Group, PrimeFieldExt, TranscriptReprTrait},
 };
@@ -44,11 +45,19 @@ impl<G: Group> TranscriptReprTrait<G> for grumpkin::Base {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     self.to_repr().to_vec()
   }
+
+  fn to_transcript_scalars(&self) -> Vec<G::Scalar> {
+    vec![G::Scalar::from_uniform(&<Self as TranscriptReprTrait<G>>::to_transcript_bytes(&self))]
+  }
 }
 
 impl<G: Group> TranscriptReprTrait<G> for grumpkin::Scalar {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     self.to_repr().to_vec()
+  }
+
+  fn to_transcript_scalars(&self) -> Vec<G::Scalar> {
+    vec![G::Scalar::from_uniform(&<Self as TranscriptReprTrait<G>>::to_transcript_bytes(&self))]
   }
 }
 

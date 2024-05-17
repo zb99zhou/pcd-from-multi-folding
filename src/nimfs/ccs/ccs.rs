@@ -211,7 +211,7 @@ impl<G: Group> CCS<G> {
         &self,
         z: &[G::Scalar],
     ) -> Result<(Vec<G::Scalar>, Vec<G::Scalar>, Vec<G::Scalar>), NovaError> {
-        if z.len() != self.l + self.n + 1 {
+        if z.len() != self.n {
             return Err(NovaError::InvalidWitnessLength);
         }
 

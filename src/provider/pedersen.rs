@@ -87,6 +87,10 @@ impl<G: Group> TranscriptReprTrait<G> for Commitment<G> {
     ]
     .concat()
   }
+
+  fn to_transcript_scalars(&self) -> Vec<G::Scalar> {
+    <G as TranscriptReprTrait<G>>::to_transcript_scalars(&self.comm)
+  }
 }
 
 impl<G: Group> AbsorbInROTrait<G> for Commitment<G> {
@@ -118,6 +122,10 @@ impl<G: Group> AbsorbInROTrait<G> for Commitment<G> {
 impl<G: Group> TranscriptReprTrait<G> for CompressedCommitment<G> {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     self.comm.to_transcript_bytes()
+  }
+
+  fn to_transcript_scalars(&self) -> Vec<G::Scalar> {
+    self.comm.to_transcript_scalars()
   }
 }
 

@@ -689,6 +689,16 @@ impl<G: Group> TranscriptReprTrait<G> for RelaxedR1CSInstance<G> {
         ]
             .concat()
     }
+
+    fn to_transcript_scalars(&self) -> Vec<G::Scalar> {
+        [
+            self.comm_W.to_transcript_scalars(),
+            self.comm_E.to_transcript_scalars(),
+            self.u.to_transcript_scalars(),
+            self.X.as_slice().to_transcript_scalars(),
+        ]
+            .concat()
+    }
 }
 
 impl<G: Group> AbsorbInROTrait<G> for RelaxedR1CSInstance<G> {
