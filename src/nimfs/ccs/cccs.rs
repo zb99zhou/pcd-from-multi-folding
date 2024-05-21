@@ -41,6 +41,19 @@ impl<C: Group> CCSWitness<C> {
     pub fn commit(&self, ck: &CommitmentKey<C>) -> Commitment<C> {
         CE::<C>::commit(ck, &self.w)
     }
+
+    // Pads the provided witness to the correct length
+    pub fn pad(&self, S: &CCS<C>) -> CCSWitness<C> {
+        let w = {
+            let mut w = self.w.clone();
+            w.extend(vec![C::Scalar::ZERO; S.n-S.l-1- w.len()]);
+            w
+        };
+
+        let r_w = self.r_w.clone();
+
+    Self { w , r_w }
+    }
 }
 
 /// Committed CCS instance

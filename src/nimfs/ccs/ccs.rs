@@ -1,3 +1,4 @@
+use std::cmp::max;
 use std::fmt::{Debug, Formatter};
 use std::ops::Neg;
 use ff::{Field, PrimeField};
@@ -143,6 +144,10 @@ impl<G: Group> CCS<G> {
         }
     }
 
+    pub fn witness_num(&self) -> usize {
+        self.n - self.l - 1
+    }
+
     /// Samples public parameters for the specified number of constraints and variables in an R1CS
     pub fn commitment_key(&self) -> CommitmentKey<G> {
         G::CE::setup(b"ck", self.n - self.l - 1)
@@ -276,6 +281,72 @@ impl<G: Group> CCS<G> {
         }
 
         Ok(())
+    }
+
+    // Pads the `CCS` so that the number of variables is a power of two
+    // Renumbers variables to accommodate padded variables
+    pub fn pad(&self) -> Self {
+        // equalize the number of variables and constraints
+        let mx = max(self.m, self.n-self.l-1).next_power_of_two();
+
+        // check if the provided R1CSShape is already as required
+        if self.m == mx && self.n-self.l-1 == mx {
+            return self.clone();
+        }
+
+        // check if the number of variables are as expected, then
+        // we simply set the number of constraints to the next power of two
+        if self.n-self.l-1 == mx {
+            let mut M_padded = self.M.clone();
+            for elem in M_padded.iter_mut() {
+                (*elem).rows = mx;
+            }
+            let S = self.S.clone();
+            let c = self.c.clone();
+            return CCS{
+                m: mx,
+                n: mx+self.l+1,
+                l: self.l,
+                s: mx.log_2(),
+                s_prime: mx.log_2() + 1,
+                t: self.t,
+                q: self.q,
+                d: self.d,
+
+                M: M_padded,
+                S,
+                c,
+            };
+        }
+
+        let m_padded = mx;
+        let n_padded = mx + self.l + 1;
+        let S = self.S.clone();
+        let c = self.c.clone();
+        let mut M_padded = self.M.clone();
+        for elem in M_padded.iter_mut() {
+            (*elem).rows = m_padded;
+            (*elem).cols = n_padded;
+            for col_index in (*elem).indices.iter_mut() {
+                if *col_index >= self.n-self.l-1 {
+                    *(col_index) = *(col_index) + mx - (self.n-self.l-1);
+                }
+            }
+        }
+        CCS{
+            m: m_padded,
+            n: n_padded,
+            l: self.l,
+            s: m_padded.log_2(),
+            s_prime: m_padded.log_2()+1,
+            t: self.t,
+            q: self.q,
+            d: self.d,
+
+            M: M_padded,
+            S,
+            c,
+        }
     }
 }
 

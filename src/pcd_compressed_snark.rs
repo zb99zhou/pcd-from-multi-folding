@@ -53,7 +53,6 @@ where
         let mut cs_aux_helper: ShapeCS<G2> = ShapeCS::new();
         let _ = aux_circuit_setup.synthesize(&mut cs_aux_helper);
         let (aux_r1cs_shape, ck_secondary) = cs_aux_helper.r1cs_shape();
-        dbg!(aux_r1cs_shape.num_io);
         let secondary_circuit_params: NovaAuxiliaryParams<G2> = NovaAuxiliaryParams::new(aux_r1cs_shape, R * BN_N_LIMBS * 2);
 
         println!("Created primary pp!");
@@ -257,10 +256,10 @@ impl<G1, G2, SC, S1, S2, const ARITY: usize, const R: usize> PCDCompressedSNARK<
             r_u_primary: recursive_snark.r_u_primary.clone(),
             r_U_primary: recursive_snark.r_U_primary.clone(),
             nimfs_proof,
-            f_W_snark_primary: f_W_snark_primary,
+            f_W_snark_primary,
 
             r_U_secondary: recursive_snark.r_U_secondary.clone(),
-            r_W_snark_secondary: r_W_snark_secondary,
+            r_W_snark_secondary,
 
             zn_primary: recursive_snark.zi_primary.clone(),
 

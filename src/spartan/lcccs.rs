@@ -26,7 +26,6 @@ use crate::nimfs::ccs::cccs::CCSWitness;
 use crate::nimfs::ccs::ccs::CCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::nimfs::util::spare_matrix::SparseMatrix;
-use crate::spartan::math::Math;
 use crate::traits::snark::LinearCommittedCCSTrait;
 
 /// A type that represents the prover's key
@@ -71,7 +70,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
         S: &CCS<G>,
     ) -> Result<(Self::ProverKey, Self::VerifierKey), NovaError> {
         let (pk_ee, vk_ee) = EE::setup(ck);
-
+        let S = S.pad();
         let vk = {
             let mut vk = VerifierKey {
                 vk_ee,
@@ -98,7 +97,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
         U: &LCCCS<G>,
         W: &CCSWitness<G>,
     ) -> Result<Self, NovaError> {
-        // let W = W.pad(&pk.S); // pad the witness
+        let W = W.pad(&pk.S); // pad the witness
         let mut transcript = G::TE1::new(Default::default(), b"LCCCSSNARK");
 
         // sanity check that R1CSShape has certain size characteristics
@@ -112,8 +111,8 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
         let mut z = [W.w.clone(), vec![U.u], U.x.clone()].concat();
 
         let (num_rounds_x, num_rounds_y) = (
-            usize::try_from(pk.S.m.log_2()).unwrap(),
-            (usize::try_from(pk.S.n.log_2()).unwrap() + 1),
+            usize::try_from(pk.S.m.ilog2()).unwrap(),
+            (usize::try_from((pk.S.n-pk.S.l-1).ilog2()).unwrap() + 1),
         );
 
         // outer sum-check
@@ -183,19 +182,19 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
 
                     let (A_evals, (B_evals, C_evals)) = rayon::join(
                         || {
-                            let mut M0_evals: Vec<G::Scalar> = vec![G::Scalar::ZERO; 2 * S.n];
+                            let mut M0_evals: Vec<G::Scalar> = vec![G::Scalar::ZERO; 2 * (S.n-S.l-1)];
                             inner(&S.M[0], &mut M0_evals);
                             M0_evals
                         },
                         || {
                             rayon::join(
                                 || {
-                                    let mut M1_evals: Vec<G::Scalar> = vec![G::Scalar::ZERO; 2 * S.n];
+                                    let mut M1_evals: Vec<G::Scalar> = vec![G::Scalar::ZERO; 2 * (S.n-S.l-1)];
                                     inner(&S.M[1], &mut M1_evals);
                                     M1_evals
                                 },
                                 || {
-                                    let mut M2_evals: Vec<G::Scalar> = vec![G::Scalar::ZERO; 2 * S.n];
+                                    let mut M2_evals: Vec<G::Scalar> = vec![G::Scalar::ZERO; 2 * (S.n-S.l-1)];
                                     inner(&S.M[2], &mut M2_evals);
                                     M2_evals
                                 },
@@ -218,7 +217,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
         println!("22222222222");
 
         let poly_z = {
-            z.resize(pk.S.n * 2, G::Scalar::ZERO);
+            z.resize((pk.S.n-pk.S.l-1) * 2, G::Scalar::ZERO);
             z
         };
 
@@ -348,7 +347,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
 
         let (num_rounds_x, num_rounds_y) = (
             usize::try_from(vk.S.m.ilog2()).unwrap(),
-            (usize::try_from(vk.S.n.ilog2()).unwrap() + 1),
+            (usize::try_from((vk.S.n-vk.S.l-1).ilog2()).unwrap() + 1),
         );
 
         // outer sum-check
@@ -362,12 +361,13 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
                 .verify(G::Scalar::ZERO, num_rounds_x, 3, &mut transcript).unwrap();
 
         // verify claim_outer_final
+        //
         let (claim_Az, claim_Bz, claim_Cz) = self.claims_outer;
         let taus_bound_rx = EqPolynomial::new(tau).evaluate(&r_x);
         let claim_outer_final_expected =
-            taus_bound_rx * (claim_Az * claim_Bz - claim_Cz);
+            taus_bound_rx * (claim_Az * claim_Bz - U.u * claim_Cz);
         if claim_outer_final != claim_outer_final_expected {
-            return Err(NovaError::InvalidSumcheckProof);
+            panic!("return Err(NovaError::InvalidSumcheckProof);")
         }
 
         transcript.absorb(
@@ -401,7 +401,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
                         .map(|i| (i + 1, U.x[i]))
                         .collect::<Vec<(usize, G::Scalar)>>(),
                 );
-                SparsePolynomial::new(usize::try_from(vk.S.n.ilog2()).unwrap(), poly_X)
+                SparsePolynomial::new(usize::try_from((vk.S.n-vk.S.l-1).ilog2()).unwrap(), poly_X)
                     .evaluate(&r_y[1..])
             };
             (G::Scalar::ONE - r_y[0]) * self.eval_W + r_y[0] * eval_X
@@ -435,7 +435,6 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
             return Err(NovaError::InvalidSumcheckProof);
         }
 
-        // add claims about W and E polynomials
         let u_vec: Vec<PolyEvalInstance<G>> = vec![
             PolyEvalInstance {
                 c: U.C,
@@ -509,5 +508,40 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
         ).unwrap();
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rand_core::OsRng;
+    use crate::nimfs::ccs::ccs::test::{get_test_ccs, get_test_z};
+    use crate::provider::ipa_pc::EvaluationEngine;
+    use super::{LinearCommittedCCSTrait, LCCCSSNARK, Group};
+
+    fn test_lcccs_with_compression_with<G: Group, LCCCS: LinearCommittedCCSTrait<G>>() {
+        // Create a basic CCS circuit
+        let ccs = get_test_ccs::<G>();
+        let ck = ccs.commitment_key();
+
+        // Generate a satisfying witness
+        let z = get_test_z(3);
+
+        // Create the LCCCS instance out of z
+        let (running_instance, witness) = ccs.to_lcccs(OsRng, &ck, &z);
+
+        let (pk, vk) = LCCCS::setup(&ck, &ccs).unwrap();
+
+        // produce a LCCCS SNARK
+        let lcccs_nsark = LCCCS::prove(&ck, &pk, &running_instance, &witness).unwrap();
+
+        // verify the LCCCS SNARK
+        let res = lcccs_nsark.verify(&vk, &running_instance);
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_lcccs_with_compression() {
+        type G1 = pasta_curves::pallas::Point;
+        test_lcccs_with_compression_with::<G1, LCCCSSNARK<G1, EvaluationEngine<G1>>>();
     }
 }
