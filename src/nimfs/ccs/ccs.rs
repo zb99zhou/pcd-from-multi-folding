@@ -197,13 +197,14 @@ impl<G: Group> CCS<G> {
         let C = G::CE::commit(ck, &w);
 
         let r_x: Vec<G::Scalar> = (0..self.s).map(|_| G::Scalar::random(rng.clone())).collect();
+        // let r_x = vec![G::Scalar::from(0), G::Scalar::from(1)];
         let v = self.compute_v_j(z, &r_x);
 
         (
             LCCCS::<G> {
                 ccs: self.clone(),
                 C,
-                u: G::Scalar::ONE,
+                u: z[self.n - self.l-1],
                 x: z[(self.n - self.l)..].to_vec(),
                 r_x,
                 v,
@@ -301,8 +302,6 @@ impl<G: Group> CCS<G> {
             for elem in M_padded.iter_mut() {
                 (*elem).rows = mx;
             }
-            let S = self.S.clone();
-            let c = self.c.clone();
             return CCS{
                 m: mx,
                 n: mx+self.l+1,
@@ -314,15 +313,13 @@ impl<G: Group> CCS<G> {
                 d: self.d,
 
                 M: M_padded,
-                S,
-                c,
+                S: self.S.clone(),
+                c: self.c.clone(),
             };
         }
 
         let m_padded = mx;
         let n_padded = mx + self.l + 1;
-        let S = self.S.clone();
-        let c = self.c.clone();
         let mut M_padded = self.M.clone();
         for elem in M_padded.iter_mut() {
             (*elem).rows = m_padded;
@@ -344,8 +341,8 @@ impl<G: Group> CCS<G> {
             d: self.d,
 
             M: M_padded,
-            S,
-            c,
+            S: self.S.clone(),
+            c: self.c.clone(),
         }
     }
 }
