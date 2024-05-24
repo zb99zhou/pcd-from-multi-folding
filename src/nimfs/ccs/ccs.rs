@@ -360,22 +360,22 @@ pub mod test {
     #[cfg(test)]
     pub fn get_test_ccs<C: Group>() -> CCS<C> {
         let A = to_F_matrix(vec![
+            vec![0, 0, 0, 0, 0, 1],
             vec![0, 1, 0, 0, 0, 0],
-            vec![0, 0, 0, 1, 0, 0],
-            vec![0, 1, 0, 0, 1, 0],
-            vec![5, 0, 0, 0, 0, 1],
+            vec![0, 0, 1, 0, 0, 1],
+            vec![0, 0, 0, 1, 5, 0],
         ]);
         let B = to_F_matrix(vec![
-            vec![0, 1, 0, 0, 0, 0],
-            vec![0, 1, 0, 0, 0, 0],
-            vec![1, 0, 0, 0, 0, 0],
-            vec![1, 0, 0, 0, 0, 0],
+            vec![0, 0, 0, 0, 0, 1],
+            vec![0, 0, 0, 0, 0, 1],
+            vec![0, 0, 0, 0, 1, 0],
+            vec![0, 0, 0, 0, 1, 0],
         ]);
         let C = to_F_matrix(vec![
-            vec![0, 0, 0, 1, 0, 0],
-            vec![0, 0, 0, 0, 1, 0],
-            vec![0, 0, 0, 0, 0, 1],
+            vec![0, 1, 0, 0, 0, 0],
             vec![0, 0, 1, 0, 0, 0],
+            vec![0, 0, 0, 1, 0, 0],
+            vec![1, 0, 0, 0, 0, 0],
         ]);
         CCS::from_r1cs((&A).into(), (&B).into(), (&C).into(), 1)
     }
@@ -385,12 +385,12 @@ pub mod test {
     pub fn get_test_z<F: PrimeField>(input: usize) -> Vec<F> {
         // z = (1, io, w)
         to_F_vec(vec![
-            1,
-            input,
             input * input * input + input + 5, // x^3 + x + 5
             input * input,                     // x^2
             input * input * input,             // x^2 * x
             input * input * input + input,     // x^3 + x
+            1,
+            input,
         ])
     }
 
