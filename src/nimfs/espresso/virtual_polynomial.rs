@@ -286,6 +286,37 @@ impl<F: PrimeField> VirtualPolynomial<F> {
         Ok(res)
     }
 
+    /// Evaluate the virtual polynomial at point `point`.
+    /// Returns an error is point.len() does not match `num_variables`.
+    pub fn evaluate2(&self, point: &[F]) -> Result<F, ArithErrors> {
+        if self.aux_info.num_variables != point.len() {
+            return Err(ArithErrors::InvalidParameters(format!(
+                "wrong number of variables {} vs {}",
+                self.aux_info.num_variables,
+                point.len()
+            )));
+        }
+
+        // Evaluate all the MLEs at `point`
+        let evals: Vec<F> = self
+            .flattened_ml_extensions
+            .iter()
+            .map(|x| {
+                x.evaluate2(point) // safe unwrap here since we have
+                                           // already checked that num_var
+                                           // matches
+            })
+            .collect();
+
+        let res = self
+            .products
+            .iter()
+            .map(|(c, p)| *c * p.iter().map(|&i| evals[i]).product::<F>())
+            .sum();
+
+        Ok(res)
+    }
+
     // Input poly f(x) and a random vector r, output
     //      \hat f(x) = \sum_{x_i \in eval_x} f(x_i) eq(x, r)
     // where

@@ -10,7 +10,9 @@ use crate::nimfs::ccs::ccs::CCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::nimfs::espresso::sum_check::{PolyIOP, SumCheck, verifier::interpolate_uni_poly};
 use crate::nimfs::espresso::sum_check::structs::IOPProof as SumCheckProof;
-use crate::nimfs::espresso::virtual_polynomial::{eq_eval, VirtualPolynomial, VPAuxInfo};
+use crate::nimfs::espresso::virtual_polynomial::{VirtualPolynomial, VPAuxInfo};
+use crate::nimfs::util::mle::vec_to_mle;
+use crate::spartan::polys::eq::EqPolynomial;
 use crate::traits::{Group, TranscriptEngineTrait};
 use crate::traits::commitment::CommitmentEngineTrait;
 
@@ -70,13 +72,13 @@ impl<C: Group> MultiFolding<C> {
         let mut sigmas: Vec<Vec<C::Scalar>> = Vec::new();
         for z_lcccs_i in z_lcccs {
             // sigmas
-            let sigma_i = ccs.compute_v_j(&z_lcccs_i, r_x_prime);
+            let sigma_i = ccs.compute_v_j2(&z_lcccs_i, r_x_prime);
             sigmas.push(sigma_i);
         }
         let mut thetas: Vec<Vec<C::Scalar>> = Vec::new();
         for z_cccs_i in z_cccs {
             // thetas
-            let theta_i = ccs.compute_v_j(&z_cccs_i, r_x_prime);
+            let theta_i = ccs.compute_v_j2(&z_cccs_i, r_x_prime);
             thetas.push(theta_i);
         }
         (sigmas, thetas)
@@ -96,7 +98,7 @@ impl<C: Group> MultiFolding<C> {
 
         let mut e_lcccs = Vec::new();
         for r_x in vec_r_x {
-            e_lcccs.push(eq_eval(r_x, r_x_prime).unwrap());
+            e_lcccs.push(vec_to_mle(r_x.len(), &EqPolynomial::new(r_x.to_vec()).evals()).evaluate2(r_x_prime));
         }
         for (i, sigmas) in vec_sigmas.iter().enumerate() {
             // (sum gamma^j * e_i * sigma_j)
@@ -107,7 +109,7 @@ impl<C: Group> MultiFolding<C> {
         }
 
         let mu = vec_sigmas.len();
-        let e2 = eq_eval(beta, r_x_prime).unwrap();
+        let e2 = vec_to_mle(beta.len(), &EqPolynomial::new(beta.to_vec()).evals()).evaluate2(r_x_prime);
         for (k, thetas) in vec_thetas.iter().enumerate() {
             // + gamma^{t+1} * e2 * sum c_i * prod theta_j
             let mut lhs = C::Scalar::default();
@@ -505,7 +507,7 @@ pub mod test {
 
         // Initialize a multifolding object
         let ck = ccs.commitment_key();
-        let (lcccs_instance, _) = ccs.to_lcccs(rng, &ck, &z1);
+        let (lcccs_instance, _) = ccs.to_lcccs2(rng, &ck, &z1);
         let (cccs_instance, _) = ccs.to_cccs(rng, &ck, &z2);
 
         let (sigmas, thetas) = NIMFS::compute_sigmas_and_thetas(
@@ -527,7 +529,7 @@ pub mod test {
         // we expect g(r_x_prime) to be equal to:
         // c = (sum gamma^j * e1 * sigma_j) + gamma^{t+1} * e2 * sum c_i * prod theta_j
         // from compute_c_from_sigmas_and_thetas
-        let expected_c = g.evaluate(&r_x_prime).unwrap();
+        let expected_c = g.evaluate2(&r_x_prime).unwrap();
         let c = NIMFS::compute_c_from_sigmas_and_thetas(
             &ccs,
             &sigmas,
@@ -628,7 +630,7 @@ pub mod test {
         let (lcccs, w1) = ccs.to_lcccs(rng, &ck, &z1);
         let (cccs, w2) = ccs.to_cccs(rng, &ck, &z2);
 
-        lcccs.check_relation(&ck, &w1).unwrap();
+        lcccs.check_relation2(&ck, &w1).unwrap();
         cccs.check_relation(&ck, &w2).unwrap();
 
         let rng = OsRng;
@@ -711,7 +713,7 @@ pub mod test {
 
         // LCCCS witness
         let z_1 = get_test_z(2);
-        let (mut running_instance, mut w1) = ccs.to_lcccs(rng, &ck, &z_1);
+        let (mut running_instance, mut w1) = ccs.to_lcccs2(rng, &ck, &z_1);
 
         let constants = PoseidonConstantsCircuit::<Fr>::default();
         // Prover's transcript

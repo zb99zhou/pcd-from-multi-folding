@@ -121,6 +121,25 @@ impl<Scalar: PrimeField> MultiLinearPolynomial<Scalar> {
   // }
 
 
+  /// Evaluates the polynomial at the given point.
+  /// Returns Z(r) in O(n) time.
+  pub fn evaluate2(&self, r: &[Scalar]) -> Scalar {
+    assert_eq!(r.len(), self.get_num_vars());
+    let mut poly = self.Z.to_vec();
+    let nv = self.num_vars;
+    let dim = r.len();
+    // evaluate single variable of partial point from left to right
+    for i in 1..dim + 1 {
+      let r = r[i - 1];
+      for b in 0..(1 << (nv - i)) {
+        let left = poly[b << 1];
+        let right = poly[(b << 1) + 1];
+        poly[b] = left + r * (right - left);
+      }
+    }
+    poly[..(1 << (nv - dim))][0]
+  }
+
   /// Evaluates the polynomial with the given evaluations and point.
   pub fn evaluate_with(Z: &[Scalar], r: &[Scalar]) -> Scalar {
     EqPolynomial::new(r.to_vec())

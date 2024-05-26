@@ -165,6 +165,16 @@ impl<G: Group> CCS<G> {
             .collect()
     }
 
+    pub(crate) fn compute_v_j2(&self, z: &[G::Scalar], r: &[G::Scalar]) -> Vec<G::Scalar> {
+        self.M
+            .iter()
+            .map(|M| {
+                let Mz = M.multiply_vec(&z);
+                vec_to_mle(Mz.len().log_2(), &Mz).evaluate2(r)
+            })
+            .collect()
+    }
+
     pub fn to_cccs(
         &self,
         rng: impl RngCore,
@@ -200,6 +210,34 @@ impl<G: Group> CCS<G> {
         // let r_x = vec![G::Scalar::from(0), G::Scalar::from(1)];
         let v = self.compute_v_j(z, &r_x);
         // println!("v= {:?}",v);
+        (
+            LCCCS::<G> {
+                ccs: self.clone(),
+                C,
+                u: z[self.n - self.l-1],
+                x: z[(self.n - self.l)..].to_vec(),
+                r_x,
+                v,
+            },
+            CCSWitness::<G> { w, r_w },
+        )
+    }
+
+    pub fn to_lcccs2(
+        &self,
+        rng: impl RngCore + Clone,
+        ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
+        z: &[G::Scalar],
+    ) -> (LCCCS<G>, CCSWitness<G>) {
+        assert_eq!(z.len(), self.n);
+        let w: Vec<G::Scalar> = z[..(self.n - self.l - 1)].to_vec();
+        let r_w = G::Scalar::random(rng.clone());
+        let C = G::CE::commit(ck, &w);
+
+        let r_x: Vec<G::Scalar> = (0..self.s).map(|_| G::Scalar::random(rng.clone())).collect();
+        // let r_x = vec![G::Scalar::from(0), G::Scalar::from(1)];
+        let v = self.compute_v_j2(z, &r_x);
+
         (
             LCCCS::<G> {
                 ccs: self.clone(),
