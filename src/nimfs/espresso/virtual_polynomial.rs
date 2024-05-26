@@ -13,6 +13,8 @@ use std::{cmp::max, collections::HashMap, marker::PhantomData, ops::Add, sync::A
 use bellpepper_core::{ConstraintSystem, SynthesisError};
 use bellpepper_core::num::AllocatedNum;
 use ff::PrimeField;
+use crate::nimfs::util::mle::vec_to_mle;
+use crate::spartan::polys::eq::EqPolynomial;
 use crate::spartan::polys::multilinear::MultiLinearPolynomial;
 use crate::traits::{Group, PrimeFieldExt};
 
@@ -196,7 +198,7 @@ impl<F: PrimeField> VirtualPolynomial<F> {
                 indexed_product.push(*index)
             } else {
                 let curr_index = self.flattened_ml_extensions.len();
-                self.flattened_ml_extensions.push(mle.clone());
+                self.flattened_ml_extensions.push(mle);
                 self.raw_pointers_lookup_table.insert(mle_ptr, curr_index);
                 indexed_product.push(curr_index);
             }
@@ -299,9 +301,10 @@ impl<F: PrimeField> VirtualPolynomial<F> {
             )));
         }
 
-        let eq_x_r = build_eq_x_r(r)?;
+        let r_eq = EqPolynomial::new(r.to_vec());
+        let eq_x_r = vec_to_mle(self.aux_info.num_variables, &r_eq.evals());
         let mut res = self.clone();
-        res.mul_by_mle(eq_x_r, F::ONE)?;
+        res.mul_by_mle(Arc::new(eq_x_r), F::ONE)?;
 
         Ok(res)
     }

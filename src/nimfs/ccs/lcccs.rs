@@ -149,7 +149,7 @@ impl<C: Group> LCCCS<C> {
             let Mz = M_j.multiply_vec(z);
             let sum_Mz = vec_to_mle(Mz.len().log_2(), &Mz);
             let sum_Mz_virtual =
-                VirtualPolynomial::new_from_mle(&Arc::new(sum_Mz.clone()), C::Scalar::ONE);
+                VirtualPolynomial::new_from_mle(&Arc::new(sum_Mz), C::Scalar::ONE);
             let L_j_x = sum_Mz_virtual.build_f_hat(&self.r_x).unwrap();
             vec_L_j_x.push(L_j_x);
         }
