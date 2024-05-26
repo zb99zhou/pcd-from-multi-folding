@@ -649,7 +649,7 @@ pub mod test {
         folded.check_relation(&ck, &w_folded).unwrap();
     }
 
-    /// Perform multifolding of an LCCCS instance with a CCCS instance (as described in the paper)
+    /// Perform multifolding of an LCCCS instance with a CCCS instance
     #[test]
     pub fn test_basic_multifolding() {
         let rng = OsRng;

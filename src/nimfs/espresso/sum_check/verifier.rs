@@ -92,7 +92,7 @@ impl<C: Group> SumCheckVerifier<C::Scalar> for IOPVerifierState<C> {
                 "Incorrect verifier state: Verifier has not finished.".to_string(),
             ));
         }
-
+        
         if self.polynomials_received.len() != self.num_vars {
             return Err(NovaError::InvalidSumCheckVerifier(
                 "insufficient rounds".to_string(),
@@ -133,7 +133,7 @@ impl<C: Group> SumCheckVerifier<C::Scalar> for IOPVerifierState<C> {
                         self.max_degree + 1
                     )));
                 }
-                interpolate_uni_poly::<C::Scalar>(&evaluations, challenge)
+                interpolate_uni_poly::<C::Scalar>(&evaluations, challenge) // 
             })
             .collect::<Result<Vec<_>, NovaError>>()?;
 
@@ -148,7 +148,8 @@ impl<C: Group> SumCheckVerifier<C::Scalar> for IOPVerifierState<C> {
         {
             // the deferred check during the interactive phase:
             // 1. check if the received 'P(0) + P(1) = expected`.
-            if evaluations[0] + evaluations[1] != expected {
+            
+            if evaluations[0] + evaluations[1] != expected { 
                 return Err(NovaError::InvalidSumCheckProof(
                     "Prover message is not consistent with the claim.".to_string(),
                 ));

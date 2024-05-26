@@ -97,6 +97,29 @@ impl<Scalar: PrimeField> MultiLinearPolynomial<Scalar> {
       .map(|i| chis[i] * self.Z[i])
       .reduce(|| Scalar::ZERO, |x, y| x + y)
   }
+  // This evaluate function in incomplete!
+  // pub fn evaluate(&self, r: &[Scalar]) -> Scalar {
+  //   assert!(
+  //     dbg!(r.len()) <= dbg!(self.num_vars),
+  //     "invalid size of partial point"
+  //   );
+  //   let mut poly = self.Z.to_vec();
+  //   let nv = self.num_vars;
+  //   dbg!(nv);
+  //   let dim = r.len();
+  //   dbg!(dim);
+  //   // evaluate single variable of partial point from left to right
+  //   for i in 1..dim + 1 {
+  //     let r = r[i - 1];
+  //     for b in 0..(1 << (nv - i)) {
+  //       let left = poly[b << 1];
+  //       let right = poly[(b << 1) + 1];
+  //       poly[b] = left + r * (right - left);
+  //     }
+  //   }
+  //   poly[..(1 << (nv - dim))][0]
+  // }
+
 
   /// Evaluates the polynomial with the given evaluations and point.
   pub fn evaluate_with(Z: &[Scalar], r: &[Scalar]) -> Scalar {
