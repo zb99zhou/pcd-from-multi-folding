@@ -183,7 +183,7 @@ impl<C: Group> LCCCS<C> {
         // opening, but checking that the Commmitment comes from committing to the witness.
         assert_eq!(self.C, C::CE::commit(ck, &w.w));
 
-        // check CCS relation
+        // check LCCS relation
         let z: Vec<C::Scalar> = [w.w.to_vec(),vec![self.u], self.x.clone()].concat();
         let computed_v = self.ccs.compute_v_j(&z, &self.r_x);
         assert_eq!(computed_v, self.v);

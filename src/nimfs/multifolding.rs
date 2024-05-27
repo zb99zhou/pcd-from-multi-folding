@@ -72,13 +72,13 @@ impl<C: Group> MultiFolding<C> {
         let mut sigmas: Vec<Vec<C::Scalar>> = Vec::new();
         for z_lcccs_i in z_lcccs {
             // sigmas
-            let sigma_i = ccs.compute_v_j2(&z_lcccs_i, r_x_prime);
+            let sigma_i = ccs.compute_v_j(&z_lcccs_i, r_x_prime);
             sigmas.push(sigma_i);
         }
         let mut thetas: Vec<Vec<C::Scalar>> = Vec::new();
         for z_cccs_i in z_cccs {
             // thetas
-            let theta_i = ccs.compute_v_j2(&z_cccs_i, r_x_prime);
+            let theta_i = ccs.compute_v_j(&z_cccs_i, r_x_prime);
             thetas.push(theta_i);
         }
         (sigmas, thetas)
@@ -98,7 +98,7 @@ impl<C: Group> MultiFolding<C> {
 
         let mut e_lcccs = Vec::new();
         for r_x in vec_r_x {
-            e_lcccs.push(vec_to_mle(r_x.len(), &EqPolynomial::new(r_x.to_vec()).evals()).evaluate2(r_x_prime));
+            e_lcccs.push(vec_to_mle(r_x.len(), &EqPolynomial::new(r_x.to_vec()).evals()).evaluate(r_x_prime));
         }
         for (i, sigmas) in vec_sigmas.iter().enumerate() {
             // (sum gamma^j * e_i * sigma_j)
@@ -109,7 +109,7 @@ impl<C: Group> MultiFolding<C> {
         }
 
         let mu = vec_sigmas.len();
-        let e2 = vec_to_mle(beta.len(), &EqPolynomial::new(beta.to_vec()).evals()).evaluate2(r_x_prime);
+        let e2 = vec_to_mle(beta.len(), &EqPolynomial::new(beta.to_vec()).evals()).evaluate(r_x_prime);
         for (k, thetas) in vec_thetas.iter().enumerate() {
             // + gamma^{t+1} * e2 * sum c_i * prod theta_j
             let mut lhs = C::Scalar::default();
@@ -530,7 +530,7 @@ pub mod test {
         // we expect g(r_x_prime) to be equal to:
         // c = (sum gamma^j * e1 * sigma_j) + gamma^{t+1} * e2 * sum c_i * prod theta_j
         // from compute_c_from_sigmas_and_thetas
-        let expected_c = g.evaluate2(&r_x_prime).unwrap();
+        let expected_c = g.evaluate(&r_x_prime).unwrap();
         let c = NIMFS::compute_c_from_sigmas_and_thetas(
             &ccs,
             &sigmas,
@@ -649,7 +649,7 @@ pub mod test {
         let w_folded = MultiFolding::<Point>::fold_witness(&vec![w1], &vec![w2], rho);
 
         // check lcccs relation
-        folded.check_relation2(&ck, &w_folded).unwrap();
+        folded.check_relation(&ck, &w_folded).unwrap();
     }
 
     /// Perform multifolding of an LCCCS instance with a CCCS instance
@@ -668,6 +668,7 @@ pub mod test {
 
         // Create the LCCCS instance out of z_1
         let (running_instance, w1) = ccs.to_lcccs(rng, &ck, &z_1);
+        
         // Create the CCCS instance out of z_2
         let (new_instance, w2) = ccs.to_cccs(rng, &ck, &z_2);
 
@@ -699,7 +700,7 @@ pub mod test {
 
         // Check that the folded LCCCS instance is a valid instance with respect to the folded witness
         folded_lcccs
-            .check_relation2(&ck, &folded_witness)
+            .check_relation(&ck, &folded_witness)
             .unwrap();
     }
 
@@ -715,6 +716,7 @@ pub mod test {
         // LCCCS witness
         let z_1 = get_test_z(2);
         let (mut running_instance, mut w1) = ccs.to_lcccs(rng, &ck, &z_1);
+        let _ = running_instance.check_relation(&ck,&w1);
 
         let constants = PoseidonConstantsCircuit::<Fr>::default();
         // Prover's transcript
@@ -732,6 +734,7 @@ pub mod test {
             println!("z_2 {:?}", z_2); // DBG
 
             let (new_instance, w2) = ccs.to_cccs(rng, &ck, &z_2);
+            let _ = new_instance.check_relation(&ck,&w2);
 
             // run the prover side of the multifolding
             let (proof, folded_lcccs, folded_witness) = NIMFS::prove(
@@ -755,15 +758,17 @@ pub mod test {
             // check that the folded instance with the folded witness holds the LCCCS relation
             println!("check_relation {}", i);
             if i.is_odd(){
+                println!("check_relation1 {}", i);
                 folded_lcccs
-                    .check_relation2(&ck, &folded_witness)
+                    .check_relation(&ck, &folded_witness)
                     .unwrap()
             } else {
 
             };
-
+            println!("check_relation_again {}", i);
             running_instance = folded_lcccs;
             w1 = folded_witness;
+            let _ = running_instance.check_relation(&ck,&w1);
         }
     }
 
@@ -831,7 +836,7 @@ pub mod test {
 
         // Check that the folded LCCCS instance is a valid instance with respect to the folded witness
         folded_lcccs
-            .check_relation2(&ck, &folded_witness)
+            .check_relation(&ck, &folded_witness)
             .unwrap();
     }
 
@@ -904,7 +909,7 @@ pub mod test {
 
             // Check that the folded LCCCS instance is a valid instance with respect to the folded witness
             folded_lcccs
-                .check_relation2(&ck, &folded_witness)
+                .check_relation(&ck, &folded_witness)
                 .unwrap();
         }
     }
