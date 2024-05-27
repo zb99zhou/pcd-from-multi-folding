@@ -157,7 +157,7 @@ impl<C: Group> LCCCS<C> {
         vec_L_j_x
     }
 
-    pub fn check_relation(
+    pub fn check_relation2(
         &self,
         ck: &<<C as Group>::CE as CommitmentEngineTrait<C>>::CommitmentKey,
         w: &CCSWitness<C>,
@@ -174,7 +174,7 @@ impl<C: Group> LCCCS<C> {
     }
 
     /// Perform the check of the LCCCS instance described at section 4.2
-    pub fn check_relation2(
+    pub fn check_relation(
         &self,
         ck: &<<C as Group>::CE as CommitmentEngineTrait<C>>::CommitmentKey,
         w: &CCSWitness<C>,

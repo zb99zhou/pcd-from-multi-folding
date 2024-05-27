@@ -207,7 +207,6 @@ impl<G: Group> CCS<G> {
         let C = G::CE::commit(ck, &w);
 
         let r_x: Vec<G::Scalar> = (0..self.s).map(|_| G::Scalar::random(rng.clone())).collect();
-        // let r_x = vec![G::Scalar::from(0), G::Scalar::from(1)];
         let v = self.compute_v_j(z, &r_x);
         // println!("v= {:?}",v);
         (

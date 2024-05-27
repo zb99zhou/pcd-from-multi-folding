@@ -167,10 +167,10 @@ impl<Scalar: PrimeField> MultiLinearPolynomial<Scalar> {
     let mut poly = self.Z.to_vec();
     let nv = self.num_vars;
     let dim = partial_point.len();
-    // evaluate single variable of partial point from left to right
-    for i in 1..dim + 1 {
+    // Evaluate single variable of partial point from right to left
+    for i in (1..dim + 1).rev() {
       let r = partial_point[i - 1];
-      for b in 0..(1 << (nv - i)) {
+      for b in 0..(1 << (nv - (dim - i + 1))) {
         let left = poly[b << 1];
         let right = poly[(b << 1) + 1];
         poly[b] = left + r * (right - left);
@@ -291,6 +291,12 @@ mod tests {
 
     let y = MultiLinearPolynomial::<F>::evaluate_with(Z.as_slice(), x.as_slice());
     assert_eq!(y, TWO);
+
+    let mle = m_poly.fix_variables(x.as_slice());
+    assert_eq!(mle[0], TWO);
+
+    let test = vec![F::from(2), F::from(3), F::from(4)];
+    assert_eq!(m_poly.evaluate(test.as_slice()), m_poly.fix_variables(test.as_slice()).Z[0]);
   }
 
   fn test_sparse_polynomial_with<F: PrimeField>() {

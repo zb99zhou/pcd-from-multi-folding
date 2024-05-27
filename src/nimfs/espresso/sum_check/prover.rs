@@ -56,17 +56,11 @@ impl<C: Group> SumCheckProver<C::Scalar> for IOPProverState<C> {
         &mut self,
         challenge: &Option<C::Scalar>,
     ) -> Result<Self::ProverMessage, NovaError> {
-        // let start =
-        //     start_timer!(|| format!("sum check prove {}-th round and update state",
-        // self.round));
-
         if self.round >= self.poly.aux_info.num_variables {
             return Err(NovaError::InvalidSumCheckProver(
                 "Prover is not active".to_string(),
             ));
         }
-
-        // let fix_argument = start_timer!(|| "fix argument");
 
         // Step 1:
         // fix argument and evaluate f(x) over x_m = r; where r is the challenge
@@ -108,7 +102,6 @@ impl<C: Group> SumCheckProver<C::Scalar> for IOPProverState<C> {
                 "verifier message is empty".to_string(),
             ));
         }
-        // end_timer!(fix_argument);
 
         self.round += 1;
 

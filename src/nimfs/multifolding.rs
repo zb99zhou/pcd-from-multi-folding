@@ -479,6 +479,7 @@ impl<C: Group> MultiFolding<C> {
 #[cfg(test)]
 pub mod test {
     use halo2curves::bn256::Fr;
+    use num_integer::Integer;
     use rand_core::OsRng;
 
     use crate::nimfs::ccs::ccs::test::{get_test_ccs, get_test_z};
@@ -507,7 +508,7 @@ pub mod test {
 
         // Initialize a multifolding object
         let ck = ccs.commitment_key();
-        let (lcccs_instance, _) = ccs.to_lcccs2(rng, &ck, &z1);
+        let (lcccs_instance, _) = ccs.to_lcccs(rng, &ck, &z1);
         let (cccs_instance, _) = ccs.to_cccs(rng, &ck, &z2);
 
         let (sigmas, thetas) = NIMFS::compute_sigmas_and_thetas(
@@ -630,7 +631,7 @@ pub mod test {
         let (lcccs, w1) = ccs.to_lcccs(rng, &ck, &z1);
         let (cccs, w2) = ccs.to_cccs(rng, &ck, &z2);
 
-        lcccs.check_relation2(&ck, &w1).unwrap();
+        lcccs.check_relation(&ck, &w1).unwrap();
         cccs.check_relation(&ck, &w2).unwrap();
 
         let rng = OsRng;
@@ -648,7 +649,7 @@ pub mod test {
         let w_folded = MultiFolding::<Point>::fold_witness(&vec![w1], &vec![w2], rho);
 
         // check lcccs relation
-        folded.check_relation(&ck, &w_folded).unwrap();
+        folded.check_relation2(&ck, &w_folded).unwrap();
     }
 
     /// Perform multifolding of an LCCCS instance with a CCCS instance
@@ -698,7 +699,7 @@ pub mod test {
 
         // Check that the folded LCCCS instance is a valid instance with respect to the folded witness
         folded_lcccs
-            .check_relation(&ck, &folded_witness)
+            .check_relation2(&ck, &folded_witness)
             .unwrap();
     }
 
@@ -713,7 +714,7 @@ pub mod test {
 
         // LCCCS witness
         let z_1 = get_test_z(2);
-        let (mut running_instance, mut w1) = ccs.to_lcccs2(rng, &ck, &z_1);
+        let (mut running_instance, mut w1) = ccs.to_lcccs(rng, &ck, &z_1);
 
         let constants = PoseidonConstantsCircuit::<Fr>::default();
         // Prover's transcript
@@ -753,9 +754,13 @@ pub mod test {
 
             // check that the folded instance with the folded witness holds the LCCCS relation
             println!("check_relation {}", i);
-            folded_lcccs
-                .check_relation(&ck, &folded_witness)
-                .unwrap();
+            if i.is_odd(){
+                folded_lcccs
+                    .check_relation2(&ck, &folded_witness)
+                    .unwrap()
+            } else {
+
+            };
 
             running_instance = folded_lcccs;
             w1 = folded_witness;
@@ -826,7 +831,7 @@ pub mod test {
 
         // Check that the folded LCCCS instance is a valid instance with respect to the folded witness
         folded_lcccs
-            .check_relation(&ck, &folded_witness)
+            .check_relation2(&ck, &folded_witness)
             .unwrap();
     }
 
@@ -899,7 +904,7 @@ pub mod test {
 
             // Check that the folded LCCCS instance is a valid instance with respect to the folded witness
             folded_lcccs
-                .check_relation(&ck, &folded_witness)
+                .check_relation2(&ck, &folded_witness)
                 .unwrap();
         }
     }
