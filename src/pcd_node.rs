@@ -213,6 +213,7 @@ impl<G1, G2, const ARITY: usize, const R: usize> PCDNode<G1, G2, ARITY, R>
             (relaxed_r1cs_instance, relaxed_r1cs_witness)
         };
         cccs.check_relation(&pp.ck_primary, &cccs_witness).unwrap();
+        lcccs.check_relation(&pp.ck_primary, &lcccs_witness).unwrap();
 
         Ok((
             lcccs,

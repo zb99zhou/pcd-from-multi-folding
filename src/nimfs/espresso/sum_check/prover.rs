@@ -17,7 +17,6 @@ use super::structs::{IOPProverMessage, IOPProverState};
 use rayon::iter::{IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
 use crate::errors::NovaError;
 use crate::nimfs::espresso::batch_inversion;
-use crate::nimfs::espresso::multilinear_polynomial::fix_variables;
 use crate::nimfs::espresso::virtual_polynomial::VirtualPolynomial;
 use crate::spartan::polys::multilinear::MultiLinearPolynomial;
 use crate::traits::Group;
@@ -99,7 +98,7 @@ impl<C: Group> SumCheckProver<C::Scalar> for IOPProverState<C> {
             // #[cfg(feature = "parallel")]
             flattened_ml_extensions
                 .par_iter_mut()
-                .for_each(|mle| *mle = fix_variables(mle, &[r]));
+                .for_each(|mle| *mle = mle.fix_variables(&[r]));
             // #[cfg(not(feature = "parallel"))]
             // flattened_ml_extensions
             //     .iter_mut()
@@ -172,8 +171,8 @@ impl<C: Group> SumCheckProver<C::Scalar> for IOPProverState<C> {
 
         // update prover's state to the partial evaluated polynomial
         self.poly.flattened_ml_extensions = flattened_ml_extensions
-            .par_iter()
-            .map(|x| Arc::new(x.clone()))
+            .into_par_iter()
+            .map(|x| Arc::new(x))
             .collect();
 
         Ok(IOPProverMessage {

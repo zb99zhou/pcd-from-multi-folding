@@ -174,19 +174,32 @@ impl<C: Group> SumCheckVerifier<C::Scalar> for IOPVerifierState<C> {
 /// negligible compared to field operations.
 /// TODO: The quadratic term can be removed by precomputing the lagrange coefficients.
 pub fn interpolate_uni_poly<F: PrimeField>(p_i: &[F], eval_at: F) -> Result<F, NovaError> {
-
     let len = p_i.len();
+
     let mut evals = vec![];
+
     let mut prod = eval_at;
     evals.push(eval_at);
 
-    // `prod = \prod_{j} (eval_at - j)`
-    for e in 1..len {
-        let tmp = eval_at - F::from(e as u64);
+    //`prod = \prod_{j} (eval_at - j)`
+    // we return early if 0 <= eval_at <  len, i.e. if the desired value has been passed
+    let mut check = F::ZERO;
+    for i in 1..len {
+        if eval_at == check {
+            return Ok(p_i[i - 1]);
+        }
+        check += F::ONE;
+
+        let tmp = eval_at - check;
         evals.push(tmp);
         prod *= tmp;
     }
-    let mut res = F::default();
+
+    if eval_at == check {
+        return Ok(p_i[len - 1]);
+    }
+
+    let mut res = F::ZERO;
     // we want to compute \prod (j!=i) (i-j) for a given i
     //
     // we start from the last step, which is

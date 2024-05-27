@@ -95,7 +95,7 @@ impl<Scalar: PrimeField> MultiLinearPolynomial<Scalar> {
     (0..chis.len())
       .into_par_iter()
       .map(|i| chis[i] * self.Z[i])
-      .reduce(|| Scalar::ZERO, |x, y| x + y)
+      .sum()
   }
   // This evaluate function in incomplete!
   // pub fn evaluate(&self, r: &[Scalar]) -> Scalar {
@@ -138,6 +138,26 @@ impl<Scalar: PrimeField> MultiLinearPolynomial<Scalar> {
       *z *= scalar;
     }
     new_poly
+  }
+
+  pub fn fix_variables(&self, partial_point: &[Scalar]) -> Self {
+    assert!(
+      partial_point.len() <= self.num_vars,
+      "invalid size of partial point"
+    );
+    let mut poly = self.Z.to_vec();
+    let nv = self.num_vars;
+    let dim = partial_point.len();
+    // evaluate single variable of partial point from left to right
+    for i in 1..dim + 1 {
+      let r = partial_point[i - 1];
+      for b in 0..(1 << (nv - i)) {
+        let left = poly[b << 1];
+        let right = poly[(b << 1) + 1];
+        poly[b] = left + r * (right - left);
+      }
+    }
+    Self { num_vars: nv - dim, Z: poly[..(1 << (nv - dim))].to_vec() }
   }
 }
 

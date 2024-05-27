@@ -339,7 +339,7 @@ impl<C: Group> MultiFolding<C> {
                 sum_v_j_gamma += running_instance.v[j] * gamma_j;
             }
         }
-        println!("Sanity check: {:?} == {:?}", extracted_sum, sum_v_j_gamma);
+        assert_eq!(extracted_sum, sum_v_j_gamma);
         //////////////////////////////////////////////////////////////////////
 
         // Step 2: dig into the sumcheck and extract r_x_prime
@@ -544,9 +544,7 @@ pub mod test {
     fn test_compute_g() -> () {
         let ccs = get_test_ccs();
         let z1 = get_test_z(3);
-        let z2 = get_test_z(4);
         ccs.check_relation(&z1).unwrap();
-        ccs.check_relation(&z2).unwrap();
 
         let rng = OsRng;
         let gamma: Fr = Fr::random(rng);
@@ -554,8 +552,8 @@ pub mod test {
 
         // Initialize a multifolding object
         let ck = ccs.commitment_key();
-        let (lcccs_instance, _) = ccs.to_lcccs(rng, &ck, &z1);
-        let (cccs_instance, _) = ccs.to_cccs(rng, &ck, &z2);
+        let (lcccs_instance, _) = ccs.to_lcccs(rng, &ck, &vec![Fr::zero(); ccs.n]);
+        let (cccs_instance, _) = ccs.to_cccs(rng, &ck, &z1);
 
         let mut sum_v_j_gamma = Fr::zero();
         for j in 0..lcccs_instance.v.len() {
@@ -568,7 +566,7 @@ pub mod test {
             &vec![lcccs_instance.clone()],
             &vec![cccs_instance.clone()],
             &vec![z1.clone()],
-            &vec![z2.clone()],
+            &vec![z1.clone()],
             gamma,
             &beta,
         );
@@ -660,13 +658,11 @@ pub mod test {
 
         // Generate a satisfying witness
         let z_1 = get_test_z(3);
-        // Generate another satisfying witness
-        let z_2 = get_test_z(4);
 
         // Create the LCCCS instance out of z_1
-        let (running_instance, w1) = ccs.to_lcccs(rng, &ck, &z_1);
+        let (running_instance, w1) = ccs.to_lcccs(rng, &ck, &vec![Fr::zero(); ccs.n]);
         // Create the CCCS instance out of z_2
-        let (new_instance, w2) = ccs.to_cccs(rng, &ck, &z_2);
+        let (new_instance, w2) = ccs.to_cccs(rng, &ck, &z_1);
 
         // Prover's transcript
         let constants = PoseidonConstantsCircuit::<Fr>::default();
