@@ -97,48 +97,8 @@ impl<Scalar: PrimeField> MultiLinearPolynomial<Scalar> {
       .map(|i| chis[i] * self.Z[i])
       .sum()
   }
-  // This evaluate function in incomplete!
-  // pub fn evaluate(&self, r: &[Scalar]) -> Scalar {
-  //   assert!(
-  //     dbg!(r.len()) <= dbg!(self.num_vars),
-  //     "invalid size of partial point"
-  //   );
-  //   let mut poly = self.Z.to_vec();
-  //   let nv = self.num_vars;
-  //   dbg!(nv);
-  //   let dim = r.len();
-  //   dbg!(dim);
-  //   // evaluate single variable of partial point from left to right
-  //   for i in 1..dim + 1 {
-  //     let r = r[i - 1];
-  //     for b in 0..(1 << (nv - i)) {
-  //       let left = poly[b << 1];
-  //       let right = poly[(b << 1) + 1];
-  //       poly[b] = left + r * (right - left);
-  //     }
-  //   }
-  //   poly[..(1 << (nv - dim))][0]
-  // }
 
 
-  /// Evaluates the polynomial at the given point.
-  /// Returns Z(r) in O(n) time.
-  pub fn evaluate2(&self, r: &[Scalar]) -> Scalar {
-    assert_eq!(r.len(), self.get_num_vars());
-    let mut poly = self.Z.to_vec();
-    let nv = self.num_vars;
-    let dim = r.len();
-    // evaluate single variable of partial point from left to right
-    for i in 1..dim + 1 {
-      let r = r[i - 1];
-      for b in 0..(1 << (nv - i)) {
-        let left = poly[b << 1];
-        let right = poly[(b << 1) + 1];
-        poly[b] = left + r * (right - left);
-      }
-    }
-    poly[..(1 << (nv - dim))][0]
-  }
 
   /// Evaluates the polynomial with the given evaluations and point.
   pub fn evaluate_with(Z: &[Scalar], r: &[Scalar]) -> Scalar {
@@ -159,6 +119,26 @@ impl<Scalar: PrimeField> MultiLinearPolynomial<Scalar> {
     new_poly
   }
 
+  // pub fn fix_variables(&self, partial_point: &[Scalar]) -> Self {
+  //   assert!(
+  //     partial_point.len() <= self.num_vars,
+  //     "invalid size of partial point"
+  //   );
+  //   let mut poly = self.Z.to_vec();
+  //   let nv = self.num_vars;
+  //   let dim = partial_point.len();
+  //   // Evaluate single variable of partial point from right to left
+  //   for i in (1..dim + 1).rev() {
+  //     let r = partial_point[i - 1];
+  //     for b in 0..(1 << (nv - (dim - i + 1))) {
+  //       let left = poly[b << 1];
+  //       let right = poly[(b << 1) + 1];
+  //       poly[b] = left + r * (right - left);
+  //     }
+  //   }
+  //   Self { num_vars: nv - dim, Z: poly[..(1 << (nv - dim))].to_vec() }
+  // }
+
   pub fn fix_variables(&self, partial_point: &[Scalar]) -> Self {
     assert!(
       partial_point.len() <= self.num_vars,
@@ -167,18 +147,24 @@ impl<Scalar: PrimeField> MultiLinearPolynomial<Scalar> {
     let mut poly = self.Z.to_vec();
     let nv = self.num_vars;
     let dim = partial_point.len();
-    // Evaluate single variable of partial point from right to left
-    for i in (1..dim + 1).rev() {
+    // println!("nv = {:?}, dim = {:?}", nv, dim);
+    // println!("poly_len = {:?}", poly.len());
+    // Evaluate single variable of partial point from left to right
+    for i in 1..dim + 1 {
+      // println!("i = {:?}", i);
       let r = partial_point[i - 1];
-      for b in 0..(1 << (nv - (dim - i + 1))) {
-        let left = poly[b << 1];
-        let right = poly[(b << 1) + 1];
-        poly[b] = left + r * (right - left);
+      for b in 0..(1 << (nv - i)) {
+        // println!("b = {:?}", b);
+        let left = poly[b];
+        let right = poly[b + (1 << (nv - i))];
+        poly[b] = left + r * (right - left); // (1-r) * left + r * right
       }
     }
     Self { num_vars: nv - dim, Z: poly[..(1 << (nv - dim))].to_vec() }
   }
 }
+
+  
 
 impl<Scalar: PrimeField> Index<usize> for MultiLinearPolynomial<Scalar> {
   type Output = Scalar;
@@ -294,6 +280,10 @@ mod tests {
 
     let mle = m_poly.fix_variables(x.as_slice());
     assert_eq!(mle[0], TWO);
+
+    let z = vec![F::ONE,F::ZERO];
+    let m_partial = m_poly.fix_variables(z.as_slice());
+    println!("m_partial = {:?}", m_partial);
 
     let test = vec![F::from(2), F::from(3), F::from(4)];
     assert_eq!(m_poly.evaluate(test.as_slice()), m_poly.fix_variables(test.as_slice()).Z[0]);

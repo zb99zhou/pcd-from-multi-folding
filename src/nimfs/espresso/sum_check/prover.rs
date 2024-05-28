@@ -89,10 +89,12 @@ impl<C: Group> SumCheckProver<C::Scalar> for IOPProverState<C> {
             self.challenges.push(*chal);
 
             let r = self.challenges[self.round - 1];
+            println!("r = {:?}",r);
             // #[cfg(feature = "parallel")]
             flattened_ml_extensions
                 .par_iter_mut()
                 .for_each(|mle| *mle = mle.fix_variables(&[r]));
+            println!("flattened_ml_extensions = {:?}",flattened_ml_extensions);
             // #[cfg(not(feature = "parallel"))]
             // flattened_ml_extensions
             //     .iter_mut()
@@ -167,7 +169,8 @@ impl<C: Group> SumCheckProver<C::Scalar> for IOPProverState<C> {
             .into_par_iter()
             .map(|x| Arc::new(x))
             .collect();
-
+        
+        println!("polynomials_sent = {:?}",products_sum);
         Ok(IOPProverMessage {
             evaluations: products_sum,
         })

@@ -157,21 +157,6 @@ impl<C: Group> LCCCS<C> {
         vec_L_j_x
     }
 
-    pub fn check_relation2(
-        &self,
-        ck: &<<C as Group>::CE as CommitmentEngineTrait<C>>::CommitmentKey,
-        w: &CCSWitness<C>,
-    ) -> Result<(), CCSError> {
-        // check that C is the commitment of w. Notice that this is not verifying a Pedersen
-        // opening, but checking that the Commmitment comes from committing to the witness.
-        assert_eq!(self.C, C::CE::commit(ck, &w.w));
-
-        // check CCS relation
-        let z: Vec<C::Scalar> = [w.w.to_vec(),vec![self.u], self.x.clone()].concat();
-        let computed_v = self.ccs.compute_v_j2(&z, &self.r_x);
-        assert_eq!(computed_v, self.v);
-        Ok(())
-    }
 
     /// Perform the check of the LCCCS instance described at section 4.2
     pub fn check_relation(

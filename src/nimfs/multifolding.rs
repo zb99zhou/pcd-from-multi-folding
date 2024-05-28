@@ -310,7 +310,8 @@ impl<C: Group> MultiFolding<C> {
         }
 
         // Step 1: Get some challenges
-        let gamma = transcript.squeeze(b"gamma").unwrap();
+        // let gamma = transcript.squeeze(b"gamma").unwrap();
+        let gamma = C::Scalar::from(0);
         let beta = transcript
             .batch_squeeze(b"beta", running_instances[0].ccs.s).unwrap();
 
@@ -323,7 +324,7 @@ impl<C: Group> MultiFolding<C> {
             gamma,
             &beta,
         );
-
+        println!("g = {:?}",g);
         // Step 3: Run the sumcheck prover
         let sumcheck_proof =
             <PolyIOP<C::Scalar> as SumCheck<C>>::prove(&g, transcript).unwrap(); // XXX unwrap
@@ -341,6 +342,7 @@ impl<C: Group> MultiFolding<C> {
                 sum_v_j_gamma += running_instance.v[j] * gamma_j;
             }
         }
+        println!("sum_v_j_gamma_prove = {:?}",sum_v_j_gamma);
         assert_eq!(extracted_sum, sum_v_j_gamma);
         //////////////////////////////////////////////////////////////////////
 
@@ -399,7 +401,8 @@ impl<C: Group> MultiFolding<C> {
         assert!(!new_instances.is_empty());
 
         // Step 1: Get some challenges
-        let gamma = transcript.squeeze(b"gamma").unwrap();
+        // let gamma = transcript.squeeze(b"gamma").unwrap();
+        let gamma = C::Scalar::from(0);
         let beta = transcript
             .batch_squeeze(b"beta", running_instances[0].ccs.s)
             .unwrap();
@@ -419,7 +422,7 @@ impl<C: Group> MultiFolding<C> {
                 sum_v_j_gamma += running_instance.v[j] * gamma_j;
             }
         }
-
+        println!("sum_v_j_gamma_verify = {:?}",sum_v_j_gamma);
         // Verify the interactive part of the sumcheck
         let sumcheck_subclaim = <PolyIOP<C::Scalar> as SumCheck<C>>::verify(
             sum_v_j_gamma,
@@ -668,9 +671,11 @@ pub mod test {
 
         // Create the LCCCS instance out of z_1
         let (running_instance, w1) = ccs.to_lcccs(rng, &ck, &z_1);
-        
+        let _ = running_instance.check_relation(&ck, &w1);
+
         // Create the CCCS instance out of z_2
         let (new_instance, w2) = ccs.to_cccs(rng, &ck, &z_2);
+        let _ = new_instance.check_relation(&ck, &w2);
 
         // Prover's transcript
         let constants = PoseidonConstantsCircuit::<Fr>::default();

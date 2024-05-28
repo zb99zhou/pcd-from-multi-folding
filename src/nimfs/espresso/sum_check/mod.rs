@@ -166,7 +166,7 @@ impl<C: Group> SumCheck<C> for PolyIOP<C::Scalar> {
         transcript: &mut Self::Transcript,
     ) -> Result<Self::SumCheckProof, NovaError> {
         transcript.absorb(b"aux info", &poly.aux_info);
-
+        
         let mut prover_state = IOPProverState::prover_init(poly)?;
         let mut challenge = None;
         let mut prover_msgs = Vec::with_capacity(poly.aux_info.num_variables);
@@ -174,7 +174,8 @@ impl<C: Group> SumCheck<C> for PolyIOP<C::Scalar> {
             let prover_msg = prover_state.prove_round_and_update_state(&challenge)?;
             transcript.absorb(b"prover msg", &prover_msg);
             prover_msgs.push(prover_msg);
-            challenge = Some(transcript.squeeze(b"Internal round")?);
+            // challenge = Some(transcript.squeeze(b"Internal round")?);
+            challenge = Some(C::Scalar::from(0));
         }
         // pushing the last challenge point to the state
         if let Some(p) = challenge {
