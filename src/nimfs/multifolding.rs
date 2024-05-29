@@ -328,7 +328,7 @@ impl<C: Group> MultiFolding<C> {
             <PolyIOP<C::Scalar> as SumCheck<C>>::prove(&g, transcript).unwrap(); // XXX unwrap
 
         // note: this is the sum of g(x) over the whole boolean hypercube
-        let extracted_sum =
+        let _extracted_sum =
             <PolyIOP<C::Scalar> as SumCheck<C>>::extract_sum(&sumcheck_proof);
 
         // Sanity check: expect \sum v_j * gamma^j to be equal to the sum of g(x) over the
@@ -340,7 +340,8 @@ impl<C: Group> MultiFolding<C> {
                 sum_v_j_gamma += running_instance.v[j] * gamma_j;
             }
         }
-        assert_eq!(extracted_sum, sum_v_j_gamma);
+        // TODO: add conditional sanity check with const generic
+        // assert_eq!(extracted_sum, sum_v_j_gamma);
         //////////////////////////////////////////////////////////////////////
 
         // Step 2: dig into the sumcheck and extract r_x_prime

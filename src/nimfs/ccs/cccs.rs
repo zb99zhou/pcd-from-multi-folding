@@ -1,7 +1,6 @@
 use std::ops::{Add};
 use std::sync::Arc;
-use ff::{Field, PrimeField};
-use num_bigint::BigUint;
+use ff::Field;
 use serde::{Deserialize, Serialize};
 use crate::{CE, Commitment, CommitmentKey};
 use crate::errors::NovaError;
@@ -31,10 +30,9 @@ impl<C: Group> CCSWitness<C> {
     }
 
     pub fn default_for_pcd(ccs: &CCS<C>) -> Self {
-        let decimal = BigUint::parse_bytes("11ed6ed3d889c293e1430128822cb5cc2709564055661d744d1ed2a78c24aeaf".as_bytes(), 16).unwrap();
         Self {
             w: vec![C::Scalar::ZERO; ccs.n - ccs.l - 1],
-            r_w: C::Scalar::from_str_vartime(&decimal.to_string()).unwrap(),
+            r_w: C::Scalar::ZERO,
         }
     }
 
