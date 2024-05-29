@@ -89,12 +89,11 @@ impl<C: Group> SumCheckProver<C::Scalar> for IOPProverState<C> {
             self.challenges.push(*chal);
 
             let r = self.challenges[self.round - 1];
-            println!("r = {:?}",r);
             // #[cfg(feature = "parallel")]
             flattened_ml_extensions
                 .par_iter_mut()
                 .for_each(|mle| *mle = mle.fix_variables(&[r]));
-            println!("flattened_ml_extensions = {:?}",flattened_ml_extensions);
+            
             // #[cfg(not(feature = "parallel"))]
             // flattened_ml_extensions
             //     .iter_mut()
@@ -114,7 +113,7 @@ impl<C: Group> SumCheckProver<C::Scalar> for IOPProverState<C> {
         // f(r_1, ... r_m,, x_{m+1}... x_n)
 
         products_list.iter().for_each(|(coefficient, products)| {
-            let mut sum = (0..1 << (self.poly.aux_info.num_variables - self.round))
+            let mut sum = (0..1 << (self.poly.aux_info.num_variables - self.round)) 
                 .into_par_iter()
                 .fold(
                     || {
@@ -126,15 +125,20 @@ impl<C: Group> SumCheckProver<C::Scalar> for IOPProverState<C> {
                     |(mut buf, mut acc), b| {
                         buf.iter_mut()
                             .zip(products.iter())
-                            .for_each(|((eval, step), f)| {
+                            .for_each(|((left, right), f)| {
                                 let table = &flattened_ml_extensions[*f];
-                                *eval = table[b << 1];
-                                *step = table[(b << 1) + 1] - table[b << 1];
+                                *left = table[b];
+                                *right = table[b + (1 << (self.poly.aux_info.num_variables - self.round))];
                             });
-                        acc[0] += buf.iter().map(|(eval, _)| eval).product::<C::Scalar>();
-                        acc[1..].iter_mut().for_each(|acc| {
-                            buf.iter_mut().for_each(|(eval, step)| *eval += step as &_);
-                            *acc += buf.iter().map(|(eval, _)| eval).product::<C::Scalar>();
+                        // It follows that f(x_1,x_2,...,x_l) = (1-x_1) * f(0,x_2,...,x_l) + x_1 * f(1,x_2,...,x_l)
+                        // acc stores the evaluattions of a univariate polynomial at 0,1,2...
+                        acc[0] += buf.iter().map(|(left, _)| left).product::<C::Scalar>(); 
+                        acc[1..].iter_mut().enumerate().for_each(|(index, acc)| {
+                            let i = index + 1;
+                            *acc += buf.iter().map(|(left, right)| {
+                                let intermediate = *left + C::Scalar::from(i as u64) * (*right - *left);
+                                intermediate
+                            }).product::<C::Scalar>();
                         });
                         (buf, acc)
                     },
@@ -150,7 +154,7 @@ impl<C: Group> SumCheckProver<C::Scalar> for IOPProverState<C> {
                     },
                 );
             sum.iter_mut().for_each(|sum| *sum *= coefficient);
-            let extraploation = (0..self.poly.aux_info.max_degree - products.len())
+            let extraploation = (0..self.poly.aux_info.max_degree - products.len()) //0
                 .into_par_iter()
                 .map(|i| {
                     let (points, weights) = &self.extrapolation_aux[products.len() - 1];
@@ -170,7 +174,6 @@ impl<C: Group> SumCheckProver<C::Scalar> for IOPProverState<C> {
             .map(|x| Arc::new(x))
             .collect();
         
-        println!("polynomials_sent = {:?}",products_sum);
         Ok(IOPProverMessage {
             evaluations: products_sum,
         })

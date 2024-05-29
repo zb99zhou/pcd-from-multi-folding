@@ -174,8 +174,7 @@ impl<C: Group> SumCheck<C> for PolyIOP<C::Scalar> {
             let prover_msg = prover_state.prove_round_and_update_state(&challenge)?;
             transcript.absorb(b"prover msg", &prover_msg);
             prover_msgs.push(prover_msg);
-            // challenge = Some(transcript.squeeze(b"Internal round")?);
-            challenge = Some(C::Scalar::from(0));
+            challenge = Some(transcript.squeeze(b"Internal round")?);
         }
         // pushing the last challenge point to the state
         if let Some(p) = challenge {

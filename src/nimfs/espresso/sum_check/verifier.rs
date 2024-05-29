@@ -10,7 +10,7 @@ use ff::PrimeField;
 use crate::errors::NovaError;
 use super::{SumCheckSubClaim, SumCheckVerifier};
 use crate::nimfs::espresso::virtual_polynomial::VPAuxInfo;
-use crate::traits::Group;
+use crate::traits::{Group, TranscriptEngineTrait};
 
 use super::structs::{IOPProverMessage, IOPVerifierState};
 
@@ -43,7 +43,7 @@ impl<C: Group> SumCheckVerifier<C::Scalar> for IOPVerifierState<C> {
     fn verify_round_and_update_state(
         &mut self,
         prover_msg: &Self::ProverMessage,
-        _transcript: &mut Self::Transcript,
+        transcript: &mut Self::Transcript,
     ) -> Result<Self::Challenge, NovaError> {
         if self.finished {
             return Err(NovaError::InvalidSumCheckVerifier(
@@ -59,8 +59,7 @@ impl<C: Group> SumCheckVerifier<C::Scalar> for IOPVerifierState<C> {
         // When we turn the protocol to a non-interactive one, it is sufficient to defer
         // such checks to `check_and_generate_subclaim` after the last round.
 
-        // let challenge = transcript.squeeze(b"Internal round")?;
-        let challenge = C::Scalar::from(0);
+        let challenge = transcript.squeeze(b"Internal round")?;
         self.challenges.push(challenge);
         self.polynomials_received
             .push(prover_msg.evaluations.to_vec());
@@ -134,14 +133,12 @@ impl<C: Group> SumCheckVerifier<C::Scalar> for IOPVerifierState<C> {
                         self.max_degree + 1
                     )));
                 }
-                interpolate_uni_poly::<C::Scalar>(&evaluations, challenge) // 
+                interpolate_uni_poly::<C::Scalar>(&evaluations, challenge) 
             })
             .collect::<Result<Vec<_>, NovaError>>()?;
 
         // insert the asserted_sum to the first position of the expected vector
-        println!("expected_vec = {:?}",expected_vec);
         expected_vec.insert(0, *asserted_sum);
-        println!("expected_vec = {:?}",expected_vec);
         let mut i = 1;
         for (evaluations, &expected) in self
             .polynomials_received
@@ -151,8 +148,6 @@ impl<C: Group> SumCheckVerifier<C::Scalar> for IOPVerifierState<C> {
         {
             // the deferred check during the interactive phase:
             // 1. check if the received 'P(0) + P(1) = expected`.
-            println!("the {:?}-th check",i);
-            assert_eq!(evaluations[0] + evaluations[1], expected);
             if evaluations[0] + evaluations[1] != expected { 
                 return Err(NovaError::InvalidSumCheckProof(
                     "Prover message is not consistent with the claim.".to_string(),

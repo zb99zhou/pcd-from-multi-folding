@@ -286,7 +286,6 @@ impl<C: Group> MultiFolding<C> {
         assert!(!new_instances.is_empty());
 
         // construct the LCCCS z vector from the relaxation factor, public IO and witness
-        // XXX this deserves its own function in LCCCS
         let mut z_lcccs = Vec::new();
         for (i, running_instance) in running_instances.iter().enumerate() {
             let z_1: Vec<C::Scalar> = [
@@ -310,8 +309,7 @@ impl<C: Group> MultiFolding<C> {
         }
 
         // Step 1: Get some challenges
-        // let gamma = transcript.squeeze(b"gamma").unwrap();
-        let gamma = C::Scalar::from(0);
+        let gamma = transcript.squeeze(b"gamma").unwrap();
         let beta = transcript
             .batch_squeeze(b"beta", running_instances[0].ccs.s).unwrap();
 
@@ -324,7 +322,7 @@ impl<C: Group> MultiFolding<C> {
             gamma,
             &beta,
         );
-        println!("g = {:?}",g);
+
         // Step 3: Run the sumcheck prover
         let sumcheck_proof =
             <PolyIOP<C::Scalar> as SumCheck<C>>::prove(&g, transcript).unwrap(); // XXX unwrap
@@ -342,7 +340,6 @@ impl<C: Group> MultiFolding<C> {
                 sum_v_j_gamma += running_instance.v[j] * gamma_j;
             }
         }
-        println!("sum_v_j_gamma_prove = {:?}",sum_v_j_gamma);
         assert_eq!(extracted_sum, sum_v_j_gamma);
         //////////////////////////////////////////////////////////////////////
 
@@ -401,8 +398,7 @@ impl<C: Group> MultiFolding<C> {
         assert!(!new_instances.is_empty());
 
         // Step 1: Get some challenges
-        // let gamma = transcript.squeeze(b"gamma").unwrap();
-        let gamma = C::Scalar::from(0);
+        let gamma = transcript.squeeze(b"gamma").unwrap();
         let beta = transcript
             .batch_squeeze(b"beta", running_instances[0].ccs.s)
             .unwrap();
@@ -422,7 +418,6 @@ impl<C: Group> MultiFolding<C> {
                 sum_v_j_gamma += running_instance.v[j] * gamma_j;
             }
         }
-        println!("sum_v_j_gamma_verify = {:?}",sum_v_j_gamma);
         // Verify the interactive part of the sumcheck
         let sumcheck_subclaim = <PolyIOP<C::Scalar> as SumCheck<C>>::verify(
             sum_v_j_gamma,
@@ -732,11 +727,9 @@ pub mod test {
 
         let n: usize = 10;
         for i in 3..n {
-            println!("\niteration: i {}", i); // DBG
 
             // CCS witness
             let z_2 = get_test_z(i);
-            println!("z_2 {:?}", z_2); // DBG
 
             let (new_instance, w2) = ccs.to_cccs(rng, &ck, &z_2);
             let _ = new_instance.check_relation(&ck,&w2);
@@ -761,16 +754,13 @@ pub mod test {
             assert_eq!(folded_lcccs, folded_lcccs_v);
 
             // check that the folded instance with the folded witness holds the LCCCS relation
-            println!("check_relation {}", i);
             if i.is_odd(){
-                println!("check_relation1 {}", i);
                 folded_lcccs
                     .check_relation(&ck, &folded_witness)
                     .unwrap()
             } else {
 
             };
-            println!("check_relation_again {}", i);
             running_instance = folded_lcccs;
             w1 = folded_witness;
             let _ = running_instance.check_relation(&ck,&w1);

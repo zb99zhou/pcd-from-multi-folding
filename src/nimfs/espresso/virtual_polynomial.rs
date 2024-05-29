@@ -49,10 +49,13 @@ use crate::traits::{Group, PrimeFieldExt};
 pub struct VirtualPolynomial<F: PrimeField> {
     /// Aux information about the multilinear polynomial
     pub aux_info: VPAuxInfo<F>,
-    /// list of reference to products (as usize) of multilinear extension
+    /// List of reference to products (as usize) of multilinear polynomials
+    /// The first scalar stores the coefficient of certain product of multilinear polynomials
+    /// The following vector stores the index of multilinear polynomials to be multiplied in flattened_ml_extensions
+    /// Sum them up will obtain the complete virtual polynomial.
     pub products: Vec<(F, Vec<usize>)>,
-    /// Stores multilinear extensions in which product multiplicand can refer
-    /// to.
+    /// A virtual polynomial could consist of several multilinear polynomials
+    /// Stores every multilinear polynomial
     pub flattened_ml_extensions: Vec<Arc<MultiLinearPolynomial<F>>>,
     /// Pointers to the above poly extensions
     raw_pointers_lookup_table: HashMap<*const MultiLinearPolynomial<F>, usize>,
