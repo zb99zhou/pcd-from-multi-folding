@@ -70,7 +70,7 @@ mod test {
   use crate::provider::bn256_grumpkin::bn256;
 
   #[test]
-  fn test_hadamard() -> () {
+  fn test_hadamard() {
     let A = vec![
       bn256::Scalar::from(1u64),
       bn256::Scalar::from(2u64),
@@ -104,7 +104,7 @@ mod test {
   }
 
   #[test]
-  fn test_mat_vec_mul() -> () {
+  fn test_mat_vec_mul() {
     let A = vec![
       vec![
         bn256::Scalar::from(2u64),

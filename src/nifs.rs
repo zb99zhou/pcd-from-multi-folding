@@ -75,6 +75,7 @@ impl<G: Group> NIFS<G> {
     ))
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub fn prove_with_multi_relaxed(
     ck: &CommitmentKey<G>,
     ro_consts: &ROConstants<G>,

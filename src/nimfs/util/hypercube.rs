@@ -54,7 +54,7 @@ mod test {
   use halo2curves::bn256::Fr;
 
   #[test]
-  fn test_hypercube() -> () {
+  fn test_hypercube() {
     for (i, point) in BooleanHypercube::<Fr>::new(3).enumerate() {
       println!("#{}: {:?}", i, point);
       // TODO: this is not a test...

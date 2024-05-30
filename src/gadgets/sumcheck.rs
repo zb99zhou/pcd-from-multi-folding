@@ -247,7 +247,7 @@ pub fn sumcheck_verify<CS: ConstraintSystem<<G as Group>::Base>, G: Group>(
   }
 
   verifier_state
-    .check_and_generate_subclaim(cs.namespace(|| "check_and_generate_subclaim"), &claimed_sum)
+    .check_and_generate_subclaim(cs.namespace(|| "check_and_generate_subclaim"), claimed_sum)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -282,7 +282,7 @@ where
       let gamma_j = gamma.pow_constant(cs.namespace(|| "gamma_j"), i * ccs_params.t + j)?;
       let acc = gamma_j
         .mul(cs.namespace(|| "gamma_j * e_lcccs[i]"), &e_lcccs[i])?
-        .mul(cs.namespace(|| "gamma_j * e_lcccs[i] * sigma_j"), &sigma_j)?;
+        .mul(cs.namespace(|| "gamma_j * e_lcccs[i] * sigma_j"), sigma_j)?;
       c_lc = c_lc.add(&Num::from(acc));
     }
   }

@@ -32,18 +32,19 @@ fn pad_matrix<F: PrimeField>(matrix: &Matrix<F>) -> Matrix<F> {
 pub fn matrix_to_mle<F: PrimeField>(matrix: &SparseMatrix<F>) -> MultiLinearPolynomial<F> {
   let n_vars = matrix.cols.log_2() + matrix.rows.log_2(); // n_vars = s + s'
 
+  // TODO(optimize): init with flatten M
   let mut M_evals =
     vec![vec![F::default(); matrix.cols.next_power_of_two()]; matrix.rows.next_power_of_two()];
   matrix
     .iter()
     .for_each(|(row, col, val)| M_evals[row][col] = val);
 
-  vec_to_mle(n_vars, &M_evals.into_iter().flatten().collect())
+  vec_to_mle(n_vars, &M_evals.into_iter().flatten().collect::<Vec<_>>())
 }
 
-pub fn vec_to_mle<F: PrimeField>(n_vars: usize, v: &Vec<F>) -> MultiLinearPolynomial<F> {
+pub fn vec_to_mle<F: PrimeField>(n_vars: usize, v: &[F]) -> MultiLinearPolynomial<F> {
   // Pad to 2^n_vars
-  let mut v_padded = v.clone();
+  let mut v_padded = v.to_vec();
   v_padded.resize(1 << n_vars, F::default());
   MultiLinearPolynomial {
     Z: v_padded,

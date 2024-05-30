@@ -175,7 +175,7 @@ impl<C: Group> SumCheckProver<C::Scalar> for IOPProverState<C> {
     // update prover's state to the partial evaluated polynomial
     self.poly.flattened_ml_extensions = flattened_ml_extensions
       .into_par_iter()
-      .map(|x| Arc::new(x))
+      .map(Arc::new)
       .collect();
 
     Ok(IOPProverMessage {
@@ -192,9 +192,10 @@ fn barycentric_weights<F: PrimeField>(points: &[F]) -> Vec<F> {
       points
         .iter()
         .enumerate()
-        .filter_map(|(i, point_i)| (i != j).then(|| *point_j - point_i))
+        .filter(|&(i, _point_i)| (i != j))
+        .map(|(_i, point_i)| *point_j - point_i)
         .reduce(|acc, value| acc * value)
-        .unwrap_or_else(|| F::ONE)
+        .unwrap_or(F::ONE)
     })
     .collect::<Vec<_>>();
   batch_inversion(&mut weights);

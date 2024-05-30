@@ -105,7 +105,7 @@ impl<C: Group> TranscriptReprTrait<C> for LCCCS<C> {
 
 impl<C: Group> LCCCS<C> {
   /// Compute all L_j(x) polynomials
-  pub fn compute_Ls(&self, z: &Vec<C::Scalar>) -> Vec<VirtualPolynomial<C::Scalar>> {
+  pub fn compute_Ls(&self, z: &[C::Scalar]) -> Vec<VirtualPolynomial<C::Scalar>> {
     let mut vec_L_j_x = Vec::with_capacity(self.ccs.t);
     for M_j in self.ccs.M.iter() {
       let Mz = M_j.multiply_vec(z);
@@ -167,7 +167,7 @@ pub mod test {
 
   #[test]
   /// Test linearized CCCS v_j against the L_j(x)
-  fn test_lcccs_v_j() -> () {
+  fn test_lcccs_v_j() {
     let ccs = get_test_ccs::<bn256::Point>();
     let z = get_test_z(3);
     ccs.check_relation(&z.clone()).unwrap();
@@ -182,7 +182,6 @@ pub mod test {
 
     for (v_i, L_j_x) in lcccs.v.into_iter().zip(vec_L_j_x) {
       let sum_L_j_x = BooleanHypercube::new(ccs.s)
-        .into_iter()
         .map(|y| L_j_x.evaluate(&y).unwrap())
         .fold(bn256::Scalar::zero(), |acc, result| acc + result);
       assert_eq!(v_i, sum_L_j_x);
@@ -191,7 +190,7 @@ pub mod test {
 
   /// Given a bad z, check that the v_j should not match with the L_j(x)
   #[test]
-  fn test_bad_v_j() -> () {
+  fn test_bad_v_j() {
     let ccs = get_test_ccs::<bn256::Point>();
     let z = get_test_z(3);
     ccs.check_relation(&z.clone()).unwrap();
@@ -216,7 +215,6 @@ pub mod test {
     let mut satisfied = true;
     for (v_i, L_j_x) in lcccs.v.into_iter().zip(vec_L_j_x) {
       let sum_L_j_x = BooleanHypercube::new(ccs.s)
-        .into_iter()
         .map(|y| L_j_x.evaluate(&y).unwrap())
         .fold(bn256::Scalar::zero(), |acc, result| acc + result);
       if v_i != sum_L_j_x {
@@ -224,6 +222,6 @@ pub mod test {
       }
     }
 
-    assert_eq!(satisfied, false);
+    assert!(!satisfied);
   }
 }

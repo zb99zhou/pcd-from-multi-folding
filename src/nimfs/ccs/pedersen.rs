@@ -57,7 +57,7 @@ impl<C: Group> Pedersen<C> {
     params: &Params<C>,
     transcript: &mut C::TE,
     cm: &Commitment<C>,
-    v: &Vec<C::Scalar>,
+    v: &[C::Scalar],
     r: &C::Scalar,
   ) -> Proof<C> {
     let r1 = transcript.squeeze(b"r1").unwrap();

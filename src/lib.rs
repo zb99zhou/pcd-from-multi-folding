@@ -4,6 +4,7 @@
 #![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]
 #![forbid(unsafe_code)]
+#![allow(clippy::upper_case_acronyms)]
 
 // private modules
 mod bellpepper;
@@ -830,6 +831,7 @@ mod tests {
   use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use core::marker::PhantomData;
   use ff::PrimeField;
+  use std::fmt::Write;
   use traits::circuit::TrivialTestCircuit;
 
   #[derive(Clone, Debug, Default)]
@@ -895,13 +897,13 @@ mod tests {
   {
     let pp = PublicParams::<G1, G2, T1, T2>::setup(circuit1, circuit2);
 
-    let digest_str = pp
-      .digest
-      .to_repr()
-      .as_ref()
-      .iter()
-      .map(|b| format!("{b:02x}"))
-      .collect::<String>();
+    let digest_str = pp.digest.to_repr().as_ref().iter().fold(
+      String::with_capacity((G1::Scalar::CAPACITY * 2) as usize),
+      |mut string, byte| {
+        write!(&mut string, "{:02x}", byte).unwrap();
+        string
+      },
+    );
     assert_eq!(digest_str, expected);
   }
 

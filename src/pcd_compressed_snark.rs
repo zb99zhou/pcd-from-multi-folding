@@ -131,7 +131,7 @@ where
       r_W_secondary,
       r_U_secondary,
       zi_primary,
-      _p_c: PhantomData::<SC>::default(),
+      _p_c: PhantomData::<SC>,
     }
   }
 }
@@ -236,10 +236,10 @@ where
     // fold the primary circuit's instance
     let res_primary = MultiFolding::prove(
       &mut transcript_p,
-      &vec![recursive_snark.r_U_primary.clone()],
-      &vec![recursive_snark.r_u_primary.clone()],
-      &vec![recursive_snark.r_W_primary.clone()],
-      &vec![recursive_snark.r_w_primary.clone()],
+      &[recursive_snark.r_U_primary.clone()],
+      &[recursive_snark.r_u_primary.clone()],
+      &[recursive_snark.r_W_primary.clone()],
+      &[recursive_snark.r_w_primary.clone()],
     );
     let (nimfs_proof, f_U_primary, f_W_primary) = res_primary;
     let (f_W_snark_primary, r_W_snark_secondary) = (

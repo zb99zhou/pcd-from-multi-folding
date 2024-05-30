@@ -42,6 +42,7 @@ where
   G1: Group<Base = <G2 as Group>::Scalar>,
   G2: Group<Base = <G1 as Group>::Scalar>,
 {
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     lcccs: Vec<LCCCS<G1>>,
     cccs: Vec<CCCS<G1>>,
@@ -120,12 +121,12 @@ where
 
     println!("=================================================test aux circuit satisfiability=================================================");
     let mut test_cs = TestConstraintSystem::new();
-    let _ = aux_circuit.clone().synthesize(&mut test_cs)?;
+    aux_circuit.clone().synthesize(&mut test_cs)?;
     assert!(test_cs.is_satisfied());
 
     println!("=================================================proving aux circuit=================================================");
     let mut cs_secondary = SatisfyingAssignment::<G2>::new();
-    let _ = aux_circuit.synthesize(&mut cs_secondary)?;
+    aux_circuit.synthesize(&mut cs_secondary)?;
     let (aux_r1cs_instance, aux_r1cs_witness) = cs_secondary
       .r1cs_instance_and_witness(&pp.secondary_circuit_params.r1cs_shape, &pp.ck_secondary)?;
     pp.secondary_circuit_params.r1cs_shape.is_sat(
@@ -246,6 +247,7 @@ where
     ))
   }
 
+  #[allow(clippy::too_many_arguments)]
   pub fn verify<SC: PCDStepCircuit<<G2 as Group>::Base, ARITY, R>>(
     &self,
     pp: &PCDPublicParams<G1, G2, SC, ARITY, R>,

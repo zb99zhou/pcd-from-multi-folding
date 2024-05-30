@@ -14,7 +14,7 @@ use crate::spartan::polys::multilinear::MultiLinearPolynomial;
 /// for all j values in 0..self.t
 pub fn compute_all_sum_Mz_evals<F: PrimeField>(
   vec_M: &[SparseMatrix<F>],
-  z: &Vec<F>,
+  z: &[F],
   r: &[F],
   s_prime: usize,
 ) -> Vec<F> {
@@ -70,14 +70,14 @@ pub mod test {
   use crate::spartan::math::Math;
 
   #[test]
-  fn test_compute_sum_Mz_over_boolean_hypercube() -> () {
+  fn test_compute_sum_Mz_over_boolean_hypercube() {
     let ccs = get_test_ccs::<bn256::Point>();
     let z = get_test_z(3);
     ccs.check_relation(&z).unwrap();
 
     // check that evaluating over all the values x over the boolean hypercube, the result of
     // the next for loop is equal to 0
-    for x in BooleanHypercube::new(ccs.s).into_iter() {
+    for x in BooleanHypercube::new(ccs.s) {
       let mut r = bn256::Scalar::zero();
       for i in 0..ccs.q {
         let mut Sj_prod = bn256::Scalar::one();
@@ -114,7 +114,7 @@ pub mod test {
   /// of the matrix and the z vector. This technique is also used extensively in "An Algebraic Framework for
   /// Universal and Updatable SNARKs".
   #[test]
-  fn test_compute_M_r_y_compression() -> () {
+  fn test_compute_M_r_y_compression() {
     // s = 2, s' = 3
     let ccs = get_test_ccs::<bn256::Point>();
 
@@ -137,7 +137,6 @@ pub mod test {
       // and perform the random lincomb between the elements of the column and eq_i(r)
       let rlc = BooleanHypercube::new(ccs.s)
         .enumerate()
-        .into_iter()
         .map(|(i, x)| {
           column_j
             .iter()

@@ -280,7 +280,7 @@ where
       self
         .inputs
         .as_ref()
-        .and_then(|inputs| inputs.r1cs_instance.as_ref().and_then(|u| Some(u))),
+        .and_then(|inputs| inputs.r1cs_instance.as_ref()),
       self.secondary_params.io_num,
     )?;
 
@@ -289,7 +289,7 @@ where
       self
         .inputs
         .as_ref()
-        .and_then(|inputs| inputs.new_lcccs_C.as_ref().and_then(|U| Some(*U))),
+        .and_then(|inputs| inputs.new_lcccs_C.as_ref().map(|U| *U)),
       self.params.limb_width,
       self.params.n_limbs,
     )?;
@@ -430,7 +430,7 @@ where
     // instance along with a boolean indicating if all checks have passed
     let (new_lcccs_primary_part, check_non_base_pass) = self.synthesize_based_nimfs(
       cs.namespace(|| "generate non base case based nimfs"),
-      &self.params,
+      self.params,
       &lcccs
         .into_iter()
         .map(|l| l.primary_part)
@@ -459,12 +459,12 @@ where
     let new_lcccs = lcccs_base.conditionally_select(
       cs.namespace(|| "compute lcccs_new"),
       &new_lcccs,
-      &Boolean::from(is_base_case.clone()),
+      &is_base_case.clone(),
     )?;
     let new_relaxed_r1cs_inst = relaxed_r1cs_inst_base.conditionally_select(
       cs.namespace(|| "compute U_new"),
       &new_relaxed_r1cs_inst,
-      &Boolean::from(is_base_case.clone()),
+      &is_base_case.clone(),
     )?;
 
     // select correct z
@@ -476,7 +476,7 @@ where
           cs.namespace(|| format!("select {i}th input to F")),
           &z_0,
           &z,
-          &Boolean::from(is_base_case.clone()),
+          &is_base_case.clone(),
         )
       })
       .collect::<Result<Vec<Vec<_>>, SynthesisError>>()?;
@@ -610,8 +610,8 @@ where
     // Run NIMFS Verifier part 1
     let mut new_lcccs = multi_folding_with_primary_part(
       cs.namespace(|| "compute fold of U and u"),
-      &lcccs,
-      &cccs,
+      lcccs,
+      cccs,
       rho,
       &proof.sigmas,
       &proof.thetas,
@@ -702,6 +702,7 @@ where
   }
 
   /// check the correctness of the all cccs's X(public input)
+  #[allow(clippy::too_many_arguments)]
   pub fn check_public_input<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,
@@ -718,7 +719,7 @@ where
       let public_hash = self.commit_explicit_public_input(
         cs.namespace(|| "commit public input"),
         params,
-        &z_0,
+        z_0,
         &new_z[i],
         &lcccs[i],
         &relaxed_r1cs_inst[i],

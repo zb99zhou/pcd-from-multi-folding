@@ -139,7 +139,6 @@ impl<C: Group> SumCheckVerifier<C::Scalar> for IOPVerifierState<C> {
 
     // insert the asserted_sum to the first position of the expected vector
     expected_vec.insert(0, *asserted_sum);
-    let mut i = 1;
     for (evaluations, &expected) in self
       .polynomials_received
       .iter()
@@ -153,7 +152,6 @@ impl<C: Group> SumCheckVerifier<C::Scalar> for IOPVerifierState<C> {
           "Prover message is not consistent with the claim.".to_string(),
         ));
       }
-      i = i + 1;
     }
     Ok(SumCheckSubClaim {
       point: self.challenges.clone(),

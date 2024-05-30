@@ -67,7 +67,7 @@ impl<G: Group> AllocatedLCCCS<G> {
     )?;
     let C = AllocatedSimulatedPoint::alloc(
       cs.namespace(|| "alloc C"),
-      inst.as_ref().map(|c| c.C.clone()),
+      inst.as_ref().map(|c| c.C),
       limb_width,
       n_limbs,
     )?;
@@ -145,7 +145,7 @@ impl<G: Group> AllocatedCCCS<G> {
       .collect::<Result<Vec<_>, SynthesisError>>()?;
     let C = AllocatedSimulatedPoint::alloc(
       cs.namespace(|| "alloc C"),
-      cccs.as_ref().map(|c| c.C.clone()),
+      cccs.as_ref().map(|c| c.C),
       limb_width,
       n_limbs,
     )?;
@@ -176,7 +176,7 @@ impl<G: Group> AllocatedCCCSPrimaryPart<G> {
     mut cs: CS,
     zero: &AllocatedNum<G::Base>,
   ) -> Result<Boolean, SynthesisError> {
-    alloc_vec_number_equals_zero(cs.namespace(|| "is Xs zero"), &self.Xs, &zero).map(Into::into)
+    alloc_vec_number_equals_zero(cs.namespace(|| "is Xs zero"), &self.Xs, zero).map(Into::into)
   }
 
   /// Takes the CCCS instance and creates a new allocated CCCS instance
@@ -267,7 +267,7 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
     let Xs_num = alloc_vec_number_equals_zero(cs.namespace(|| "is Xs zero"), &self.Xs, zero)?;
     let is_Vs_zero = alloc_vec_number_equals_zero(cs.namespace(|| "is Vs zero"), &self.Vs, zero)?;
     let is_r_x_zero =
-      alloc_vec_number_equals_zero(cs.namespace(|| "is r_x zero"), &self.r_x, &zero)?.into();
+      alloc_vec_number_equals_zero(cs.namespace(|| "is r_x zero"), &self.r_x, zero)?;
 
     multi_and(
       cs.namespace(|| "final result"),
@@ -419,7 +419,7 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
       rho_i,
       &lcccs.u,
       &lcccs.Xs,
-      &sigmas,
+      sigmas,
     )
   }
 
@@ -437,7 +437,7 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
       rho_i,
       &one,
       &cccs.Xs,
-      &thetas,
+      thetas,
     )
   }
 
@@ -466,7 +466,7 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
     for (i, (X_folded, X)) in self.Xs.iter().zip(x.iter()).enumerate() {
       let mut cs = cs.namespace(|| format!("folding {}th x", i));
       // Fold lcccs.X + r * lccc.X
-      let r_0 = X.mul(cs.namespace(|| "r * X"), &rho_i)?;
+      let r_0 = X.mul(cs.namespace(|| "r * X"), rho_i)?;
       let r_new_0 = X_folded.add(cs.namespace(|| "X_folded + r * X"), &r_0)?;
       Xs_folded.push(r_new_0);
     }
@@ -475,7 +475,7 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
     for (i, (v_folded, v)) in self.Vs.iter().zip(v.iter()).enumerate() {
       let mut cs = cs.namespace(|| format!("folding {}th v", i));
       // Fold lcccs.v + r * lccc.v
-      let r_0 = v.mul(cs.namespace(|| "r * v"), &rho_i)?;
+      let r_0 = v.mul(cs.namespace(|| "r * v"), rho_i)?;
       let r_new_0 = v_folded.add(cs.namespace(|| "v_folded + r * v"), &r_0)?;
       vs_folded.push(r_new_0);
     }

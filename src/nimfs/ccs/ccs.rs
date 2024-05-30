@@ -163,7 +163,7 @@ impl<G: Group> CCS<G> {
       .M
       .iter()
       .map(|M| {
-        let Mz = M.multiply_vec(&z);
+        let Mz = M.multiply_vec(z);
         vec_to_mle(Mz.len().log_2(), &Mz).evaluate(r)
       })
       .collect()
@@ -304,7 +304,7 @@ impl<G: Group> CCS<G> {
     if self.n - self.l - 1 == mx {
       let mut M_padded = self.M.clone();
       for elem in M_padded.iter_mut() {
-        (*elem).rows = mx;
+        elem.rows = mx;
       }
       return CCS {
         m: mx,
@@ -326,9 +326,9 @@ impl<G: Group> CCS<G> {
     let n_padded = mx + self.l + 1;
     let mut M_padded = self.M.clone();
     for elem in M_padded.iter_mut() {
-      (*elem).rows = m_padded;
-      (*elem).cols = n_padded;
-      for col_index in (*elem).indices.iter_mut() {
+      elem.rows = m_padded;
+      elem.cols = n_padded;
+      for col_index in elem.indices.iter_mut() {
         if *col_index >= self.n - self.l - 1 {
           *(col_index) = *(col_index) + mx - (self.n - self.l - 1);
         }
@@ -397,7 +397,7 @@ pub mod test {
 
   /// Test that a basic CCS relation can be satisfied
   #[test]
-  fn test_ccs_relation() -> () {
+  fn test_ccs_relation() {
     use crate::provider::bn256_grumpkin::bn256;
     let ccs = get_test_ccs::<bn256::Point>();
     let z = get_test_z(3);

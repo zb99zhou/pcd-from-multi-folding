@@ -224,7 +224,7 @@ pub fn alloc_vec_number_equals_zero<F: PrimeField, CS: ConstraintSystem<F>>(
   let mut is_zero = Boolean::constant(true);
   for (i, r) in vec_nums.iter().enumerate() {
     let mut cs = cs.namespace(|| format!("{}th num", i));
-    let is_zero_temp = alloc_num_equals(cs.namespace(|| "alloc is_null"), &r, zero)?;
+    let is_zero_temp = alloc_num_equals(cs.namespace(|| "alloc is_null"), r, zero)?;
     is_zero = Boolean::and(
       cs.namespace(|| "update is_null"),
       &is_zero,
@@ -293,8 +293,8 @@ pub fn vec_conditionally_select_big_nat<F: PrimeField, CS: ConstraintSystem<F>>(
     .map(|(i, (X, other_X))| {
       conditionally_select_bignat(
         cs.namespace(|| format!("X[{i}] = cond ? self.X[{i}] : other.X[{i}]")),
-        &X,
-        &other_X,
+        X,
+        other_X,
         condition,
       )
     })
@@ -534,11 +534,11 @@ pub fn multi_and<F: PrimeField, CS: ConstraintSystem<F>>(
   }
 
   let and_num = F::from(x.len() as u64);
-  Ok(lc.equal(
+  lc.equal(
     cs.namespace(|| "asserts whether boolean sum is equal to the Vector constant size"),
     &Num::new(
       Some(and_num),
       LinearCombination::from_coeff(CS::one(), and_num),
     ),
-  )?)
+  )
 }

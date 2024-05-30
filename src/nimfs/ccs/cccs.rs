@@ -51,7 +51,7 @@ impl<C: Group> CCSWitness<C> {
       w
     };
 
-    let r_w = self.r_w.clone();
+    let r_w = self.r_w;
 
     Self { w, r_w }
   }
@@ -113,7 +113,7 @@ impl<C: Group> CCCS<C> {
 
   /// Computes q(x) = \sum^q c_i * \prod_{j \in S_i} ( \sum_{y \in {0,1}^s'} M_j(x, y) * z(y) )
   /// polynomial over x
-  pub fn compute_q(&self, z: &Vec<C::Scalar>) -> VirtualPolynomial<C::Scalar> {
+  pub fn compute_q(&self, z: &[C::Scalar]) -> VirtualPolynomial<C::Scalar> {
     let mut q = VirtualPolynomial::<C::Scalar>::new(self.ccs.s);
 
     for i in 0..self.ccs.q {
@@ -145,7 +145,7 @@ impl<C: Group> CCCS<C> {
   /// Computes Q(x) = eq(beta, x) * q(x)
   ///               = eq(beta, x) * \sum^q c_i * \prod_{j \in S_i} ( \sum_{y \in {0,1}^s'} M_j(x, y) * z(y) )
   /// polynomial over x
-  pub fn compute_Q(&self, z: &Vec<C::Scalar>, beta: &[C::Scalar]) -> VirtualPolynomial<C::Scalar> {
+  pub fn compute_Q(&self, z: &[C::Scalar], beta: &[C::Scalar]) -> VirtualPolynomial<C::Scalar> {
     let q = self.compute_q(z);
     q.build_f_hat(beta).unwrap()
   }
@@ -154,7 +154,7 @@ impl<C: Group> CCCS<C> {
   pub fn check_relation(&self, ck: &CommitmentKey<C>, w: &CCSWitness<C>) -> Result<(), CCSError> {
     // check that C is the commitment of w. Notice that this is not verifying a Pedersen
     // opening, but checking that the Commmitment comes from committing to the witness.
-    if self.C != C::CE::commit(&ck, &w.w) {
+    if self.C != C::CE::commit(ck, &w.w) {
       return Err(CCSError::WitnessNotMatched);
     }
 
@@ -199,7 +199,7 @@ pub mod test {
   /// Do some sanity checks on q(x). It's a multivariable polynomial and it should evaluate to zero inside the
   /// hypercube, but to not-zero outside the hypercube.
   #[test]
-  fn test_compute_q() -> () {
+  fn test_compute_q() {
     let ccs = get_test_ccs::<bn256::Point>();
     let z = get_test_z(3);
 
@@ -208,7 +208,7 @@ pub mod test {
     let q = cccs.compute_q(&z);
 
     // Evaluate inside the hypercube
-    for x in BooleanHypercube::new(ccs.s).into_iter() {
+    for x in BooleanHypercube::new(ccs.s) {
       assert_eq!(bn256::Scalar::zero(), q.evaluate(&x).unwrap());
     }
 
@@ -219,7 +219,7 @@ pub mod test {
 
   /// Perform some sanity checks on Q(x).
   #[test]
-  fn test_compute_Q() -> () {
+  fn test_compute_Q() {
     let ccs = get_test_ccs::<bn256::Point>();
     let z = get_test_z(3);
     ccs.check_relation(&z).unwrap();
@@ -245,7 +245,6 @@ pub mod test {
 
     // Now sum Q(x) evaluations in the hypercube and expect it to be 0
     let r = BooleanHypercube::new(ccs.s)
-      .into_iter()
       .map(|x| Q.evaluate(&x).unwrap())
       .fold(bn256::Scalar::zero(), |acc, result| acc + result);
     assert_eq!(r, bn256::Scalar::zero());
@@ -255,7 +254,7 @@ pub mod test {
   /// Summing Q(x) over the hypercube is equivalent to evaluating G(x) at some point.
   /// This test makes sure that G(x) agrees with q(x) inside the hypercube, but not outside
   #[test]
-  fn test_Q_against_q() -> () {
+  fn test_Q_against_q() {
     let ccs = get_test_ccs::<bn256::Point>();
     let z = get_test_z(3);
     ccs.check_relation(&z).unwrap();
@@ -271,7 +270,6 @@ pub mod test {
 
       // Get G(d) by summing over Q_d(x) over the hypercube
       let G_at_d = BooleanHypercube::new(ccs.s)
-        .into_iter()
         .map(|x| Q_at_d.evaluate(&x).unwrap())
         .fold(bn256::Scalar::zero(), |acc, result| acc + result);
       assert_eq!(G_at_d, q.evaluate(&d).unwrap());
@@ -285,7 +283,6 @@ pub mod test {
 
     // Get G(d) by summing over Q_d(x) over the hypercube
     let G_at_r = BooleanHypercube::new(ccs.s)
-      .into_iter()
       .map(|x| Q_at_r.evaluate(&x).unwrap())
       .fold(bn256::Scalar::zero(), |acc, result| acc + result);
     assert_ne!(G_at_r, q.evaluate(&r).unwrap());

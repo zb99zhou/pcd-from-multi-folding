@@ -204,7 +204,7 @@ impl<G: Group> TranscriptReprTrait<G> for pallas::Base {
 
   fn to_transcript_scalars(&self) -> Vec<G::Scalar> {
     vec![G::Scalar::from_uniform(
-      &<Self as TranscriptReprTrait<G>>::to_transcript_bytes(&self),
+      &<Self as TranscriptReprTrait<G>>::to_transcript_bytes(self),
     )]
   }
 }
@@ -216,7 +216,7 @@ impl<G: Group> TranscriptReprTrait<G> for pallas::Scalar {
 
   fn to_transcript_scalars(&self) -> Vec<G::Scalar> {
     vec![G::Scalar::from_uniform(
-      &<Self as TranscriptReprTrait<G>>::to_transcript_bytes(&self),
+      &<Self as TranscriptReprTrait<G>>::to_transcript_bytes(self),
     )]
   }
 }

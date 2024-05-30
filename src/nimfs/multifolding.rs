@@ -77,13 +77,13 @@ impl<C: Group> MultiFolding<C> {
     let mut sigmas: Vec<Vec<C::Scalar>> = Vec::new();
     for z_lcccs_i in z_lcccs {
       // sigmas
-      let sigma_i = ccs.compute_v_j(&z_lcccs_i, r_x_prime);
+      let sigma_i = ccs.compute_v_j(z_lcccs_i, r_x_prime);
       sigmas.push(sigma_i);
     }
     let mut thetas: Vec<Vec<C::Scalar>> = Vec::new();
     for z_cccs_i in z_cccs {
       // thetas
-      let theta_i = ccs.compute_v_j(&z_cccs_i, r_x_prime);
+      let theta_i = ccs.compute_v_j(z_cccs_i, r_x_prime);
       thetas.push(theta_i);
     }
     (sigmas, thetas)
@@ -481,7 +481,7 @@ pub mod test {
   type NIMFS = MultiFolding<Point>;
 
   #[test]
-  fn test_compute_sigmas_and_thetas() -> () {
+  fn test_compute_sigmas_and_thetas() {
     let rng = OsRng;
 
     let ccs = get_test_ccs();
@@ -501,16 +501,16 @@ pub mod test {
 
     let (sigmas, thetas) = NIMFS::compute_sigmas_and_thetas(
       &lcccs_instance.ccs,
-      &vec![z1.clone()],
-      &vec![z2.clone()],
+      &[z1.clone()],
+      &[z2.clone()],
       &r_x_prime,
     );
 
     let g = NIMFS::compute_g(
       &vec![lcccs_instance.clone()],
       &vec![cccs_instance.clone()],
-      &vec![z1.clone()],
-      &vec![z2.clone()],
+      &[z1.clone()],
+      &[z2.clone()],
       gamma,
       &beta,
     );
@@ -532,7 +532,7 @@ pub mod test {
   }
 
   #[test]
-  fn test_compute_g() -> () {
+  fn test_compute_g() {
     let ccs = get_test_ccs();
     let z1 = get_test_z(3);
     let z2 = get_test_z(4);
@@ -558,25 +558,25 @@ pub mod test {
     let g = NIMFS::compute_g(
       &vec![lcccs_instance.clone()],
       &vec![cccs_instance.clone()],
-      &vec![z1.clone()],
-      &vec![z2.clone()],
+      &[z1.clone()],
+      &[z2.clone()],
       gamma,
       &beta,
     );
 
     // evaluate g(x) over x \in {0,1}^s
     let mut g_on_bhc = Fr::zero();
-    for x in BooleanHypercube::new(ccs.s).into_iter() {
+    for x in BooleanHypercube::new(ccs.s) {
       g_on_bhc += g.evaluate(&x).unwrap();
     }
 
     // evaluate sum_{j \in [t]} (gamma^j * Lj(x)) over x \in {0,1}^s
     let mut sum_Lj_on_bhc = Fr::zero();
     let vec_L = lcccs_instance.compute_Ls(&z1);
-    for x in BooleanHypercube::new(ccs.s).into_iter() {
-      for j in 0..vec_L.len() {
+    for x in BooleanHypercube::new(ccs.s) {
+      for (j, L) in vec_L.iter().enumerate() {
         let gamma_j = gamma.pow([j as u64]);
-        sum_Lj_on_bhc += vec_L[j].evaluate(&x).unwrap() * gamma_j;
+        sum_Lj_on_bhc += L.evaluate(&x).unwrap() * gamma_j;
       }
     }
 
@@ -593,7 +593,7 @@ pub mod test {
   }
 
   #[test]
-  fn test_fold() -> () {
+  fn test_fold() {
     let ccs = get_test_ccs();
     let z1 = get_test_z(3);
     let z2 = get_test_z(4);
@@ -609,8 +609,8 @@ pub mod test {
 
     let (sigmas, thetas) = MultiFolding::<Point>::compute_sigmas_and_thetas(
       &running_instance.ccs,
-      &vec![z1.clone()],
-      &vec![z2.clone()],
+      &[z1.clone()],
+      &[z2.clone()],
       &r_x_prime,
     );
 
@@ -628,7 +628,7 @@ pub mod test {
     let folded =
       MultiFolding::<Point>::fold(&vec![lcccs], &vec![cccs], &sigmas, &thetas, r_x_prime, rho);
 
-    let w_folded = MultiFolding::<Point>::fold_witness(&vec![w1], &vec![w2], rho);
+    let w_folded = MultiFolding::<Point>::fold_witness(&[w1], &[w2], rho);
 
     // check lcccs relation
     folded.check_relation(&ck, &w_folded).unwrap();
@@ -668,8 +668,8 @@ pub mod test {
       &mut transcript_p,
       &vec![running_instance.clone()],
       &vec![new_instance.clone()],
-      &vec![w1],
-      &vec![w2],
+      &[w1],
+      &[w2],
     );
 
     // Run the verifier side of the multi-folding
@@ -719,8 +719,8 @@ pub mod test {
         &mut transcript_p,
         &vec![running_instance.clone()],
         &vec![new_instance.clone()],
-        &vec![w1],
-        &vec![w2],
+        &[w1],
+        &[w2],
       );
 
       // run the verifier side of the multifolding
@@ -770,16 +770,16 @@ pub mod test {
     // Create the LCCCS instances out of z_lcccs
     let mut lcccs_instances = Vec::new();
     let mut w_lcccs = Vec::new();
-    for i in 0..mu {
-      let (running_instance, w) = ccs.to_lcccs(rng, &ck, &z_lcccs[i]);
+    for lcccs in z_lcccs.iter().take(mu) {
+      let (running_instance, w) = ccs.to_lcccs(rng, &ck, lcccs);
       lcccs_instances.push(running_instance);
       w_lcccs.push(w);
     }
     // Create the CCCS instance out of z_cccs
     let mut cccs_instances = Vec::new();
     let mut w_cccs = Vec::new();
-    for i in 0..nu {
-      let (new_instance, w) = ccs.to_cccs(rng, &ck, &z_cccs[i]);
+    for cccs in z_cccs.iter().take(nu) {
+      let (new_instance, w) = ccs.to_cccs(rng, &ck, cccs);
       cccs_instances.push(new_instance);
       w_cccs.push(w);
     }
@@ -847,16 +847,16 @@ pub mod test {
       // Create the LCCCS instances out of z_lcccs
       let mut lcccs_instances = Vec::new();
       let mut w_lcccs = Vec::new();
-      for i in 0..mu {
-        let (running_instance, w) = ccs.to_lcccs(rng, &ck, &z_lcccs[i]);
+      for lcccs in z_lcccs.iter().take(mu) {
+        let (running_instance, w) = ccs.to_lcccs(rng, &ck, lcccs);
         lcccs_instances.push(running_instance);
         w_lcccs.push(w);
       }
       // Create the CCCS instance out of z_cccs
       let mut cccs_instances = Vec::new();
       let mut w_cccs = Vec::new();
-      for i in 0..nu {
-        let (new_instance, w) = ccs.to_cccs(rng, &ck, &z_cccs[i]);
+      for cccs in z_cccs.iter().take(nu) {
+        let (new_instance, w) = ccs.to_cccs(rng, &ck, cccs);
         cccs_instances.push(new_instance);
         w_cccs.push(w);
       }
