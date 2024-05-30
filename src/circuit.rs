@@ -12,7 +12,8 @@ use crate::{
     ecc::AllocatedPoint,
     r1cs::{AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance},
     utils::{
-      alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select_vec_allocated_num, le_bits_to_num,
+      alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select_vec_allocated_num,
+      le_bits_to_num,
     },
   },
   r1cs::{R1CSInstance, RelaxedR1CSInstance},

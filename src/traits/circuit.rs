@@ -45,7 +45,8 @@ where
 
 /// A helper trait for a step of the PCD (i.e., circuit for F)
 pub trait PCDStepCircuit<F, const ARITY: usize, const R: usize>: Send + Sync + Clone
-  where F: PrimeField
+where
+  F: PrimeField,
 {
   /// Synthesize the circuit for a PCD computation step and return variable
   /// that corresponds to the output of the step PCD
@@ -58,7 +59,7 @@ pub trait PCDStepCircuit<F, const ARITY: usize, const R: usize>: Send + Sync + C
 
 impl<F, const ARITY: usize, const R: usize> PCDStepCircuit<F, ARITY, R> for TrivialTestCircuit<F>
 where
-    F: PrimeField,
+  F: PrimeField,
 {
   fn synthesize<CS: ConstraintSystem<F>>(
     &self,

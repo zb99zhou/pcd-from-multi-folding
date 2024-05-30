@@ -1,5 +1,12 @@
 //! Poseidon Constants and Poseidon-based RO used in Nova
-use crate::traits::{Group, PrimeFieldExt, ROCircuitTrait, ROTrait, TranscriptCircuitEngineTrait, TranscriptEngineTrait, TranscriptReprTrait};
+use crate::constants::NUM_HASH_BITS;
+use crate::errors::NovaError;
+use crate::gadgets::utils::{base_as_scalar, le_bits_to_num};
+use crate::traits::{
+  Group, PrimeFieldExt, ROCircuitTrait, ROTrait, TranscriptCircuitEngineTrait,
+  TranscriptEngineTrait, TranscriptReprTrait,
+};
+use crate::utils::truncate_field_bits;
 use bellpepper_core::{
   boolean::{AllocatedBit, Boolean},
   num::AllocatedNum,
@@ -19,10 +26,6 @@ use neptune::{
   Strength,
 };
 use serde::{Deserialize, Serialize};
-use crate::constants::NUM_HASH_BITS;
-use crate::errors::NovaError;
-use crate::gadgets::utils::{le_bits_to_num, base_as_scalar};
-use crate::utils::truncate_field_bits;
 
 const LENGTH: usize = 32;
 
@@ -109,8 +112,15 @@ where
     self.squeeze(num_bits)
   }
 
-  fn batch_squeeze<T: AsRef<[u8]>>(&mut self, bytes: T, len: usize, num_bits: usize) -> Vec<Scalar> {
-    (0..len).map(|_| self.absorb_bytes_and_squeeze(bytes.as_ref(), num_bits)).collect()
+  fn batch_squeeze<T: AsRef<[u8]>>(
+    &mut self,
+    bytes: T,
+    len: usize,
+    num_bits: usize,
+  ) -> Vec<Scalar> {
+    (0..len)
+      .map(|_| self.absorb_bytes_and_squeeze(bytes.as_ref(), num_bits))
+      .collect()
   }
 }
 
@@ -468,10 +478,9 @@ impl<G: Group> TranscriptCircuitEngineTrait<G> for PoseidonTranscriptCircuit<G> 
     label: &'static [u8],
     o: &T,
   ) -> Result<(), SynthesisError> {
-    let label_num = AllocatedNum::alloc(
-      cs.namespace(|| "alloc label"),
-      || Ok(G::Base::from_uniform(label))
-    )?;
+    let label_num = AllocatedNum::alloc(cs.namespace(|| "alloc label"), || {
+      Ok(G::Base::from_uniform(label))
+    })?;
     self.state.push(label_num);
     for struct_num in o.to_transcript_nums(cs)? {
       self.state.push(struct_num);

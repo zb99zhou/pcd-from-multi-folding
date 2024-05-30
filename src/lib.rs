@@ -1,11 +1,6 @@
 //! This library implements Nova, a high-speed recursive SNARK.
 #![allow(dead_code)]
-#![deny(
-  warnings,
-  future_incompatible,
-  nonstandard_style,
-  rust_2018_idioms,
-)]
+#![deny(warnings, future_incompatible, nonstandard_style, rust_2018_idioms)]
 #![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]
 #![forbid(unsafe_code)]
@@ -22,11 +17,11 @@ mod utils;
 // public modules
 pub mod errors;
 pub mod gadgets;
+pub mod pcd_compressed_snark;
+pub mod pcd_node;
 pub mod provider;
 pub mod spartan;
 pub mod traits;
-pub mod pcd_compressed_snark;
-pub mod pcd_node;
 
 use crate::bellpepper::{
   r1cs::{NovaShape, NovaWitness},
@@ -818,7 +813,6 @@ fn compute_digest<G: Group, T: Serialize>(o: &T) -> G::Scalar {
   digest
 }
 
-
 #[cfg(test)]
 mod tests {
   use crate::provider::bn256_grumpkin::{bn256, grumpkin};
@@ -837,7 +831,6 @@ mod tests {
   use core::marker::PhantomData;
   use ff::PrimeField;
   use traits::circuit::TrivialTestCircuit;
-
 
   #[derive(Clone, Debug, Default)]
   struct CubicCircuit<F: PrimeField> {
@@ -1510,5 +1503,4 @@ mod tests {
     test_ivc_base_with::<bn256::Point, grumpkin::Point>();
     test_ivc_base_with::<secp256k1::Point, secq256k1::Point>();
   }
-
 }

@@ -84,7 +84,13 @@ impl<G: Group> NIFS<G> {
     W1: &[RelaxedR1CSWitness<G>],
     u: &R1CSInstance<G>,
     W2: &R1CSWitness<G>,
-  ) -> Result<(Vec<NIFS<G>>, (RelaxedR1CSInstance<G>, RelaxedR1CSWitness<G>)), NovaError> {
+  ) -> Result<
+    (
+      Vec<NIFS<G>>,
+      (RelaxedR1CSInstance<G>, RelaxedR1CSWitness<G>),
+    ),
+    NovaError,
+  > {
     // initialize a new RO
     let mut ro = G::RO::new(ro_consts.clone(), NUM_FE_FOR_RO);
 
@@ -92,7 +98,7 @@ impl<G: Group> NIFS<G> {
     ro.absorb(scalar_as_base::<G>(*pp_digest));
 
     // append U1 and U2 to transcript
-    for U in U.iter(){
+    for U in U.iter() {
       U.absorb_in_ro(&mut ro);
     }
     u.absorb_in_ro(&mut ro);
@@ -101,9 +107,11 @@ impl<G: Group> NIFS<G> {
     let mut W_in_calc = W1[0].clone();
     let mut NIFS_vec = Vec::new();
     // compute a commitment to the cross-term
-    for (U_now, W_now) in U.iter().skip(1).zip(W1){
+    for (U_now, W_now) in U.iter().skip(1).zip(W1) {
       let (T, comm_T) = S.commit_T_from_multi_U(ck, &U_in_calc, &W_in_calc, U_now, W_now)?;
-      NIFS_vec.push(Self{ comm_T: comm_T.compress() });
+      NIFS_vec.push(Self {
+        comm_T: comm_T.compress(),
+      });
       comm_T.absorb_in_ro(&mut ro);
       let r = ro.squeeze(NUM_CHALLENGE_BITS);
       U_in_calc = U_in_calc.fold_with_relaxed_r1cs(U_now, &comm_T, &r)?;
@@ -111,17 +119,16 @@ impl<G: Group> NIFS<G> {
     }
 
     let (T, comm_T) = S.commit_T(ck, &U_in_calc, &W_in_calc, u, W2)?;
-    NIFS_vec.push(Self{ comm_T: comm_T.compress() });
+    NIFS_vec.push(Self {
+      comm_T: comm_T.compress(),
+    });
     comm_T.absorb_in_ro(&mut ro);
     let r = ro.squeeze(NUM_CHALLENGE_BITS);
     U_in_calc = U_in_calc.fold(u, &comm_T, &r)?;
     W_in_calc = W_in_calc.fold(W2, &T, &r)?;
 
     // return the folded instance and witness
-    Ok((
-      NIFS_vec,
-      (U_in_calc, W_in_calc),
-    ))
+    Ok((NIFS_vec, (U_in_calc, W_in_calc)))
   }
 
   /// Takes as input a relaxed R1CS instance `U1` and R1CS instance `U2`
@@ -176,14 +183,14 @@ impl<G: Group> NIFS<G> {
 
     // append U1 and U2 to transcript
     println!("U compare");
-    for U in U.iter(){
+    for U in U.iter() {
       U.absorb_in_ro(&mut ro);
     }
     println!("u compare");
     u.absorb_in_ro(&mut ro);
 
     let mut U_in_calc = U[0].clone();
-    for (U_now, nifs) in U.iter().skip(1).zip(&nifs_vec[..nifs_vec.len()-1]) {
+    for (U_now, nifs) in U.iter().skip(1).zip(&nifs_vec[..nifs_vec.len() - 1]) {
       let comm_T = Commitment::<G>::decompress(&nifs.comm_T)?;
       comm_T.absorb_in_ro(&mut ro);
       let r = ro.squeeze(NUM_CHALLENGE_BITS);
@@ -191,7 +198,7 @@ impl<G: Group> NIFS<G> {
       U_in_calc = U_in_calc.fold_with_relaxed_r1cs(U_now, &comm_T, &r)?;
     }
 
-    let comm_T = Commitment::<G>::decompress(&nifs_vec[nifs_vec.len()-1].comm_T)?;
+    let comm_T = Commitment::<G>::decompress(&nifs_vec[nifs_vec.len() - 1].comm_T)?;
     comm_T.absorb_in_ro(&mut ro);
     // compute a challenge from the RO
     let r = ro.squeeze(NUM_CHALLENGE_BITS);
@@ -311,8 +318,14 @@ mod tests {
   ) where
     G: Group,
   {
-    let r_W = vec![RelaxedR1CSWitness::default(shape), RelaxedR1CSWitness::default(shape)];
-    let r_U = vec![RelaxedR1CSInstance::default(ck, shape), RelaxedR1CSInstance::default(ck, shape)];
+    let r_W = vec![
+      RelaxedR1CSWitness::default(shape),
+      RelaxedR1CSWitness::default(shape),
+    ];
+    let r_U = vec![
+      RelaxedR1CSInstance::default(ck, shape),
+      RelaxedR1CSInstance::default(ck, shape),
+    ];
 
     // produce a step SNARK with (W1, U1) as the first incoming witness-instance pair
     let res = NIFS::prove_with_multi_relaxed(ck, ro_consts, pp_digest, shape, &r_U, &r_W, U1, W1);
@@ -326,7 +339,6 @@ mod tests {
 
     assert_eq!(U, _U);
     assert!(shape.is_sat_relaxed(ck, &U, &W).is_ok());
-
   }
 
   fn test_multi_relaxed_with<G>()
@@ -344,7 +356,7 @@ mod tests {
     let _ = synthesize_tiny_r1cs_bellpepper(&mut cs, None);
     let (shape, ck) = cs.r1cs_shape();
     let ro_consts =
-        <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::default();
+      <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::default();
 
     let mut cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
     let _ = synthesize_tiny_r1cs_bellpepper(&mut cs, Some(G::Scalar::from(5)));
@@ -358,7 +370,6 @@ mod tests {
       &U1,
       &W1,
     );
-
   }
 
   #[test]

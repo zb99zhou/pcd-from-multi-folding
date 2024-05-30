@@ -31,8 +31,8 @@ use crate::spartan::{math::Math, polys::eq::EqPolynomial};
 /// Vector $Z$ indicates $Z(e)$ where $e$ ranges from $0$ to $2^m-1$.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MultiLinearPolynomial<Scalar: PrimeField> {
-  pub(crate) num_vars: usize,           // the number of variables in the multilinear polynomial
-  pub(crate) Z: Vec<Scalar>, // evaluations of the polynomial in all the 2^num_vars Boolean inputs
+  pub(crate) num_vars: usize, // the number of variables in the multilinear polynomial
+  pub(crate) Z: Vec<Scalar>,  // evaluations of the polynomial in all the 2^num_vars Boolean inputs
 }
 
 impl<Scalar: PrimeField> MultiLinearPolynomial<Scalar> {
@@ -98,8 +98,6 @@ impl<Scalar: PrimeField> MultiLinearPolynomial<Scalar> {
       .sum()
   }
 
-
-
   /// Evaluates the polynomial with the given evaluations and point.
   pub fn evaluate_with(Z: &[Scalar], r: &[Scalar]) -> Scalar {
     EqPolynomial::new(r.to_vec())
@@ -160,11 +158,12 @@ impl<Scalar: PrimeField> MultiLinearPolynomial<Scalar> {
         poly[b] = left + r * (right - left); // (1-r) * left + r * right
       }
     }
-    Self { num_vars: nv - dim, Z: poly[..(1 << (nv - dim))].to_vec() }
+    Self {
+      num_vars: nv - dim,
+      Z: poly[..(1 << (nv - dim))].to_vec(),
+    }
   }
 }
-
-  
 
 impl<Scalar: PrimeField> Index<usize> for MultiLinearPolynomial<Scalar> {
   type Output = Scalar;
@@ -281,12 +280,15 @@ mod tests {
     let mle = m_poly.fix_variables(x.as_slice());
     assert_eq!(mle[0], TWO);
 
-    let z = vec![F::ONE,F::ZERO];
+    let z = vec![F::ONE, F::ZERO];
     let m_partial = m_poly.fix_variables(z.as_slice());
     println!("m_partial = {:?}", m_partial);
 
     let test = vec![F::from(2), F::from(3), F::from(4)];
-    assert_eq!(m_poly.evaluate(test.as_slice()), m_poly.fix_variables(test.as_slice()).Z[0]);
+    assert_eq!(
+      m_poly.evaluate(test.as_slice()),
+      m_poly.fix_variables(test.as_slice()).Z[0]
+    );
   }
 
   fn test_sparse_polynomial_with<F: PrimeField>() {

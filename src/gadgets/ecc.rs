@@ -1,7 +1,10 @@
 //! This module implements various elliptic curve gadgets
 #![allow(non_snake_case)]
 
-use std::fmt::{Debug, Formatter};
+use crate::gadgets::nonnative::bignat::BigNat;
+use crate::gadgets::nonnative::util::f_to_nat;
+use crate::gadgets::utils::{alloc_bignat_constant, conditionally_select_bignat};
+use crate::traits::ROCircuitTrait;
 use crate::{
   gadgets::utils::{
     alloc_num_equals, alloc_one, alloc_zero, conditionally_select, conditionally_select2,
@@ -18,10 +21,7 @@ use bellpepper_core::{
 };
 use ff::{Field, PrimeField};
 use num_traits::Zero;
-use crate::gadgets::nonnative::bignat::BigNat;
-use crate::gadgets::nonnative::util::f_to_nat;
-use crate::gadgets::utils::{alloc_bignat_constant, conditionally_select_bignat};
-use crate::traits::ROCircuitTrait;
+use std::fmt::{Debug, Formatter};
 
 /// `AllocatedPoint` provides an elliptic curve abstraction inside a circuit.
 #[derive(Clone)]
@@ -34,10 +34,10 @@ pub struct AllocatedPoint<G: Group> {
 impl<G: Group> Debug for AllocatedPoint<G> {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("AllocatedPoint")
-        .field("x", &self.x.get_value())
-        .field("y", &self.y.get_value())
-        .field("is_infinity", &self.is_infinity.get_value())
-        .finish()
+      .field("x", &self.x.get_value())
+      .field("y", &self.y.get_value())
+      .field("is_infinity", &self.is_infinity.get_value())
+      .finish()
   }
 }
 
@@ -79,8 +79,8 @@ where
 
   /// checks if `self` is on the curve or if it is infinity
   pub fn check_on_curve<CS>(&self, mut cs: CS) -> Result<(), SynthesisError>
-    where
-        CS: ConstraintSystem<G::Base>,
+  where
+    CS: ConstraintSystem<G::Base>,
   {
     // check that (x,y) is on the curve if it is not infinity
     // we will check that (1- is_infinity) * y^2 = (1-is_infinity) * (x^3 + Ax + B)
@@ -95,8 +95,8 @@ where
       } else {
         Ok(
           *x_cube.get_value().get()?
-              + *self.x.get_value().get()? * G::get_curve_params().0
-              + G::get_curve_params().1,
+            + *self.x.get_value().get()? * G::get_curve_params().0
+            + G::get_curve_params().1,
         )
       }
     })?;
@@ -105,8 +105,8 @@ where
       || "rhs = (1-is_infinity) * (x^3 + Ax + B)",
       |lc| {
         lc + x_cube.get_variable()
-            + (G::get_curve_params().0, self.x.get_variable())
-            + (G::get_curve_params().1, CS::one())
+          + (G::get_curve_params().0, self.x.get_variable())
+          + (G::get_curve_params().1, CS::one())
       },
       |lc| lc + CS::one() - self.is_infinity.get_variable(),
       |lc| lc + rhs.get_variable(),
@@ -613,13 +613,12 @@ where
   }
 
   /// Make the point io
-  pub fn inputize<CS: ConstraintSystem<G::Base>>(
-    &self,
-    mut cs: CS,
-  ) -> Result<(), SynthesisError> {
+  pub fn inputize<CS: ConstraintSystem<G::Base>>(&self, mut cs: CS) -> Result<(), SynthesisError> {
     self.x.inputize(cs.namespace(|| "Input point.x"))?;
     self.y.inputize(cs.namespace(|| "Input point.y"))?;
-    self.is_infinity.inputize(cs.namespace(|| "Input point.is_infinity"))?;
+    self
+      .is_infinity
+      .inputize(cs.namespace(|| "Input point.is_infinity"))?;
     Ok(())
   }
 }
@@ -826,25 +825,20 @@ pub struct AllocatedSimulatedPoint<G: Group> {
 impl<G: Group> Debug for AllocatedSimulatedPoint<G> {
   fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
     f.debug_struct("AllocatedSimulatedPoint")
-        .field("x", &self.x.value.as_ref().map(|v| format!("{:x}", v)))
-        .field("y", &self.y.value.as_ref().map(|v| format!("{:x}", v)))
-        .field("is_infinity", &self.is_infinity.get_value())
-        .finish()
+      .field("x", &self.x.value.as_ref().map(|v| format!("{:x}", v)))
+      .field("y", &self.y.value.as_ref().map(|v| format!("{:x}", v)))
+      .field("is_infinity", &self.is_infinity.get_value())
+      .finish()
   }
 }
 
 impl<G: Group> AllocatedSimulatedPoint<G> {
   /// Allocates a default point on the curve.
   pub fn default<CS>(mut cs: CS, limb_width: usize, n_limbs: usize) -> Result<Self, SynthesisError>
-    where
-        CS: ConstraintSystem<G::Base>,
+  where
+    CS: ConstraintSystem<G::Base>,
   {
-    let zero = alloc_bignat_constant(
-      cs.namespace(|| "zero"),
-      &Zero::zero(),
-      limb_width,
-      n_limbs
-    )?;
+    let zero = alloc_bignat_constant(cs.namespace(|| "zero"), &Zero::zero(), limb_width, n_limbs)?;
     let one = alloc_one(cs.namespace(|| "one"))?;
 
     Ok(AllocatedSimulatedPoint {
@@ -854,7 +848,10 @@ impl<G: Group> AllocatedSimulatedPoint<G> {
     })
   }
 
-  pub fn is_null<CS: ConstraintSystem<G::Base>>(&self, mut cs: CS) -> Result<Boolean, SynthesisError> {
+  pub fn is_null<CS: ConstraintSystem<G::Base>>(
+    &self,
+    mut cs: CS,
+  ) -> Result<Boolean, SynthesisError> {
     let one = alloc_one(cs.namespace(|| "one"))?;
     alloc_num_equals(cs.namespace(|| "is infinity"), &self.is_infinity, &one).map(Into::into)
   }
@@ -867,8 +864,8 @@ impl<G: Group> AllocatedSimulatedPoint<G> {
     limb_width: usize,
     n_limbs: usize,
   ) -> Result<Self, SynthesisError>
-    where
-        CS: ConstraintSystem<G::Base>,
+  where
+    CS: ConstraintSystem<G::Base>,
   {
     let x = BigNat::alloc_from_nat(
       cs.namespace(|| "allocate x"),
@@ -882,16 +879,13 @@ impl<G: Group> AllocatedSimulatedPoint<G> {
       limb_width,
       n_limbs,
     )?;
-    let is_infinity = AllocatedNum::alloc(
-      cs.namespace(|| "is_infinity"),
-      || Ok(
-        if coords.map_or(true, |c| c.2) {
-          G::Base::ONE
-        } else {
-          G::Base::ZERO
-        }
-      )
-    )?;
+    let is_infinity = AllocatedNum::alloc(cs.namespace(|| "is_infinity"), || {
+      Ok(if coords.map_or(true, |c| c.2) {
+        G::Base::ONE
+      } else {
+        G::Base::ZERO
+      })
+    })?;
     cs.enforce(
       || "is_infinity is bit",
       |lc| lc + is_infinity.get_variable(),
@@ -909,54 +903,48 @@ impl<G: Group> AllocatedSimulatedPoint<G> {
     other: &Self,
     condition: &Boolean,
   ) -> Result<AllocatedSimulatedPoint<G>, SynthesisError> {
-    let x = conditionally_select_bignat(
-      cs.namespace(|| "select is x"),
-      &self.x,
-      &other.x,
-      condition
-    )?;
-    let y = conditionally_select_bignat(
-      cs.namespace(|| "select is y"),
-      &self.y,
-      &other.y,
-      condition
-    )?;
+    let x =
+      conditionally_select_bignat(cs.namespace(|| "select is x"), &self.x, &other.x, condition)?;
+    let y =
+      conditionally_select_bignat(cs.namespace(|| "select is y"), &self.y, &other.y, condition)?;
     let is_infinity = conditionally_select(
       cs.namespace(|| "select is infinity"),
       &self.is_infinity,
       &other.is_infinity,
-      condition
+      condition,
     )?;
 
-    Ok(AllocatedSimulatedPoint {
-      x,
-      y,
-      is_infinity,
-    })
+    Ok(AllocatedSimulatedPoint { x, y, is_infinity })
   }
 
   pub fn absorb_in_ro<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,
-    ro: &mut G::ROCircuit
+    ro: &mut G::ROCircuit,
   ) -> Result<(), SynthesisError> {
-    let X_bn = self.x.as_limbs()
-        .iter()
-        .enumerate()
-        .map(|(i, limb)| {
-          limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of X_r[0] to num")))
-        }).collect::<Result<Vec<_>, SynthesisError>>()?;
+    let X_bn = self
+      .x
+      .as_limbs()
+      .iter()
+      .enumerate()
+      .map(|(i, limb)| {
+        limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of X_r[0] to num")))
+      })
+      .collect::<Result<Vec<_>, SynthesisError>>()?;
     // absorb each of the limbs of Xs
     for limb in X_bn {
       ro.absorb(&limb);
     }
 
-    let Y_bn = self.y.as_limbs()
-        .iter()
-        .enumerate()
-        .map(|(i, limb)| {
-          limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of Y_r[0] to num")))
-        }).collect::<Result<Vec<_>, SynthesisError>>()?;
+    let Y_bn = self
+      .y
+      .as_limbs()
+      .iter()
+      .enumerate()
+      .map(|(i, limb)| {
+        limb.as_allocated_num(cs.namespace(|| format!("convert limb {i} of Y_r[0] to num")))
+      })
+      .collect::<Result<Vec<_>, SynthesisError>>()?;
     // absorb each of the limbs of Xs
     for limb in Y_bn {
       ro.absorb(&limb);

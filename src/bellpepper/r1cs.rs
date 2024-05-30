@@ -3,6 +3,9 @@
 #![allow(non_snake_case)]
 
 use super::{shape_cs::ShapeCS, solver::SatisfyingAssignment, test_shape_cs::TestShapeCS};
+use crate::nimfs::ccs::cccs::{CCSWitness, CCCS};
+use crate::nimfs::ccs::ccs::CCS;
+use crate::traits::commitment::CommitmentEngineTrait;
 use crate::{
   errors::NovaError,
   r1cs::{R1CSInstance, R1CSShape, R1CSWitness, R1CS},
@@ -12,9 +15,6 @@ use crate::{
 use bellpepper_core::{Index, LinearCombination};
 use ff::{Field, PrimeField};
 use rand_core::OsRng;
-use crate::nimfs::ccs::cccs::{CCCS, CCSWitness};
-use crate::nimfs::ccs::ccs::CCS;
-use crate::traits::commitment::CommitmentEngineTrait;
 
 /// `NovaWitness` provide a method for acquiring an `R1CSInstance` and `R1CSWitness` from implementers.
 pub trait NovaWitness<G: Group> {

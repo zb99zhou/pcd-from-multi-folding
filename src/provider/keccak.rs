@@ -87,7 +87,11 @@ impl<G: Group> TranscriptEngineTrait<G> for Keccak256Transcript<G> {
     Ok(G::Scalar::from_uniform(&output))
   }
 
-  fn batch_squeeze(&mut self, label: &'static [u8], len: usize) -> Result<Vec<G::Scalar>, NovaError> {
+  fn batch_squeeze(
+    &mut self,
+    label: &'static [u8],
+    len: usize,
+  ) -> Result<Vec<G::Scalar>, NovaError> {
     (0..len).map(|_| self.squeeze(label)).collect()
   }
 

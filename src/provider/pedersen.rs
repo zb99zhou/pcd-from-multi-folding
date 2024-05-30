@@ -15,10 +15,10 @@ use core::{
   marker::PhantomData,
   ops::{Add, AddAssign, Mul, MulAssign},
 };
-use std::fmt::Formatter;
 use ff::Field;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::fmt::Formatter;
 
 /// A type that holds commitment generators
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

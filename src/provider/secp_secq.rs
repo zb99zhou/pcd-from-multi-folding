@@ -3,9 +3,9 @@ use crate::{
   impl_traits,
   provider::{
     cpu_best_multiexp,
+    keccak::Keccak256Transcript,
     pedersen::CommitmentEngine,
     poseidon::{PoseidonRO, PoseidonROCircuit, PoseidonTranscript, PoseidonTranscriptCircuit},
-    keccak::Keccak256Transcript
   },
   traits::{CompressedGroup, Group, PrimeFieldExt, TranscriptReprTrait},
 };

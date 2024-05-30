@@ -3,6 +3,7 @@ use super::nonnative::{
   bignat::BigNat,
   util::{f_to_nat, Num},
 };
+use crate::gadgets::ext_allocated_num::ExtendFunc;
 use crate::{
   constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO},
   gadgets::{
@@ -21,7 +22,6 @@ use bellpepper_core::{ConstraintSystem, SynthesisError};
 use ff::Field;
 use itertools::Itertools;
 use std::fmt::{Debug, Formatter};
-use crate::gadgets::ext_allocated_num::ExtendFunc;
 
 pub const ARITY: usize = 2;
 
@@ -395,9 +395,10 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
       .add(cs.namespace(|| "self.E + r * T + r^2 * E"), &r_square_E)?;
 
     // u_fold = self.u + U.u * r
-    let u_fold = U.u
-        .mul(cs.namespace(|| "U.u * r"), &r)?
-        .add(cs.namespace(|| "self.u + U.u * r"), &self.u)?;
+    let u_fold = U
+      .u
+      .mul(cs.namespace(|| "U.u * r"), &r)?
+      .add(cs.namespace(|| "self.u + U.u * r"), &self.u)?;
 
     // Fold the IO:
     // Analyze r into limbs

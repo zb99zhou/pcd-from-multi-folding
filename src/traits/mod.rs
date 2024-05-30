@@ -30,7 +30,11 @@ pub trait Group:
   + for<'de> Deserialize<'de>
 {
   /// A type representing an element of the base field of the group
-  type Base: PrimeFieldExt + PrimeFieldBits + TranscriptReprTrait<Self> + Serialize + for<'de> Deserialize<'de>;
+  type Base: PrimeFieldExt
+    + PrimeFieldBits
+    + TranscriptReprTrait<Self>
+    + Serialize
+    + for<'de> Deserialize<'de>;
 
   /// A type representing an element of the scalar field of the group
   type Scalar: PrimeFieldBits
@@ -149,7 +153,8 @@ pub trait ROTrait<Base: PrimeFieldBits, Scalar> {
   fn absorb_bytes_and_squeeze<T: AsRef<[u8]>>(&mut self, bytes: T, num_bits: usize) -> Scalar;
 
   /// Returns a set of challenges of length `len` and element size `num_bits`.
-  fn batch_squeeze<T: AsRef<[u8]>>(&mut self, bytes: T, len: usize, num_bits: usize) -> Vec<Scalar>;
+  fn batch_squeeze<T: AsRef<[u8]>>(&mut self, bytes: T, len: usize, num_bits: usize)
+    -> Vec<Scalar>;
 }
 
 /// A helper trait that defines the behavior of a hash function that we use as an RO in the circuit model
@@ -164,7 +169,11 @@ pub trait ROCircuitTrait<Base: PrimeFieldBits> {
   fn new(constants: Self::Constants, num_absorbs: usize) -> Self;
 
   /// Adds bytes to the internal state
-  fn absorb_bytes<CS: ConstraintSystem<Base>, T: AsRef<[u8]>>(&mut self, cs: CS, bytes: T) -> Result<(), SynthesisError>;
+  fn absorb_bytes<CS: ConstraintSystem<Base>, T: AsRef<[u8]>>(
+    &mut self,
+    cs: CS,
+    bytes: T,
+  ) -> Result<(), SynthesisError>;
 
   /// Adds a scalar to the internal state
   fn absorb(&mut self, e: &AllocatedNum<Base>);
@@ -175,14 +184,25 @@ pub trait ROCircuitTrait<Base: PrimeFieldBits> {
     CS: ConstraintSystem<Base>;
 
   /// Returns a challenge of `num_bits` by hashing the bytes
-  fn absorb_bytes_and_squeeze<CS, T: AsRef<[u8]>>(&mut self, cs: CS, bytes: T, num_bits: usize) -> Result<Vec<AllocatedBit>, SynthesisError>
-    where
-      CS: ConstraintSystem<Base>;
+  fn absorb_bytes_and_squeeze<CS, T: AsRef<[u8]>>(
+    &mut self,
+    cs: CS,
+    bytes: T,
+    num_bits: usize,
+  ) -> Result<Vec<AllocatedBit>, SynthesisError>
+  where
+    CS: ConstraintSystem<Base>;
 
   /// Returns a set of challenges of length `len` and element size `num_bits`.
-  fn batch_squeeze<CS, T: AsRef<[u8]>>(&mut self, cs: CS, bytes: T, len: usize, num_bits: usize) -> Result<Vec<Vec<AllocatedBit>>, SynthesisError>
-    where
-        CS: ConstraintSystem<Base>;
+  fn batch_squeeze<CS, T: AsRef<[u8]>>(
+    &mut self,
+    cs: CS,
+    bytes: T,
+    len: usize,
+    num_bits: usize,
+  ) -> Result<Vec<Vec<AllocatedBit>>, SynthesisError>
+  where
+    CS: ConstraintSystem<Base>;
 }
 
 /// An alias for constants associated with G::RO
@@ -194,8 +214,7 @@ pub type ROConstantsCircuit<G> =
   <<G as Group>::ROCircuit as ROCircuitTrait<<G as Group>::Base>>::Constants;
 
 /// An alias for constants associated with `G::TE`
-pub type TEConstants<G> =
-  <<G as Group>::TE as TranscriptEngineTrait<G>>::Constants;
+pub type TEConstants<G> = <<G as Group>::TE as TranscriptEngineTrait<G>>::Constants;
 
 /// An alias for constants associated with `G::TECircuit`
 pub type TEConstantsCircuit<G> =
@@ -229,7 +248,7 @@ impl<T, Rhs, Output> ScalarMulOwned<Rhs, Output> for T where T: for<'r> ScalarMu
 /// This trait allows types to implement how they want to be added to `TranscriptEngine`
 pub trait TranscriptReprTrait<G: Group>: Send + Sync {
   /// returns a byte representation of self to be added to the transcript
-  fn to_transcript_bytes(&self) -> Vec<u8>{
+  fn to_transcript_bytes(&self) -> Vec<u8> {
     unimplemented!()
   }
 
@@ -239,7 +258,10 @@ pub trait TranscriptReprTrait<G: Group>: Send + Sync {
   }
 
   /// returns a circuit allocated number representation of self to be added to the transcript
-  fn to_transcript_nums<CS: ConstraintSystem<G::Base>>(&self, _cs: CS) -> Result<Vec<AllocatedNum<G::Base>>, SynthesisError> {
+  fn to_transcript_nums<CS: ConstraintSystem<G::Base>>(
+    &self,
+    _cs: CS,
+  ) -> Result<Vec<AllocatedNum<G::Base>>, SynthesisError> {
     unimplemented!()
   }
 }
@@ -256,7 +278,11 @@ pub trait TranscriptEngineTrait<G: Group>: Send + Sync {
   fn squeeze(&mut self, label: &'static [u8]) -> Result<G::Scalar, NovaError>;
 
   /// returns a scalar element of the group as a challenge
-  fn batch_squeeze(&mut self, label: &'static [u8], len: usize) -> Result<Vec<G::Scalar>, NovaError>;
+  fn batch_squeeze(
+    &mut self,
+    label: &'static [u8],
+    len: usize,
+  ) -> Result<Vec<G::Scalar>, NovaError>;
 
   /// absorbs any type that implements `TranscriptReprTrait` under a label
   fn absorb<T: TranscriptReprTrait<G>>(&mut self, label: &'static [u8], o: &T);
@@ -274,19 +300,41 @@ pub trait TranscriptCircuitEngineTrait<G: Group>: Send + Sync {
   type Constants: Default + Clone + Send + Sync + Serialize + for<'de> Deserialize<'de>;
 
   /// initializes the transcript
-  fn new<CS: ConstraintSystem<G::Base>>(constants: Self::Constants, cs: CS, label: &'static [u8]) -> Self;
+  fn new<CS: ConstraintSystem<G::Base>>(
+    constants: Self::Constants,
+    cs: CS,
+    label: &'static [u8],
+  ) -> Self;
 
   /// returns a AllocatedNumber as a challenge
-  fn squeeze<CS: ConstraintSystem<G::Base>>(&mut self, cs: CS, label: &'static [u8]) -> Result<AllocatedNum<G::Base>, SynthesisError>;
+  fn squeeze<CS: ConstraintSystem<G::Base>>(
+    &mut self,
+    cs: CS,
+    label: &'static [u8],
+  ) -> Result<AllocatedNum<G::Base>, SynthesisError>;
 
   /// returns a AllocatedNumber as a challenge
-  fn batch_squeeze<CS: ConstraintSystem<G::Base>>(&mut self, cs: CS, label: &'static [u8], len: usize) -> Result<Vec<AllocatedNum<G::Base>>, SynthesisError>;
+  fn batch_squeeze<CS: ConstraintSystem<G::Base>>(
+    &mut self,
+    cs: CS,
+    label: &'static [u8],
+    len: usize,
+  ) -> Result<Vec<AllocatedNum<G::Base>>, SynthesisError>;
 
   /// absorbs any type that implements `TranscriptReprTrait` under a label
-  fn absorb<T: TranscriptReprTrait<G>, CS: ConstraintSystem<G::Base>>(&mut self, cs:CS, label: &'static [u8], o: &T) -> Result<(), SynthesisError>;
+  fn absorb<T: TranscriptReprTrait<G>, CS: ConstraintSystem<G::Base>>(
+    &mut self,
+    cs: CS,
+    label: &'static [u8],
+    o: &T,
+  ) -> Result<(), SynthesisError>;
 
   /// adds a domain separator
-  fn dom_sep<CS: ConstraintSystem<G::Base>>(&mut self, cs:CS, bytes: &'static [u8]) -> Result<(), SynthesisError>;
+  fn dom_sep<CS: ConstraintSystem<G::Base>>(
+    &mut self,
+    cs: CS,
+    bytes: &'static [u8],
+  ) -> Result<(), SynthesisError>;
 }
 
 /// Defines additional methods on `PrimeField` objects
@@ -320,18 +368,18 @@ impl<G: Group> TranscriptReprTrait<G> for G {
       y.to_transcript_bytes(),
       [is_infinity_byte].to_vec(),
     ]
-        .concat()
+    .concat()
   }
 
   fn to_transcript_scalars(&self) -> Vec<G::Scalar> {
     let (x, y, is_infinity) = self.to_coordinates();
     let is_infinity_byte = (!is_infinity).into();
-    vec![
+    [
       x.to_transcript_scalars(),
       y.to_transcript_scalars(),
       vec![G::Scalar::from_uniform(&[is_infinity_byte])],
     ]
-        .concat()
+    .concat()
   }
 }
 

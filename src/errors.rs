@@ -1,9 +1,9 @@
 //! This module defines errors returned by the library.
-use core::fmt::Debug;
-use bellpepper_core::SynthesisError;
-use thiserror::Error;
 use crate::nimfs::ccs::ccs::CCSError;
 use crate::nimfs::espresso::errors::ArithErrors;
+use bellpepper_core::SynthesisError;
+use core::fmt::Debug;
+use thiserror::Error;
 
 /// Errors returned by Nova
 #[derive(Debug, Error)]
