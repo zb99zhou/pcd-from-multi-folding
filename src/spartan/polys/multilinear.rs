@@ -145,14 +145,10 @@ impl<Scalar: PrimeField> MultiLinearPolynomial<Scalar> {
     let mut poly = self.Z.to_vec();
     let nv = self.num_vars;
     let dim = partial_point.len();
-    // println!("nv = {:?}, dim = {:?}", nv, dim);
-    // println!("poly_len = {:?}", poly.len());
     // Evaluate single variable of partial point from left to right
     for i in 1..dim + 1 {
-      // println!("i = {:?}", i);
       let r = partial_point[i - 1];
       for b in 0..(1 << (nv - i)) {
-        // println!("b = {:?}", b);
         let left = poly[b];
         let right = poly[b + (1 << (nv - i))];
         poly[b] = left + r * (right - left); // (1-r) * left + r * right
@@ -279,10 +275,6 @@ mod tests {
 
     let mle = m_poly.fix_variables(x.as_slice());
     assert_eq!(mle[0], TWO);
-
-    let z = vec![F::ONE, F::ZERO];
-    let m_partial = m_poly.fix_variables(z.as_slice());
-    println!("m_partial = {:?}", m_partial);
 
     let test = vec![F::from(2), F::from(3), F::from(4)];
     assert_eq!(

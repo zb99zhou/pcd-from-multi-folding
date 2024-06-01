@@ -158,7 +158,6 @@ where
       )
       .unwrap();
       assert_eq!(verified_relaxed_r1cs_instance, relaxed_r1cs_instance);
-      println!("Finish NIFS verification: {:#?}", relaxed_r1cs_instance);
     }
 
     let pcd_circuit_input = PCDUnitInputs::<G2>::new(
@@ -276,12 +275,7 @@ where
       hasher.absorb(*e);
     }
     lcccs.absorb_in_ro::<G2>(&mut hasher);
-    println!("lcccs: {:#?}", lcccs);
     U.absorb_in_ro(&mut hasher);
-    println!("relaxed_r1cs_inst.comm_W: {:?}", U.comm_W.to_coordinates());
-    println!("relaxed_r1cs_inst.comm_E: {:?}", U.comm_E.to_coordinates());
-    println!("relaxed_r1cs_inst.u: {:?}", U.u);
-    println!("relaxed_r1cs_inst.X: {:?}", U.X);
 
     if hasher.squeeze(NUM_HASH_BITS) != scalar_as_base::<G1>(cccs.x[0]) {
       return Err(NovaError::InvalidInput);
@@ -300,11 +294,8 @@ where
         )
       },
     );
-    println!("2");
     res_U.map_err(|_| NovaError::ProofVerifyError)?;
-    println!("3");
     res_lcccs.map_err(|_| NovaError::ProofVerifyError)?;
-    println!("4");
     res_cccs.map_err(|_| NovaError::ProofVerifyError)?;
     Ok(zi_primary.to_vec())
   }

@@ -7,7 +7,7 @@
 //! the other into the running instance
 
 use crate::{
-  constants::{NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS},
+  constants::NUM_HASH_BITS,
   gadgets::{
     ecc::AllocatedPoint,
     r1cs::{AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance},
@@ -225,13 +225,10 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
     U: &AllocatedRelaxedR1CSInstance<G>,
     u: &AllocatedR1CSInstance<G>,
     T: &AllocatedPoint<G>,
-    arity: usize,
+    _arity: usize,
   ) -> Result<(AllocatedRelaxedR1CSInstance<G>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
-    let mut ro = G::ROCircuit::new(
-      self.ro_consts.clone(),
-      NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * arity,
-    );
+    let mut ro = G::ROCircuit::new(self.ro_consts.clone(), 0);
     ro.absorb(params);
     ro.absorb(i);
     for e in z_0 {
@@ -348,7 +345,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
     }
 
     // Compute the new hash H(params, Unew, i+1, z0, z_{i+1})
-    let mut ro = G::ROCircuit::new(self.ro_consts, NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * arity);
+    let mut ro = G::ROCircuit::new(self.ro_consts, 0);
     ro.absorb(&params);
     ro.absorb(&i_new);
     for e in &z_0 {

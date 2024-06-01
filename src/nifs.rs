@@ -180,14 +180,11 @@ impl<G: Group> NIFS<G> {
 
     // append the digest of pp to the transcript
     ro.absorb(scalar_as_base::<G>(*pp_digest));
-    println!("ro pp_digest: {:?}", pp_digest);
 
     // append U1 and U2 to transcript
-    println!("U compare");
     for U in U.iter() {
       U.absorb_in_ro(&mut ro);
     }
-    println!("u compare");
     u.absorb_in_ro(&mut ro);
 
     let mut U_in_calc = U[0].clone();
@@ -195,7 +192,6 @@ impl<G: Group> NIFS<G> {
       let comm_T = Commitment::<G>::decompress(&nifs.comm_T)?;
       comm_T.absorb_in_ro(&mut ro);
       let r = ro.squeeze(NUM_CHALLENGE_BITS);
-      println!("ro r: {:?}", r);
       U_in_calc = U_in_calc.fold_with_relaxed_r1cs(U_now, &comm_T, &r)?;
     }
 
@@ -203,7 +199,6 @@ impl<G: Group> NIFS<G> {
     comm_T.absorb_in_ro(&mut ro);
     // compute a challenge from the RO
     let r = ro.squeeze(NUM_CHALLENGE_BITS);
-    println!("ro r: {:?}", r);
 
     // fold the instance using `r` and `comm_T`
     let U = U_in_calc.fold(u, &comm_T, &r)?;

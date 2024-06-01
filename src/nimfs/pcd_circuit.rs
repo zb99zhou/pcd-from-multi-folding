@@ -3,25 +3,16 @@ use crate::gadgets::cccs::{
   multi_folding_with_primary_part, AllocatedCCCS, AllocatedCCCSPrimaryPart, AllocatedLCCCS,
   AllocatedLCCCSPrimaryPart,
 };
+use crate::gadgets::ecc::{AllocatedPoint, AllocatedSimulatedPoint};
 use crate::gadgets::ext_allocated_num::ExtendFunc;
 use crate::gadgets::r1cs::{AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance};
 use crate::gadgets::sumcheck::{
-  enforce_compute_c_from_sigmas_and_thetas, enforce_interpolate_uni_poly, sumcheck_verify,
-  AllocatedProof,
+  enforce_compute_c_from_sigmas_and_thetas, sumcheck_verify, AllocatedProof,
 };
 use crate::gadgets::utils::{
   alloc_num_equals, alloc_scalar_as_base, conditionally_select_vec_allocated_num, le_bits_to_num,
   multi_and,
 };
-use bellpepper::gadgets::Assignment;
-use bellpepper_core::boolean::{AllocatedBit, Boolean};
-use bellpepper_core::num::{AllocatedNum, Num};
-use bellpepper_core::{ConstraintSystem, SynthesisError};
-use ff::Field;
-use num_traits::Zero;
-use serde::Serialize;
-// use crate::gadgets::utils::{alloc_num_equals, alloc_scalar_as_base,le_bits_to_num, multi_and};
-use crate::gadgets::ecc::{AllocatedPoint, AllocatedSimulatedPoint};
 use crate::nimfs::ccs::cccs::{CCCSForBase, PointForScalar};
 use crate::nimfs::ccs::ccs::CCS;
 use crate::nimfs::ccs::lcccs::{LCCCSForBase, LCCCS};
@@ -35,6 +26,13 @@ use crate::traits::{
   Group, ROCircuitTrait, ROConstantsCircuit, TEConstantsCircuit, TranscriptCircuitEngineTrait,
 };
 use crate::{compute_digest, Commitment};
+use bellpepper::gadgets::Assignment;
+use bellpepper_core::boolean::{AllocatedBit, Boolean};
+use bellpepper_core::num::{AllocatedNum, Num};
+use bellpepper_core::{ConstraintSystem, SynthesisError};
+use ff::Field;
+use num_traits::Zero;
+use serde::Serialize;
 
 // R: the number of multi-folding PCD node
 #[derive(Serialize, Clone)]
@@ -409,11 +407,6 @@ where
       &lcccs,
       &relaxed_r1cs_inst,
     )?;
-    println!(
-      "is_correct_public_input: {:?}",
-      is_correct_public_input.get_value()
-    );
-    println!("is_base_case: {:?}", is_base_case.get_value());
     Boolean::enforce_equal(
       cs.namespace(|| "is_correct_public_input or is_base case"),
       &is_correct_public_input,
@@ -491,9 +484,6 @@ where
       ));
     }
 
-    println!("===========================before commit=====================");
-    println!("new_lcccs: {:#?}", new_lcccs);
-    println!("relaxed_r1cs_inst: {:#?}", new_relaxed_r1cs_inst);
     let hash = self.commit_explicit_public_input(
       cs.namespace(|| "commit public input"),
       &primary_params,
@@ -580,28 +570,10 @@ where
       lcccs.iter().map(|lcccs| lcccs.r_x.clone()).collect(),
       &r_x_prime,
     )?;
-    let check_pass1 = alloc_num_equals(
-            cs.namespace(|| "check that the g(r_x') from the sumcheck proof is equal to the computed c from sigmas&thetas"),
-            &c,
-            &sumcheck_subclaim.expected_evaluation
-        )?;
-
-    // Sanity check: we can also compute g(r_x') from the proof last evaluation value, and
-    // should be equal to the previously obtained values.
-    let g_on_rxprime_from_sumcheck_last_eval = enforce_interpolate_uni_poly(
-      cs.namespace(|| "g_on_rxprime_from_sumcheck_last_eval"),
-      r_x_prime.last().unwrap(),
-      &proof.sum_check_proof.proofs.last().unwrap().evaluations,
-    )?;
-    let check_pass2 = alloc_num_equals(
-      cs.namespace(|| "check c"),
-      &c,
-      &g_on_rxprime_from_sumcheck_last_eval,
-    )?;
-    let check_pass3 = alloc_num_equals(
-      cs.namespace(|| "check evaluation"),
-      &sumcheck_subclaim.expected_evaluation,
-      &g_on_rxprime_from_sumcheck_last_eval,
+    let check_pass = alloc_num_equals(
+        cs.namespace(|| "check that the g(r_x') from the sumcheck proof is equal to the computed c from sigmas&thetas"),
+        &c,
+        &sumcheck_subclaim.expected_evaluation
     )?;
 
     // Step 6: Get the folding challenge
@@ -618,17 +590,6 @@ where
     )?;
     new_lcccs.r_x = r_x_prime;
 
-    let check_pass = AllocatedBit::and(
-      cs.namespace(|| "check pass 1 and 2"),
-      &check_pass1,
-      &check_pass2,
-    )?;
-    let check_pass = AllocatedBit::and(
-      cs.namespace(|| "check pass 1 and 2 and 3"),
-      &check_pass,
-      &check_pass3,
-    )?;
-    println!("check_pass: {:?}", check_pass.get_value());
     let check_pass = AllocatedBit::and(
       cs.namespace(|| "check pass 1 and 2 and 3 and check_sumcheck_v"),
       &check_pass,
@@ -654,15 +615,12 @@ where
     let _num_for_ro = 1 + 2 * (3 + 3 + 1 + 2 * self.params.n_limbs);
     let mut ro = G::ROCircuit::new(self.ro_consts.clone(), 0);
     ro.absorb(params);
-    println!("ro pp_digest: {:?}", params.get_value());
-    println!("U compare");
     for (i, U) in U.iter().enumerate() {
       U.absorb_in_ro(
         cs.namespace(|| format!("absorb {i}th running instance")),
         &mut ro,
       )?;
     }
-    println!("u compare");
     u.absorb_in_ro(&mut ro);
 
     let last_T = T.pop().unwrap();

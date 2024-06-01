@@ -218,7 +218,6 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
 
     // inner sum-check
     let r = transcript.squeeze(b"r").unwrap();
-    // println!("r_verify = {:?}",r);
     let claim_inner_joint = U.v[0] + r * U.v[1] + r * r * U.v[2];
 
     let (claim_inner_final, r_y) = self

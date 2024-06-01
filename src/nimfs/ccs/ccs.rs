@@ -203,7 +203,6 @@ impl<G: Group> CCS<G> {
     let r_x: Vec<G::Scalar> = (0..self.s)
       .map(|_| G::Scalar::random(rng.clone()))
       .collect();
-    // let r_x = vec![G::Scalar::from(0), G::Scalar::from(0)];
     let v = self.compute_v_j(z, &r_x);
     (
       LCCCS::<G> {

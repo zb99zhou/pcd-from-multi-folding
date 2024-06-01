@@ -94,7 +94,8 @@ mod tests {
     let A_padded = pad_matrix(&A);
     for (i, A_i) in A_padded.iter().enumerate() {
       for (j, _) in A_i.iter().enumerate() {
-        let s_i_j = bhc.at_i(i * A_i.len() + j);
+        let mut s_i_j = bhc.at_i(i * A_i.len() + j);
+        s_i_j.reverse();
         assert_eq!(A_mle.evaluate(&s_i_j), A_padded[i][j]);
       }
     }
@@ -109,12 +110,14 @@ mod tests {
     // check that the z_mle evaluated over the boolean hypercube equals the vec z_i values
     let bhc = BooleanHypercube::new(z_mle.num_vars);
     for i in 0..z.len() {
-      let s_i = bhc.at_i(i);
+      let mut s_i = bhc.at_i(i);
+      s_i.reverse();
       assert_eq!(z_mle.evaluate(&s_i), z[i]);
     }
     // for the rest of elements of the boolean hypercube, expect it to evaluate to zero
     for i in (z.len())..(1 << z_mle.num_vars) {
-      let s_i = bhc.at_i(i);
+      let mut s_i = bhc.at_i(i);
+      s_i.reverse();
       assert_eq!(z_mle.evaluate(&s_i), Fr::zero());
     }
   }

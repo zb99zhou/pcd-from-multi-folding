@@ -357,7 +357,6 @@ mod test {
     EE1: EvaluationEngineTrait<G1>,
     EE2: EvaluationEngineTrait<G2>,
   {
-    println!("Start pcd_test");
     let z0 = vec![G1::Scalar::ZERO; IO_NUM];
     let test_circuit = TrivialTestCircuit::<<G2 as Group>::Base>::default();
     let pp = PCDPublicParams::<G1, G2, _, IO_NUM, R>::setup(&test_circuit);

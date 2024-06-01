@@ -5,7 +5,7 @@ use super::nonnative::{
 };
 use crate::gadgets::ext_allocated_num::ExtendFunc;
 use crate::{
-  constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO},
+  constants::NUM_CHALLENGE_BITS,
   gadgets::{
     ecc::AllocatedPoint,
     utils::{
@@ -59,22 +59,12 @@ impl<G: Group> AllocatedR1CSInstance<G> {
 
   /// Absorb the provided instance in the RO
   pub fn absorb_in_ro(&self, ro: &mut G::ROCircuit) {
-    println!(
-      "RO u.w: {:?}, {:?}, {:?}",
-      self.W.x.get_value(),
-      self.W.y.get_value(),
-      self.W.is_infinity.get_value()
-    );
     ro.absorb(&self.W.x);
     ro.absorb(&self.W.y);
     ro.absorb(&self.W.is_infinity);
-    println!();
     for x in &self.X {
-      print!("RO u.x: {:?}", x.get_value());
       ro.absorb(x);
     }
-    println!();
-    println!();
   }
 }
 
@@ -221,19 +211,6 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     mut cs: CS,
     ro: &mut G::ROCircuit,
   ) -> Result<(), SynthesisError> {
-    println!(
-      "RO self.w: {:?}, {:?}, {:?}",
-      self.W.x.get_value(),
-      self.W.y.get_value(),
-      self.W.is_infinity.get_value()
-    );
-    println!(
-      "RO self.w: {:?}, {:?}, {:?}",
-      self.E.x.get_value(),
-      self.E.y.get_value(),
-      self.E.is_infinity.get_value()
-    );
-    println!("RO self.u: {:?}", self.u.get_value());
     ro.absorb(&self.W.x);
     ro.absorb(&self.W.y);
     ro.absorb(&self.W.is_infinity);
@@ -243,9 +220,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     ro.absorb(&self.u);
 
     // Analyze Xs as limbs
-    println!();
     for (i, X) in self.Xs.iter().enumerate() {
-      print!("self.X: {:?}, ", X.value);
       let X_bn = X
         .as_limbs()
         .iter()
@@ -259,8 +234,6 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
         ro.absorb(&limb);
       }
     }
-    println!();
-    println!();
 
     Ok(())
   }
@@ -277,7 +250,6 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     n_limbs: usize,
   ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
     let r = le_bits_to_num(cs.namespace(|| "r"), &r_bits)?;
-    println!("ro r: {:?}", r.get_value());
 
     // W_fold = self.W + r * u.W
     let rW = u.W.scalar_mul(cs.namespace(|| "r * u.W"), &r_bits)?;
@@ -350,7 +322,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     n_limbs: usize,
   ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
     // Compute r:
-    let mut ro = G::ROCircuit::new(ro_consts, NUM_FE_FOR_RO);
+    let mut ro = G::ROCircuit::new(ro_consts, 0);
     ro.absorb(params);
     self.absorb_in_ro(cs.namespace(|| "absorb running instance"), &mut ro)?;
     u.absorb_in_ro(&mut ro);
@@ -380,7 +352,6 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     n_limbs: usize,
   ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
     let r = le_bits_to_num(cs.namespace(|| "r"), &r_bits)?;
-    println!("ro r: {:?}", r.get_value());
 
     // W_fold = self.W + r * U.W
     let rW = U.W.scalar_mul(cs.namespace(|| "r * u.W"), &r_bits)?;
