@@ -31,16 +31,17 @@ use crate::spartan::{math::Math, polys::eq::EqPolynomial};
 /// Vector $Z$ indicates $Z(e)$ where $e$ ranges from $0$ to $2^m-1$.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MultiLinearPolynomial<Scalar: PrimeField> {
-  pub(crate) num_vars: usize,           // the number of variables in the multilinear polynomial
-  pub(crate) Z: Vec<Scalar>, // evaluations of the polynomial in all the 2^num_vars Boolean inputs
+  pub(crate) num_vars: usize, // the number of variables in the multilinear polynomial
+  pub(crate) Z: Vec<Scalar>,  // evaluations of the polynomial in all the 2^num_vars Boolean inputs
 }
 
 impl<Scalar: PrimeField> MultiLinearPolynomial<Scalar> {
   /// Creates a new `MultilinearPolynomial` from the given evaluations.
   ///
   /// The number of evaluations must be a power of two.
-  pub fn new(Z: Vec<Scalar>) -> Self {
-    assert_eq!(Z.len(), (2_usize).pow((Z.len() as f64).log2() as u32));
+  pub fn new(mut Z: Vec<Scalar>) -> Self {
+    let num_var = Z.len().next_power_of_two();
+    Z.resize(num_var, Scalar::ZERO);
     MultiLinearPolynomial {
       num_vars: usize::try_from(Z.len().ilog2()).unwrap(),
       Z,
@@ -85,35 +86,16 @@ impl<Scalar: PrimeField> MultiLinearPolynomial<Scalar> {
 
   /// Evaluates the polynomial at the given point.
   /// Returns Z(r) in O(n) time.
-  ///
-  /// The point must have a value for each variable.
   pub fn evaluate(&self, r: &[Scalar]) -> Scalar {
-    assert!(
-      r.len() <= self.num_vars,
-      "invalid size of partial point"
-    );
-    let mut poly = self.Z.to_vec();
-    let nv = self.num_vars;
-    let dim = r.len();
-    // evaluate single variable of partial point from left to right
-    for i in 1..dim + 1 {
-      let r = r[i - 1];
-      for b in 0..(1 << (nv - i)) {
-        let left = poly[b << 1];
-        let right = poly[(b << 1) + 1];
-        poly[b] = left + r * (right - left);
-      }
-    }
-    poly[..(1 << (nv - dim))][0]
-    // // r must have a value for each variable
-    // assert_eq!(r.len(), self.get_num_vars());
-    // let chis = EqPolynomial::new(r.to_vec()).evals();
-    // assert_eq!(chis.len(), self.Z.len());
-    //
-    // (0..chis.len())
-    //   .into_par_iter()
-    //   .map(|i| chis[i] * self.Z[i])
-    //   .sum()
+    // r must have a value for each variable
+    assert_eq!(r.len(), self.get_num_vars());
+    let chis = EqPolynomial::new(r.to_vec()).evals();
+    assert_eq!(chis.len(), self.Z.len());
+
+    (0..chis.len())
+      .into_par_iter()
+      .map(|i| chis[i] * self.Z[i])
+      .sum()
   }
 
   /// Evaluates the polynomial with the given evaluations and point.
@@ -133,6 +115,49 @@ impl<Scalar: PrimeField> MultiLinearPolynomial<Scalar> {
       *z *= scalar;
     }
     new_poly
+  }
+
+  // pub fn fix_variables(&self, partial_point: &[Scalar]) -> Self {
+  //   assert!(
+  //     partial_point.len() <= self.num_vars,
+  //     "invalid size of partial point"
+  //   );
+  //   let mut poly = self.Z.to_vec();
+  //   let nv = self.num_vars;
+  //   let dim = partial_point.len();
+  //   // Evaluate single variable of partial point from right to left
+  //   for i in (1..dim + 1).rev() {
+  //     let r = partial_point[i - 1];
+  //     for b in 0..(1 << (nv - (dim - i + 1))) {
+  //       let left = poly[b << 1];
+  //       let right = poly[(b << 1) + 1];
+  //       poly[b] = left + r * (right - left);
+  //     }
+  //   }
+  //   Self { num_vars: nv - dim, Z: poly[..(1 << (nv - dim))].to_vec() }
+  // }
+
+  pub fn fix_variables(&self, partial_point: &[Scalar]) -> Self {
+    assert!(
+      partial_point.len() <= self.num_vars,
+      "invalid size of partial point"
+    );
+    let mut poly = self.Z.to_vec();
+    let nv = self.num_vars;
+    let dim = partial_point.len();
+    // Evaluate single variable of partial point from left to right
+    for i in 1..dim + 1 {
+      let r = partial_point[i - 1];
+      for b in 0..(1 << (nv - i)) {
+        let left = poly[b];
+        let right = poly[b + (1 << (nv - i))];
+        poly[b] = left + r * (right - left); // (1-r) * left + r * right
+      }
+    }
+    Self {
+      num_vars: nv - dim,
+      Z: poly[..(1 << (nv - dim))].to_vec(),
+    }
   }
 }
 
@@ -247,6 +272,15 @@ mod tests {
 
     let y = MultiLinearPolynomial::<F>::evaluate_with(Z.as_slice(), x.as_slice());
     assert_eq!(y, TWO);
+
+    let mle = m_poly.fix_variables(x.as_slice());
+    assert_eq!(mle[0], TWO);
+
+    let test = vec![F::from(2), F::from(3), F::from(4)];
+    assert_eq!(
+      m_poly.evaluate(test.as_slice()),
+      m_poly.fix_variables(test.as_slice()).Z[0]
+    );
   }
 
   fn test_sparse_polynomial_with<F: PrimeField>() {

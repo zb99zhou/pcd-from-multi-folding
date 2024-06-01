@@ -9,8 +9,8 @@
 /// A `enum` specifying the possible failure modes of the arithmetics.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ArithErrors {
-    /// Invalid parameters: {0}
-    InvalidParameters(String),
-    /// Should not arrive to this point
-    ShouldNotArrive,
+  /// Invalid parameters: {0}
+  InvalidParameters(String),
+  /// Should not arrive to this point
+  ShouldNotArrive,
 }

@@ -7,12 +7,13 @@
 //! the other into the running instance
 
 use crate::{
-  constants::{NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS},
+  constants::NUM_HASH_BITS,
   gadgets::{
     ecc::AllocatedPoint,
     r1cs::{AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance},
     utils::{
-      alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select_vec_allocated_num, le_bits_to_num,
+      alloc_num_equals, alloc_scalar_as_base, alloc_zero, conditionally_select_vec_allocated_num,
+      le_bits_to_num,
     },
   },
   r1cs::{R1CSInstance, RelaxedR1CSInstance},
@@ -125,6 +126,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
     ),
     SynthesisError,
   > {
+    const IO_NUM: usize = 2;
     // Allocate the params
     let params = alloc_scalar_as_base::<G, _>(
       cs.namespace(|| "params"),
@@ -159,6 +161,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
       self.inputs.get().as_ref().map_or(None, |inputs| {
         inputs.U.get().as_ref().map_or(None, |U| Some(U))
       }),
+      IO_NUM,
       self.params.limb_width,
       self.params.n_limbs,
     )?;
@@ -169,6 +172,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
       self.inputs.get().as_ref().map_or(None, |inputs| {
         inputs.u.get().as_ref().map_or(None, |u| Some(u))
       }),
+      IO_NUM,
     )?;
 
     // Allocate T
@@ -194,6 +198,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
         cs.namespace(|| "Allocate U_default"),
         self.params.limb_width,
         self.params.n_limbs,
+        2,
       )?
     } else {
       // The secondary circuit returns the incoming R1CS instance
@@ -220,13 +225,10 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
     U: &AllocatedRelaxedR1CSInstance<G>,
     u: &AllocatedR1CSInstance<G>,
     T: &AllocatedPoint<G>,
-    arity: usize,
+    _arity: usize,
   ) -> Result<(AllocatedRelaxedR1CSInstance<G>, AllocatedBit), SynthesisError> {
     // Check that u.x[0] = Hash(params, U, i, z0, zi)
-    let mut ro = G::ROCircuit::new(
-      self.ro_consts.clone(),
-      NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * arity,
-    );
+    let mut ro = G::ROCircuit::new(self.ro_consts.clone(), 0);
     ro.absorb(params);
     ro.absorb(i);
     for e in z_0 {
@@ -246,7 +248,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
     )?;
 
     // Run NIFS Verifier
-    let U_fold = U.fold_with_r1cs(
+    let U_fold = U.fold_with_r1cs_contains_r(
       cs.namespace(|| "compute fold of U and u"),
       params,
       u,
@@ -343,7 +345,7 @@ impl<'a, G: Group, SC: StepCircuit<G::Base>> NovaAugmentedCircuit<'a, G, SC> {
     }
 
     // Compute the new hash H(params, Unew, i+1, z0, z_{i+1})
-    let mut ro = G::ROCircuit::new(self.ro_consts, NUM_FE_WITHOUT_IO_FOR_CRHF + 2 * arity);
+    let mut ro = G::ROCircuit::new(self.ro_consts, 0);
     ro.absorb(&params);
     ro.absorb(&i_new);
     for e in &z_0 {

@@ -1,4 +1,6 @@
 use super::{BitAccess, OptionExt};
+use bellpepper::gadgets::Assignment;
+use bellpepper_core::boolean::{AllocatedBit, Boolean};
 use bellpepper_core::{
   num::AllocatedNum,
   {ConstraintSystem, LinearCombination, SynthesisError, Variable},
@@ -9,8 +11,6 @@ use num_bigint::{BigInt, Sign};
 use std::convert::From;
 use std::io::{self, Write};
 use std::ops::Add;
-use bellpepper::gadgets::Assignment;
-use bellpepper_core::boolean::{AllocatedBit, Boolean};
 
 #[derive(Clone)]
 /// A representation of a bit
@@ -111,7 +111,10 @@ impl<Scalar: PrimeField> Add<&AllocatedNum<Scalar>> for Num<Scalar> {
 
 impl<Scalar: PrimeField> Num<Scalar> {
   pub fn zero() -> Self {
-    Self { value: Some(Scalar::ZERO), num: LinearCombination::default() }
+    Self {
+      value: Some(Scalar::ZERO),
+      num: LinearCombination::default(),
+    }
   }
 
   pub const fn new(value: Option<Scalar>, num: LinearCombination<Scalar>) -> Self {
@@ -256,9 +259,7 @@ impl<Scalar: PrimeField> Num<Scalar> {
       Ok(if *self.value.get()? == *other.value.get()? {
         Scalar::ONE
       } else {
-        (*self.value.get()? - *other.value.get()?)
-            .invert()
-            .unwrap()
+        (*self.value.get()? - *other.value.get()?).invert().unwrap()
       })
     })?;
 
@@ -352,10 +353,9 @@ pub fn as_allocated_num<Scalar: PrimeField, CS: ConstraintSystem<Scalar>>(
   mut cs: CS,
   num: bellpepper_core::num::Num<Scalar>,
 ) -> Result<AllocatedNum<Scalar>, SynthesisError> {
-  let new = AllocatedNum::alloc(
-    cs.namespace(|| "alloc num"),
-    || Ok(*num.get_value().grab()?)
-  )?;
+  let new = AllocatedNum::alloc(cs.namespace(|| "alloc num"), || {
+    Ok(*num.get_value().grab()?)
+  })?;
   cs.enforce(
     || "constraints new num",
     |_lc| num.lc(Scalar::ONE),

@@ -2,6 +2,7 @@
 use crate::{
   provider::{
     cpu_best_multiexp,
+    keccak::Keccak256Transcript,
     pedersen::CommitmentEngine,
     poseidon::{PoseidonRO, PoseidonROCircuit, PoseidonTranscript, PoseidonTranscriptCircuit},
   },
@@ -65,6 +66,7 @@ macro_rules! impl_traits {
       type ROCircuit = PoseidonROCircuit<Self::Base>;
       type TE = PoseidonTranscript<Self>;
       type TECircuit = PoseidonTranscriptCircuit<Self>;
+      type TE1 = Keccak256Transcript<Self>;
       type CE = CommitmentEngine<Self>;
 
       #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
@@ -179,6 +181,10 @@ macro_rules! impl_traits {
       fn to_transcript_bytes(&self) -> Vec<u8> {
         self.repr.to_vec()
       }
+
+      fn to_transcript_scalars(&self) -> Vec<G::Scalar> {
+        vec![G::Scalar::from_uniform(&self.repr)]
+      }
     }
 
     impl CompressedGroup for $name_compressed {
@@ -195,11 +201,23 @@ impl<G: Group> TranscriptReprTrait<G> for pallas::Base {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     self.to_repr().to_vec()
   }
+
+  fn to_transcript_scalars(&self) -> Vec<G::Scalar> {
+    vec![G::Scalar::from_uniform(
+      &<Self as TranscriptReprTrait<G>>::to_transcript_bytes(self),
+    )]
+  }
 }
 
 impl<G: Group> TranscriptReprTrait<G> for pallas::Scalar {
   fn to_transcript_bytes(&self) -> Vec<u8> {
     self.to_repr().to_vec()
+  }
+
+  fn to_transcript_scalars(&self) -> Vec<G::Scalar> {
+    vec![G::Scalar::from_uniform(
+      &<Self as TranscriptReprTrait<G>>::to_transcript_bytes(self),
+    )]
   }
 }
 

@@ -87,7 +87,11 @@ impl<G: Group> TranscriptEngineTrait<G> for Keccak256Transcript<G> {
     Ok(G::Scalar::from_uniform(&output))
   }
 
-  fn batch_squeeze(&mut self, label: &'static [u8], len: usize) -> Result<Vec<G::Scalar>, NovaError> {
+  fn batch_squeeze(
+    &mut self,
+    label: &'static [u8],
+    len: usize,
+  ) -> Result<Vec<G::Scalar>, NovaError> {
     (0..len).map(|_| self.squeeze(label)).collect()
   }
 
@@ -160,7 +164,7 @@ mod tests {
   fn test_keccak_example() {
     let mut hasher = Keccak256::new();
     hasher.update(0xffffffff_u32.to_le_bytes());
-    let output: [u8; 32] = hasher.finalize().try_into().unwrap();
+    let output: [u8; 32] = hasher.finalize().into();
     assert_eq!(
       hex::encode(output),
       "29045a592007d0c246ef02c2223570da9522d0cf0f73282c79a1bc8f0bb2c238"

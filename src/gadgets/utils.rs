@@ -1,5 +1,6 @@
 //! This module implements various low-level gadgets
 use super::nonnative::bignat::{nat_to_limbs, BigNat};
+use crate::gadgets::nonnative::util::Num;
 use crate::traits::Group;
 use bellpepper::gadgets::Assignment;
 use bellpepper_core::{
@@ -9,7 +10,6 @@ use bellpepper_core::{
 };
 use ff::{Field, PrimeField, PrimeFieldBits};
 use num_bigint::BigInt;
-use crate::gadgets::nonnative::util::Num;
 
 /// Gets as input the little indian representation of a number and spits out the number
 pub fn le_bits_to_num<Scalar, CS>(
@@ -78,17 +78,18 @@ pub fn alloc_vector_numbers<F, CS>(
   mut cs: CS,
   inputs: &[F],
 ) -> Result<Vec<AllocatedNum<F>>, SynthesisError>
-  where
-      F: PrimeField,
-      CS: ConstraintSystem<F>,
+where
+  F: PrimeField,
+  CS: ConstraintSystem<F>,
 {
   inputs
-      .iter()
-      .enumerate()
-      .map(|(i, input)| AllocatedNum::alloc(cs.namespace(|| format!("alloc {i}th input")), || Ok(*input)))
-      .collect::<Result<Vec<_>, SynthesisError>>()
+    .iter()
+    .enumerate()
+    .map(|(i, input)| {
+      AllocatedNum::alloc(cs.namespace(|| format!("alloc {i}th input")), || Ok(*input))
+    })
+    .collect::<Result<Vec<_>, SynthesisError>>()
 }
-
 
 /// Allocate a scalar as a base. Only to be used is the scalar fits in base!
 pub fn alloc_scalar_as_base<G, CS>(
@@ -223,8 +224,12 @@ pub fn alloc_vec_number_equals_zero<F: PrimeField, CS: ConstraintSystem<F>>(
   let mut is_zero = Boolean::constant(true);
   for (i, r) in vec_nums.iter().enumerate() {
     let mut cs = cs.namespace(|| format!("{}th num", i));
-    let is_zero_temp = alloc_num_equals(cs.namespace(|| "alloc is_null"), &r, zero)?;
-    is_zero = Boolean::and(cs.namespace(|| "update is_null"), &is_zero, &is_zero_temp.into())?;
+    let is_zero_temp = alloc_num_equals(cs.namespace(|| "alloc is_null"), r, zero)?;
+    is_zero = Boolean::and(
+      cs.namespace(|| "update is_null"),
+      &is_zero,
+      &is_zero_temp.into(),
+    )?;
   }
 
   Ok(is_zero)
@@ -238,7 +243,11 @@ pub fn alloc_vec_num_equals_zero<F: PrimeField, CS: ConstraintSystem<F>>(
   for (i, num) in vec_nums.iter().enumerate() {
     let mut cs = cs.namespace(|| format!("{}th num", i));
     let is_zero_temp = num.equal(cs.namespace(|| "is zero"), &Num::zero())?;
-    is_zero = Boolean::and(cs.namespace(|| "update is_null"), &is_zero, &is_zero_temp.into())?;
+    is_zero = Boolean::and(
+      cs.namespace(|| "update is_null"),
+      &is_zero,
+      &is_zero_temp.into(),
+    )?;
   }
 
   Ok(is_zero)
@@ -273,20 +282,23 @@ pub fn conditionally_select<F: PrimeField, CS: ConstraintSystem<F>>(
 
 pub fn vec_conditionally_select_big_nat<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
-  this:&[BigNat<F>],
+  this: &[BigNat<F>],
   other: &[BigNat<F>],
   condition: &Boolean,
 ) -> Result<Vec<BigNat<F>>, SynthesisError> {
-  this.iter()
-      .zip(other.iter())
-      .enumerate()
-      .map(|(i, (X, other_X))| conditionally_select_bignat(
-        cs.namespace(||format!("X[{i}] = cond ? self.X[{i}] : other.X[{i}]")),
-        &X,
-        &other_X,
+  this
+    .iter()
+    .zip(other.iter())
+    .enumerate()
+    .map(|(i, (X, other_X))| {
+      conditionally_select_bignat(
+        cs.namespace(|| format!("X[{i}] = cond ? self.X[{i}] : other.X[{i}]")),
+        X,
+        other_X,
         condition,
-      ))
-      .collect::<Result<Vec<_>, SynthesisError>>()
+      )
+    })
+    .collect::<Result<Vec<_>, SynthesisError>>()
 }
 
 /// If condition return a otherwise b
@@ -522,8 +534,11 @@ pub fn multi_and<F: PrimeField, CS: ConstraintSystem<F>>(
   }
 
   let and_num = F::from(x.len() as u64);
-  Ok(lc.equal(
-    cs.namespace(||"asserts whether boolean sum is equal to the Vector constant size"),
-    &Num::new(Some(and_num), LinearCombination::from_coeff(CS::one(), and_num))
-  )?)
+  lc.equal(
+    cs.namespace(|| "asserts whether boolean sum is equal to the Vector constant size"),
+    &Num::new(
+      Some(and_num),
+      LinearCombination::from_coeff(CS::one(), and_num),
+    ),
+  )
 }

@@ -6,10 +6,10 @@ use crate::{
   CommitmentKey,
 };
 
-use serde::{Deserialize, Serialize};
 use crate::nimfs::ccs::cccs::CCSWitness;
 use crate::nimfs::ccs::ccs::CCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
+use serde::{Deserialize, Serialize};
 
 /// A trait that defines the behavior of a `R1CSSNARK`
 pub trait RelaxedR1CSSNARKTrait<G: Group>:

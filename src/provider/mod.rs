@@ -163,6 +163,7 @@ macro_rules! impl_traits {
       type ROCircuit = PoseidonROCircuit<Self::Base>;
       type TE = PoseidonTranscript<Self>;
       type TECircuit = PoseidonTranscriptCircuit<Self>;
+      type TE1 = Keccak256Transcript<Self>;
       type CE = CommitmentEngine<Self>;
 
       fn vartime_multiscalar_mul(
@@ -266,6 +267,10 @@ macro_rules! impl_traits {
     impl<G: Group> TranscriptReprTrait<G> for $name_compressed {
       fn to_transcript_bytes(&self) -> Vec<u8> {
         self.as_ref().to_vec()
+      }
+
+      fn to_transcript_scalars(&self) -> Vec<G::Scalar> {
+        vec![G::Scalar::from_uniform(self.as_ref())]
       }
     }
 
