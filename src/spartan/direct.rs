@@ -243,8 +243,7 @@ mod tests {
     let num_steps = 3;
 
     // setup inputs
-    let z0 = vec![<G as Group>::Scalar::ZERO];
-    let mut z_i = z0;
+    let mut z_i = vec![G::Scalar::ZERO];
 
     for _i in 0..num_steps {
       // produce a SNARK
@@ -265,7 +264,7 @@ mod tests {
       assert!(res.is_ok());
 
       // set input to the next step
-      z_i = z_i_plus_one.clone();
+      z_i.clone_from(&z_i_plus_one);
     }
 
     // sanity: check the claimed output with a direct computation of the same

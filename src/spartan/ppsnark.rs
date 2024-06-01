@@ -355,7 +355,7 @@ impl<G: Group> ProductSumcheckInstance<G> {
         let mut out = input.to_vec();
         for _i in 0..input.len().log_2() {
           let (l, r, o) = compute_layer(&out);
-          out = o.clone();
+          out.clone_from(&o);
 
           left.extend(l);
           right.extend(r);
