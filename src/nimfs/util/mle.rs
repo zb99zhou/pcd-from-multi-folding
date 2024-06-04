@@ -109,10 +109,10 @@ mod tests {
 
     // check that the z_mle evaluated over the boolean hypercube equals the vec z_i values
     let bhc = BooleanHypercube::new(z_mle.num_vars);
-    for i in 0..z.len() {
+    for (i, z) in z.iter().enumerate() {
       let mut s_i = bhc.at_i(i);
       s_i.reverse();
-      assert_eq!(z_mle.evaluate(&s_i), z[i]);
+      assert_eq!(z_mle.evaluate(&s_i), *z);
     }
     // for the rest of elements of the boolean hypercube, expect it to evaluate to zero
     for i in (z.len())..(1 << z_mle.num_vars) {

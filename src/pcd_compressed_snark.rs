@@ -48,7 +48,6 @@ where
   SC: PCDStepCircuit<G1::Scalar, ARITY, R>,
 {
   pub fn setup(circuit: &SC) -> Self {
-    println!("Created secondary pp!");
     let ro_consts_primary: ROConstants<G2> = Default::default();
     let ro_consts_circuit_primary: ROConstantsCircuit<G2> = Default::default();
     let te_consts_circuit_primary: TEConstantsCircuit<G2> = Default::default();
@@ -58,14 +57,12 @@ where
     let mut cs_aux_helper: ShapeCS<G2> = ShapeCS::new();
     let _ = aux_circuit_setup.synthesize(&mut cs_aux_helper);
     let (aux_r1cs_shape, ck_secondary) = cs_aux_helper.r1cs_shape();
-    let secondary_circuit_params: NovaAuxiliaryParams<G2> =
-      NovaAuxiliaryParams::new(aux_r1cs_shape, R * BN_N_LIMBS * 2);
 
-    println!("Created primary pp!");
-    let circuit_params_primary_for_setup: PCDUnitParams<G1, ARITY, R> =
-      PCDUnitParams::default_for_pcd(BN_LIMB_WIDTH, BN_N_LIMBS);
+    let primary_circuit_params =
+      PCDUnitParams::<G1, ARITY, R>::default_for_pcd(BN_LIMB_WIDTH, BN_N_LIMBS);
+    let secondary_circuit_params = NovaAuxiliaryParams::new(aux_r1cs_shape, R * BN_N_LIMBS * 2);
     let pcd_circuit_setup = PCDUnitPrimaryCircuit::<'_, G2, G1, SC, ARITY, R>::new(
-      &circuit_params_primary_for_setup,
+      &primary_circuit_params,
       &secondary_circuit_params,
       None,
       circuit,

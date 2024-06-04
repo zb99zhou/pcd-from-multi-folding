@@ -604,7 +604,7 @@ pub fn multi_folding_with_primary_part<CS: ConstraintSystem<<G as Group>::Base>,
 ) -> Result<AllocatedLCCCSPrimaryPart<G>, SynthesisError> {
   // init
   let mut lcccs_folded = lcccs[0].clone();
-  lcccs_folded.Vs = sigmas[0].to_owned();
+  lcccs_folded.Vs.clone_from(&sigmas[0]);
   let mut rho_i = AllocatedNum::one(cs.namespace(|| "alloc one"))?;
 
   // folding

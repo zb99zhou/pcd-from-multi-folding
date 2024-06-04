@@ -591,7 +591,7 @@ impl<G: Group> RelaxedR1CSInstance<G> {
     let mut r_instance = RelaxedR1CSInstance::default(ck, S);
     r_instance.comm_W = instance.comm_W;
     r_instance.u = G::Scalar::ONE;
-    r_instance.X = instance.X.clone();
+    r_instance.X.clone_from(&instance.X);
     r_instance
   }
 

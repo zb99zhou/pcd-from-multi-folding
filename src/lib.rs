@@ -909,40 +909,40 @@ mod tests {
 
   #[test]
   fn test_pp_digest() {
-    // type G1 = pasta_curves::pallas::Point;
-    // type G2 = pasta_curves::vesta::Point;
-    // let trivial_circuit1 = TrivialTestCircuit::<<G1 as Group>::Scalar>::default();
-    // let trivial_circuit2 = TrivialTestCircuit::<<G2 as Group>::Scalar>::default();
-    // let cubic_circuit1 = CubicCircuit::<<G1 as Group>::Scalar>::default();
-    //
-    // test_pp_digest_with::<G1, G2, _, _>(
-    //   &trivial_circuit1,
-    //   &trivial_circuit2,
-    //   "663dd2423fb72de3355fb390fe8f9184a6f8c614ac329e82cab047b504339001",
-    // );
-    //
-    // test_pp_digest_with::<G1, G2, _, _>(
-    //   &cubic_circuit1,
-    //   &trivial_circuit2,
-    //   "d77fb6014ef0adb29cdb121f0be07a3cf4c31f778d2d1d4a6cae97f029de2602",
-    // );
+    type G1 = pasta_curves::pallas::Point;
+    type G2 = pasta_curves::vesta::Point;
+    let trivial_circuit1 = TrivialTestCircuit::<<G1 as Group>::Scalar>::default();
+    let trivial_circuit2 = TrivialTestCircuit::<<G2 as Group>::Scalar>::default();
+    let cubic_circuit1 = CubicCircuit::<<G1 as Group>::Scalar>::default();
 
-    // let _trivial_circuit1_grumpkin =
-    //   TrivialTestCircuit::<<bn256::Point as Group>::Scalar>::default();
-    // let trivial_circuit2_grumpkin =
-    //   TrivialTestCircuit::<<grumpkin::Point as Group>::Scalar>::default();
-    // let cubic_circuit1_grumpkin = CubicCircuit::<<bn256::Point as Group>::Scalar>::default();
-    //
-    // // test_pp_digest_with::<bn256::Point, grumpkin::Point, _, _>(
-    // //   &trivial_circuit1_grumpkin,
-    // //   &trivial_circuit2_grumpkin,
-    // //   "9b0627dd284c72fa147d4fa8fa34615a31e72368cbbc63f82b586f2d71d6b401",
-    // // );
-    // test_pp_digest_with::<bn256::Point, grumpkin::Point, _, _>(
-    //   &cubic_circuit1_grumpkin,
-    //   &trivial_circuit2_grumpkin,
-    //   "49eeac433d368f725a68f103993aa3778e2d78e2dd0babf9f656fd5f812f0501",
-    // );
+    test_pp_digest_with::<G1, G2, _, _>(
+      &trivial_circuit1,
+      &trivial_circuit2,
+      "663dd2423fb72de3355fb390fe8f9184a6f8c614ac329e82cab047b504339001",
+    );
+
+    test_pp_digest_with::<G1, G2, _, _>(
+      &cubic_circuit1,
+      &trivial_circuit2,
+      "d77fb6014ef0adb29cdb121f0be07a3cf4c31f778d2d1d4a6cae97f029de2602",
+    );
+
+    let trivial_circuit1_grumpkin =
+      TrivialTestCircuit::<<bn256::Point as Group>::Scalar>::default();
+    let trivial_circuit2_grumpkin =
+      TrivialTestCircuit::<<grumpkin::Point as Group>::Scalar>::default();
+    let cubic_circuit1_grumpkin = CubicCircuit::<<bn256::Point as Group>::Scalar>::default();
+
+    test_pp_digest_with::<bn256::Point, grumpkin::Point, _, _>(
+      &trivial_circuit1_grumpkin,
+      &trivial_circuit2_grumpkin,
+      "9b0627dd284c72fa147d4fa8fa34615a31e72368cbbc63f82b586f2d71d6b401",
+    );
+    test_pp_digest_with::<bn256::Point, grumpkin::Point, _, _>(
+      &cubic_circuit1_grumpkin,
+      &trivial_circuit2_grumpkin,
+      "49eeac433d368f725a68f103993aa3778e2d78e2dd0babf9f656fd5f812f0501",
+    );
 
     let trivial_circuit1_secp =
       TrivialTestCircuit::<<secp256k1::Point as Group>::Scalar>::default();
