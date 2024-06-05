@@ -76,7 +76,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
 
     let pk = ProverKey {
       pk_ee,
-      S: S.clone(),
+      S,
       vk_digest: vk.digest,
     };
 
