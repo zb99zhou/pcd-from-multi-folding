@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::cmp::max;
 use std::fmt::{Debug, Formatter};
 use std::ops::Neg;
+use std::sync::Arc;
 // XXX use thiserror everywhere? espresso doesnt use it...
 use crate::errors::NovaError;
 use crate::nimfs::ccs::cccs::{CCSWitness, CCCS};
@@ -52,7 +53,7 @@ pub struct CCS<G: Group> {
   pub s_prime: usize,
 
   // Vector of matrices
-  pub M: Vec<SparseMatrix<G::Scalar>>,
+  pub M: Arc<Vec<SparseMatrix<G::Scalar>>>,
   // Vector of multisets
   pub S: Vec<Vec<usize>>,
   // Vector of coefficients
@@ -108,7 +109,7 @@ impl<G: Group> CCS<G> {
 
       S: vec![vec![0, 1], vec![2]],
       c: vec![G::Scalar::ONE, G::Scalar::ONE.neg()],
-      M: vec![],
+      M: vec![].into(),
     }
   }
   /// Converts the R1CS structure to the CCS structure
@@ -143,7 +144,7 @@ impl<G: Group> CCS<G> {
 
       S: vec![vec![0, 1], vec![2]],
       c: vec![G::Scalar::ONE, G::Scalar::ONE.neg()],
-      M: vec![A, B, C],
+      M: vec![A, B, C].into(),
     }
   }
 
@@ -301,7 +302,7 @@ impl<G: Group> CCS<G> {
     // check if the number of variables are as expected, then
     // we simply set the number of constraints to the next power of two
     if self.n - self.l - 1 == mx {
-      let mut M_padded = self.M.clone();
+      let mut M_padded = (*self.M).clone();
       for elem in M_padded.iter_mut() {
         elem.rows = mx;
       }
@@ -315,7 +316,7 @@ impl<G: Group> CCS<G> {
         q: self.q,
         d: self.d,
 
-        M: M_padded,
+        M: M_padded.into(),
         S: self.S.clone(),
         c: self.c.clone(),
       };
@@ -323,7 +324,7 @@ impl<G: Group> CCS<G> {
 
     let m_padded = mx;
     let n_padded = mx + self.l + 1;
-    let mut M_padded = self.M.clone();
+    let mut M_padded = (*self.M).clone();
     for elem in M_padded.iter_mut() {
       elem.rows = m_padded;
       elem.cols = n_padded;
@@ -343,7 +344,7 @@ impl<G: Group> CCS<G> {
       q: self.q,
       d: self.d,
 
-      M: M_padded,
+      M: M_padded.into(),
       S: self.S.clone(),
       c: self.c.clone(),
     }
