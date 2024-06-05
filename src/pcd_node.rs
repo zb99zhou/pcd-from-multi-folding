@@ -317,7 +317,6 @@ mod test {
     G1: Group<Base = <G2 as Group>::Scalar>,
     G2: Group<Base = <G1 as Group>::Scalar>,
   {
-    println!("Start pcd_test");
     let z0 = vec![G1::Scalar::ZERO; IO_NUM];
     let test_circuit = TrivialTestCircuit::<<G2 as Group>::Base>::default();
     let pp = PCDPublicParams::<G1, G2, _, IO_NUM, R>::setup(&test_circuit);
@@ -337,7 +336,6 @@ mod test {
     let default_relaxed_r1cs_witness =
       RelaxedR1CSWitness::<G2>::default(&pp.secondary_circuit_params.r1cs_shape);
 
-    println!("Creating PCD node1");
     let node_1 = PCDNode::<G1, G2, IO_NUM, R>::new(
       vec![default_lcccs.clone(), default_lcccs],
       vec![default_cccs.clone(), default_cccs],
@@ -437,34 +435,5 @@ mod test {
     const ARITY: usize = 1;
     const R: usize = 2;
     test_pcd_with::<G1, G2, R, ARITY>().unwrap();
-  }
-
-  fn test_for_dbg_with<G1, G2, const R: usize, const IO_NUM: usize>()
-  where
-    G1: Group<Base = <G2 as Group>::Scalar>,
-    G2: Group<Base = <G1 as Group>::Scalar>,
-  {
-    let test_circuit = TrivialTestCircuit::<<G2 as Group>::Base>::default();
-    let pp = PCDPublicParams::<G1, G2, _, IO_NUM, R>::setup(&test_circuit);
-
-    let mut z = vec![G1::Scalar::ZERO; pp.primary_circuit_params.ccs.n];
-    z[pp.primary_circuit_params.ccs.n - pp.primary_circuit_params.ccs.l - 1] = G1::Scalar::ONE;
-    let (default_lcccs, default_w_lcccs) =
-      pp.primary_circuit_params
-        .ccs
-        .to_lcccs(OsRng, &pp.ck_primary, &z);
-    let res = default_lcccs.check_relation(&pp.ck_primary, &default_w_lcccs);
-    dbg!("lcccs: {:#?}", default_lcccs);
-    dbg!("w_lcccs.r_w: {:#?}", default_w_lcccs.r_w);
-    assert!(res.is_ok())
-  }
-
-  #[test]
-  fn test_for_dbg() {
-    type G1 = pasta_curves::pallas::Point;
-    type G2 = pasta_curves::vesta::Point;
-    const ARITY: usize = 1;
-    const R: usize = 2;
-    test_for_dbg_with::<G1, G2, R, ARITY>();
   }
 }

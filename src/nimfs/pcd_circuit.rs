@@ -31,7 +31,6 @@ use bellpepper_core::boolean::{AllocatedBit, Boolean};
 use bellpepper_core::num::{AllocatedNum, Num};
 use bellpepper_core::{ConstraintSystem, SynthesisError};
 use ff::Field;
-use num_traits::Zero;
 use serde::Serialize;
 
 // R: the number of multi-folding PCD node
@@ -381,22 +380,18 @@ where
     ) = self.alloc_witness(cs.namespace(|| "allocate the circuit witness"))?;
 
     // Compute variable indicating if this is the base case
-    // let zero = crate::gadgets::utils::alloc_zero(cs.namespace(|| "zero"))?;
-    // let mut is_base_case_flags = Vec::new();
-    // for (i, l) in lcccs.iter().enumerate() {
-    //     is_base_case_flags.push(l.is_null(cs.namespace(|| format!("{}th lcccs", i)), &zero)?);
-    // }
-    // for (i, c) in cccs.iter().enumerate() {
-    //     is_base_case_flags.push(c.is_null(cs.namespace(|| format!("{}th cccs", i)), &zero)?);
-    // }
-    // for (i, c) in relaxed_r1cs_inst.iter().enumerate() {
-    //     is_base_case_flags.push(c.is_null(cs.namespace(|| format!("{}th relaxed_r1cs_inst", i)), &zero)?);
-    // }
-    let is_base_case = Boolean::from(AllocatedBit::alloc(
-      cs.namespace(|| "Check if base case"),
-      new_lcccs_second_part.x.value.as_ref().map(|v| v.is_zero()),
+    let zero = crate::gadgets::utils::alloc_zero(cs.namespace(|| "zero"))?;
+    let mut is_base_case_flags = Vec::new();
+    for (i, l) in lcccs.iter().enumerate() {
+      is_base_case_flags.push(l.is_null(cs.namespace(|| format!("{}th lcccs", i)), &zero)?);
+    }
+    for (i, c) in cccs.iter().enumerate() {
+      is_base_case_flags.push(c.is_null(cs.namespace(|| format!("{}th cccs", i)), &zero)?);
+    }
+    let is_base_case = Boolean::from(multi_and(
+      cs.namespace(|| "is base case"),
+      &is_base_case_flags,
     )?);
-    // let is_base_case = Boolean::from(multi_and(cs.namespace(|| "is base case"), &is_base_case_flags)?);
 
     let is_correct_public_input = self.check_public_input(
       cs.namespace(|| "is_correct_public_input"),
