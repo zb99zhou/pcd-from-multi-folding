@@ -45,7 +45,9 @@ impl<G: Group> AllocatedLCCCS<G> {
     mut cs: CS,
     zero: &AllocatedNum<G::Base>,
   ) -> Result<Boolean, SynthesisError> {
-    let is_null1 = self.primary_part.is_null(cs.namespace(|| "self.C"), zero)?;
+    let is_null1 = self
+      .primary_part
+      .is_null(cs.namespace(|| "self.primary_part"), zero)?;
     let is_null2 = self.C.is_null(cs.namespace(|| "self.C"))?;
     multi_and(cs.namespace(|| "lcccs is null"), &[is_null1, is_null2]).map(Into::into)
   }
@@ -158,7 +160,9 @@ impl<G: Group> AllocatedCCCS<G> {
     mut cs: CS,
     zero: &AllocatedNum<G::Base>,
   ) -> Result<Boolean, SynthesisError> {
-    let is_null1 = self.primary_part.is_null(cs.namespace(|| "self.C"), zero)?;
+    let is_null1 = self
+      .primary_part
+      .is_null(cs.namespace(|| "self.primary_part"), zero)?;
     let is_null2 = self.C.is_null(cs.namespace(|| "self.C"))?;
     multi_and(cs.namespace(|| "lcccs is null"), &[is_null1, is_null2]).map(Into::into)
   }
@@ -262,16 +266,14 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
     mut cs: CS,
     zero: &AllocatedNum<G::Base>,
   ) -> Result<Boolean, SynthesisError> {
-    let is_u_zero = alloc_num_equals(cs.namespace(|| "alloc is_null"), &self.u, zero)?.into();
+    let is_u_zero = alloc_num_equals(cs.namespace(|| "alloc is_u_zero"), &self.u, zero)?.into();
 
     let Xs_num = alloc_vec_number_equals_zero(cs.namespace(|| "is Xs zero"), &self.Xs, zero)?;
     let is_Vs_zero = alloc_vec_number_equals_zero(cs.namespace(|| "is Vs zero"), &self.Vs, zero)?;
-    let is_r_x_zero =
-      alloc_vec_number_equals_zero(cs.namespace(|| "is r_x zero"), &self.r_x, zero)?;
 
     multi_and(
       cs.namespace(|| "final result"),
-      &[is_u_zero, Xs_num, is_Vs_zero, is_r_x_zero],
+      &[is_u_zero, Xs_num, is_Vs_zero],
     )
     .map(Into::into)
   }
@@ -415,7 +417,7 @@ impl<G: Group> AllocatedLCCCSPrimaryPart<G> {
     sigmas: &[AllocatedNum<G::Base>],
   ) -> Result<(), SynthesisError> {
     self.folding(
-      cs.namespace(|| " folding with lcccs"),
+      cs.namespace(|| "folding with lcccs"),
       rho_i,
       &lcccs.u,
       &lcccs.Xs,
