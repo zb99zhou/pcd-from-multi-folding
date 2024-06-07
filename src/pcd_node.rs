@@ -93,7 +93,7 @@ where
       self.w_cccs.as_ref().unwrap(),
     );
     println!("Finish NIMFS proving");
-    if !IS_GENESIS {
+    if !IS_GENESIS && ENABLE_SANITY_CHECK {
       let mut transcript_v = <G1 as Group>::TE::new(Default::default(), b"multifolding");
       transcript_v.squeeze(b"init")?;
       let verified_lcccs = NIMFS::verify(
@@ -120,9 +120,11 @@ where
     let aux_circuit = NovaAuxiliarySecondCircuit::<G1>::new(aux_circuit_input);
 
     println!("=================================================test aux circuit satisfiability=================================================");
-    let mut test_cs = TestConstraintSystem::new();
-    aux_circuit.clone().synthesize(&mut test_cs)?;
-    assert!(test_cs.is_satisfied());
+    if ENABLE_SANITY_CHECK {
+      let mut test_cs = TestConstraintSystem::new();
+      aux_circuit.clone().synthesize(&mut test_cs)?;
+      assert!(test_cs.is_satisfied());
+    }
 
     println!("=================================================proving aux circuit=================================================");
     let mut cs_secondary = SatisfyingAssignment::<G2>::new();
@@ -148,7 +150,7 @@ where
         &aux_r1cs_instance,
         &aux_r1cs_witness,
       )?;
-    if !IS_GENESIS {
+    if !IS_GENESIS && ENABLE_SANITY_CHECK {
       let verified_relaxed_r1cs_instance = NIFS::verify_with_multi_relaxed(
         &nifs_proof,
         &pp.ro_consts_primary,
@@ -189,9 +191,11 @@ where
     );
 
     println!("=================================================test PCD circuit satisfiability=================================================");
-    let mut test_cs = TestConstraintSystem::new();
-    let _ = pcd_circuit.clone().synthesize(&mut test_cs)?;
-    assert!(test_cs.is_satisfied());
+    if ENABLE_SANITY_CHECK {
+      let mut test_cs = TestConstraintSystem::new();
+      let _ = pcd_circuit.clone().synthesize(&mut test_cs)?;
+      assert!(test_cs.is_satisfied());
+    }
 
     println!("=================================================proving PCD circuit=================================================");
     let mut cs_primary = SatisfyingAssignment::<G1>::new();
@@ -204,11 +208,6 @@ where
     let (cccs, cccs_witness) =
       cs_primary.cccs_and_witness(pp.primary_circuit_params.ccs.clone(), &pp.ck_primary)?;
 
-    let mut z: Vec<G1::Scalar> = Vec::with_capacity(pp.primary_circuit_params.ccs.n);
-    z.extend_from_slice(&cccs_witness.w);
-    z.push(G1::Scalar::ONE);
-    z.extend_from_slice(&cccs.x);
-    pp.primary_circuit_params.ccs.check_relation(&z).unwrap();
 
     let (lcccs, lcccs_witness) = if IS_GENESIS {
       (
@@ -230,10 +229,6 @@ where
     } else {
       (relaxed_r1cs_instance, relaxed_r1cs_witness)
     };
-    cccs.check_relation(&pp.ck_primary, &cccs_witness).unwrap();
-    lcccs
-      .check_relation(&pp.ck_primary, &lcccs_witness)
-      .unwrap();
 
     Ok((
       lcccs,
