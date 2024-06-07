@@ -268,7 +268,7 @@ impl<C: Group> MultiFolding<C> {
   ///
   /// Return the final folded LCCCS, the folded witness, the sumcheck proof, and the helper
   /// sumcheck claims sigmas and thetas.
-  pub fn prove(
+  pub fn prove<const ENABLE_SANITY_CHECK: bool>(
     transcript: &mut C::TE,
     running_instances: &[LCCCS<C>],
     new_instances: &[CCCS<C>],
@@ -321,21 +321,20 @@ impl<C: Group> MultiFolding<C> {
     // Step 3: Run the sumcheck prover
     let sumcheck_proof = <PolyIOP<C::Scalar> as SumCheck<C>>::prove(&g, transcript).unwrap(); // XXX unwrap
 
-    // note: this is the sum of g(x) over the whole boolean hypercube
-    let _extracted_sum = <PolyIOP<C::Scalar> as SumCheck<C>>::extract_sum(&sumcheck_proof);
-
-    // Sanity check: expect \sum v_j * gamma^j to be equal to the sum of g(x) over the
-    // boolean hypercube (and also equal to the extracted_sum from the SumCheck).
-    let mut sum_v_j_gamma = C::Scalar::default();
-    for (i, running_instance) in running_instances.iter().enumerate() {
-      for j in 0..running_instance.v.len() {
-        let gamma_j = gamma.pow([(i * running_instances[0].ccs.t + j) as u64]);
-        sum_v_j_gamma += running_instance.v[j] * gamma_j;
+    if ENABLE_SANITY_CHECK {
+      // note: this is the sum of g(x) over the whole boolean hypercube
+      let extracted_sum = <PolyIOP<C::Scalar> as SumCheck<C>>::extract_sum(&sumcheck_proof);
+      // Sanity check: expect \sum v_j * gamma^j to be equal to the sum of g(x) over the
+      // boolean hypercube (and also equal to the extracted_sum from the SumCheck).
+      let mut sum_v_j_gamma = C::Scalar::default();
+      for (i, running_instance) in running_instances.iter().enumerate() {
+        for j in 0..running_instance.v.len() {
+          let gamma_j = gamma.pow([(i * running_instances[0].ccs.t + j) as u64]);
+          sum_v_j_gamma += running_instance.v[j] * gamma_j;
+        }
       }
+      assert_eq!(extracted_sum, sum_v_j_gamma);
     }
-    // TODO: add conditional sanity check with const generic
-    // assert_eq!(extracted_sum, sum_v_j_gamma);
-    //////////////////////////////////////////////////////////////////////
 
     // Step 2: dig into the sumcheck and extract r_x_prime
     let r_x_prime = sumcheck_proof.point.clone();
@@ -664,7 +663,7 @@ pub mod test {
     let mut transcript_v = transcript_p.clone();
 
     // Run the prover side of the multi-folding
-    let (proof, folded_lcccs, folded_witness) = NIMFS::prove(
+    let (proof, folded_lcccs, folded_witness) = NIMFS::prove::<false>(
       &mut transcript_p,
       &vec![running_instance.clone()],
       &vec![new_instance.clone()],
@@ -715,7 +714,7 @@ pub mod test {
       let _ = new_instance.check_relation(&ck, &w2);
 
       // run the prover side of the multifolding
-      let (proof, folded_lcccs, folded_witness) = NIMFS::prove(
+      let (proof, folded_lcccs, folded_witness) = NIMFS::prove::<false>(
         &mut transcript_p,
         &vec![running_instance.clone()],
         &vec![new_instance.clone()],
@@ -792,7 +791,7 @@ pub mod test {
     let mut transcript_v = transcript_p.clone();
 
     // Run the prover side of the multi-folding
-    let (proof, folded_lcccs, folded_witness) = NIMFS::prove(
+    let (proof, folded_lcccs, folded_witness) = NIMFS::prove::<false>(
       &mut transcript_p,
       &lcccs_instances,
       &cccs_instances,
@@ -862,7 +861,7 @@ pub mod test {
       }
 
       // Run the prover side of the multi-folding
-      let (proof, folded_lcccs, folded_witness) = NIMFS::prove(
+      let (proof, folded_lcccs, folded_witness) = NIMFS::prove::<false>(
         &mut transcript_p,
         &lcccs_instances,
         &cccs_instances,

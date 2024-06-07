@@ -65,7 +65,7 @@ where
     }
   }
 
-  pub fn prove_step<SC: PCDStepCircuit<<G2 as Group>::Base, ARITY, R>, const IS_GENESIS: bool>(
+  pub fn prove_step<SC: PCDStepCircuit<<G2 as Group>::Base, ARITY, R>, const IS_GENESIS: bool, const ENABLE_SANITY_CHECK: bool>(
     &self,
     pp: &PCDPublicParams<G1, G2, SC, ARITY, R>,
     pcd_step_circuit: &SC,
@@ -85,7 +85,7 @@ where
     println!("=================================================proving NIMFS=================================================");
     let mut transcript_p = <G1 as Group>::TE::new(Default::default(), b"multifolding");
     transcript_p.squeeze(b"init").unwrap();
-    let (nimfs_proof, lcccs, lcccs_witness) = NIMFS::prove(
+    let (nimfs_proof, lcccs, lcccs_witness) = NIMFS::prove::<ENABLE_SANITY_CHECK>(
       &mut transcript_p,
       &self.lcccs,
       &self.cccs,
@@ -363,7 +363,7 @@ mod test {
       node_1_relaxed_r1cs_witness,
       node_1_zi,
     ) = node_1
-      .prove_step::<_, true>(&pp, &test_circuit)
+      .prove_step::<_, true, false>(&pp, &test_circuit)
       .map_err(|_| NovaError::SynthesisError)?;
 
     println!("=================================================Proving node2=================================================");
@@ -377,7 +377,7 @@ mod test {
       node_2_folded_relaxed_r1cs_witness,
       node_2_zi,
     ) = node_2
-      .prove_step::<_, true>(&pp, &test_circuit)
+      .prove_step::<_, true, false>(&pp, &test_circuit)
       .map_err(|_| NovaError::SynthesisError)?;
 
     let node_3_input_lcccs = vec![node_1_lcccs, node_2_lcccs];
@@ -412,7 +412,7 @@ mod test {
       node_3_cccs_witness,
       node_3_relaxed_r1cs_witness,
       node_3_zi,
-    ) = node_3.prove_step::<_, false>(&pp, &test_circuit).unwrap();
+    ) = node_3.prove_step::<_, false, false>(&pp, &test_circuit).unwrap();
 
     let res = node_3.verify(
       &pp,
