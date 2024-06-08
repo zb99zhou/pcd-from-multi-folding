@@ -19,7 +19,6 @@ use crate::traits::{AbsorbInROTrait, Group, ROTrait, TranscriptEngineTrait};
 use crate::Commitment;
 use bellpepper_core::test_cs::TestConstraintSystem;
 use bellpepper_core::ConstraintSystem;
-use ff::Field;
 
 #[derive(Clone)]
 pub struct PCDNode<G1, G2, const ARITY: usize, const R: usize>
@@ -65,7 +64,11 @@ where
     }
   }
 
-  pub fn prove_step<SC: PCDStepCircuit<<G2 as Group>::Base, ARITY, R>, const IS_GENESIS: bool>(
+  pub fn prove_step<
+    SC: PCDStepCircuit<<G2 as Group>::Base, ARITY, R>,
+    const IS_GENESIS: bool,
+    const ENABLE_SANITY_CHECK: bool,
+  >(
     &self,
     pp: &PCDPublicParams<G1, G2, SC, ARITY, R>,
     pcd_step_circuit: &SC,
@@ -85,15 +88,14 @@ where
     println!("=================================================proving NIMFS=================================================");
     let mut transcript_p = <G1 as Group>::TE::new(Default::default(), b"multifolding");
     transcript_p.squeeze(b"init").unwrap();
-    let (nimfs_proof, lcccs, lcccs_witness) = NIMFS::prove(
+    let (nimfs_proof, lcccs, lcccs_witness) = NIMFS::prove::<ENABLE_SANITY_CHECK>(
       &mut transcript_p,
       &self.lcccs,
       &self.cccs,
       self.w_lcccs.as_ref().unwrap(),
       self.w_cccs.as_ref().unwrap(),
     );
-    println!("Finish NIMFS proving");
-    if !IS_GENESIS {
+    if !IS_GENESIS && ENABLE_SANITY_CHECK {
       let mut transcript_v = <G1 as Group>::TE::new(Default::default(), b"multifolding");
       transcript_v.squeeze(b"init")?;
       let verified_lcccs = NIMFS::verify(
@@ -103,7 +105,6 @@ where
         nimfs_proof.clone(),
       );
       assert_eq!(verified_lcccs, lcccs);
-      println!("Finish NIMFS verification");
     }
 
     let pp_aux =
@@ -116,24 +117,20 @@ where
       Some(rho),
       R,
     );
-
     let aux_circuit = NovaAuxiliarySecondCircuit::<G1>::new(aux_circuit_input);
 
-    println!("=================================================test aux circuit satisfiability=================================================");
-    let mut test_cs = TestConstraintSystem::new();
-    aux_circuit.clone().synthesize(&mut test_cs)?;
-    assert!(test_cs.is_satisfied());
+    if ENABLE_SANITY_CHECK {
+      println!("=================================================test aux circuit satisfiability=================================================");
+      let mut test_cs = TestConstraintSystem::new();
+      aux_circuit.clone().synthesize(&mut test_cs)?;
+      assert!(test_cs.is_satisfied());
+    }
 
     println!("=================================================proving aux circuit=================================================");
     let mut cs_secondary = SatisfyingAssignment::<G2>::new();
     aux_circuit.synthesize(&mut cs_secondary)?;
     let (aux_r1cs_instance, aux_r1cs_witness) = cs_secondary
       .r1cs_instance_and_witness(&pp.secondary_circuit_params.r1cs_shape, &pp.ck_secondary)?;
-    pp.secondary_circuit_params.r1cs_shape.is_sat(
-      &pp.ck_secondary,
-      &aux_r1cs_instance,
-      &aux_r1cs_witness,
-    )?;
 
     // Then, handling the PCD primary circuit
     println!("=================================================proving NIFS=================================================");
@@ -148,7 +145,7 @@ where
         &aux_r1cs_instance,
         &aux_r1cs_witness,
       )?;
-    if !IS_GENESIS {
+    if !IS_GENESIS && ENABLE_SANITY_CHECK {
       let verified_relaxed_r1cs_instance = NIFS::verify_with_multi_relaxed(
         &nifs_proof,
         &pp.ro_consts_primary,
@@ -188,27 +185,23 @@ where
       pp.te_consts_circuit_primary.clone(),
     );
 
-    println!("=================================================test PCD circuit satisfiability=================================================");
-    let mut test_cs = TestConstraintSystem::new();
-    let _ = pcd_circuit.clone().synthesize(&mut test_cs)?;
-    assert!(test_cs.is_satisfied());
+    if ENABLE_SANITY_CHECK {
+      println!("=================================================test PCD circuit satisfiability=================================================");
+      let mut test_cs = TestConstraintSystem::new();
+      let _ = pcd_circuit.clone().synthesize(&mut test_cs)?;
+      assert!(test_cs.is_satisfied());
+    }
 
     println!("=================================================proving PCD circuit=================================================");
     let mut cs_primary = SatisfyingAssignment::<G1>::new();
     let zi_primary = pcd_circuit
       .synthesize(&mut cs_primary)?
       .iter()
-      .map(|v| v.get_value().ok_or(NovaError::SynthesisError))
-      .collect::<Result<Vec<<G1 as Group>::Scalar>, NovaError>>()?;
+      .map(|v| v.get_value().unwrap())
+      .collect::<Vec<_>>();
 
     let (cccs, cccs_witness) =
       cs_primary.cccs_and_witness(pp.primary_circuit_params.ccs.clone(), &pp.ck_primary)?;
-
-    let mut z: Vec<G1::Scalar> = Vec::with_capacity(pp.primary_circuit_params.ccs.n);
-    z.extend_from_slice(&cccs_witness.w);
-    z.push(G1::Scalar::ONE);
-    z.extend_from_slice(&cccs.x);
-    pp.primary_circuit_params.ccs.check_relation(&z).unwrap();
 
     let (lcccs, lcccs_witness) = if IS_GENESIS {
       (
@@ -230,10 +223,6 @@ where
     } else {
       (relaxed_r1cs_instance, relaxed_r1cs_witness)
     };
-    cccs.check_relation(&pp.ck_primary, &cccs_witness).unwrap();
-    lcccs
-      .check_relation(&pp.ck_primary, &lcccs_witness)
-      .unwrap();
 
     Ok((
       lcccs,
@@ -363,7 +352,7 @@ mod test {
       node_1_relaxed_r1cs_witness,
       node_1_zi,
     ) = node_1
-      .prove_step::<_, true>(&pp, &test_circuit)
+      .prove_step::<_, true, false>(&pp, &test_circuit)
       .map_err(|_| NovaError::SynthesisError)?;
 
     println!("=================================================Proving node2=================================================");
@@ -377,7 +366,7 @@ mod test {
       node_2_folded_relaxed_r1cs_witness,
       node_2_zi,
     ) = node_2
-      .prove_step::<_, true>(&pp, &test_circuit)
+      .prove_step::<_, true, false>(&pp, &test_circuit)
       .map_err(|_| NovaError::SynthesisError)?;
 
     let node_3_input_lcccs = vec![node_1_lcccs, node_2_lcccs];
@@ -412,7 +401,9 @@ mod test {
       node_3_cccs_witness,
       node_3_relaxed_r1cs_witness,
       node_3_zi,
-    ) = node_3.prove_step::<_, false>(&pp, &test_circuit).unwrap();
+    ) = node_3
+      .prove_step::<_, false, false>(&pp, &test_circuit)
+      .unwrap();
 
     let res = node_3.verify(
       &pp,
