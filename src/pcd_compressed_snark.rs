@@ -400,7 +400,9 @@ mod test {
       node_1_cccs_witness,
       node_1_relaxed_r1cs_witness,
       node_1_zi,
-    ) = node_1.prove_step::<_, true, false>(&pp, &test_circuit).unwrap();
+    ) = node_1
+      .prove_step::<_, true, false>(&pp, &test_circuit)
+      .unwrap();
 
     println!("=================================================Proving node2=================================================");
     let node_2 = node_1.clone();
@@ -412,7 +414,9 @@ mod test {
       node_2_cccs_witness,
       node_2_folded_relaxed_r1cs_witness,
       node_2_zi,
-    ) = node_2.prove_step::<_, true, false>(&pp, &test_circuit).unwrap();
+    ) = node_2
+      .prove_step::<_, true, false>(&pp, &test_circuit)
+      .unwrap();
 
     let node_3_input_lcccs = vec![node_1_lcccs, node_2_lcccs];
     let node_3_input_cccs = vec![node_1_cccs, node_2_cccs];
@@ -446,7 +450,9 @@ mod test {
       node_3_cccs_witness,
       node_3_relaxed_r1cs_witness,
       node_3_zi,
-    ) = node_3.prove_step::<_, false, false>(&pp, &test_circuit).unwrap();
+    ) = node_3
+      .prove_step::<_, false, false>(&pp, &test_circuit)
+      .unwrap();
 
     let recursive_snark = PCDRecursiveSNARK::<G1, G2, _, IO_NUM, R>::new(
       node_3_cccs_witness,
