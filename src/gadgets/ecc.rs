@@ -621,6 +621,24 @@ where
       .inputize(cs.namespace(|| "Input point.is_infinity"))?;
     Ok(())
   }
+
+  /// Make the point to compressed io
+  pub fn compressed_inputize<CS: ConstraintSystem<G::Base>>(
+    &self,
+    mut cs: CS,
+    ecc_parity_manager: &mut Vec<Boolean>,
+  ) -> Result<(), SynthesisError> {
+    self.x.inputize(cs.namespace(|| "Input point.x"))?;
+    ecc_parity_manager.push(
+      self
+        .y
+        .to_bits_le_strict(cs.namespace(|| "calc bits"))?
+        .first()
+        .unwrap()
+        .clone(),
+    );
+    Ok(())
+  }
 }
 
 #[derive(Clone)]

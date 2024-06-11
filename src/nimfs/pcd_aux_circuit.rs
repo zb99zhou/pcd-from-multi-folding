@@ -1,5 +1,6 @@
 use crate::compute_digest;
 use crate::gadgets::cccs::{AllocatedCCCSSecondPart, AllocatedLCCCSSecondPart};
+use crate::gadgets::utils::from_le_bits_to_num;
 use crate::nimfs::ccs::cccs::CCCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::r1cs::R1CSShape;
@@ -133,16 +134,30 @@ impl<G: Group> NovaAuxiliarySecondCircuit<G> {
       &rho,
     )?;
 
-    // TODO: compress ecc point to x0, x1, x2, ... , ys_parity(the bit that expresses the parity of all y encode to element)
     // public input
+    let mut ecc_parity_container = Vec::new();
     rho.inputize(cs.namespace(|| "pub rho"))?;
     for (i, x) in lcccs.into_iter().enumerate() {
-      x.C.inputize(cs.namespace(|| format!("{i}th lcccs")))?;
+      let mut cs = cs.namespace(|| format!("{i}th lcccs"));
+      x.C.check_on_curve(cs.namespace(|| "check C on curve"))?;
+      x.C
+        .compressed_inputize(cs.namespace(|| "input C"), &mut ecc_parity_container)?;
     }
     for (i, x) in cccs.into_iter().enumerate() {
-      x.C.inputize(cs.namespace(|| format!("{i}th cccs")))?;
+      let mut cs = cs.namespace(|| format!("{i}th cccs"));
+      x.C.check_on_curve(cs.namespace(|| "check C on curve"))?;
+      x.C
+        .compressed_inputize(cs.namespace(|| "input C"), &mut ecc_parity_container)?;
     }
-    new_lcccs.C.inputize(cs.namespace(|| "pub new lcccs"))?;
+    new_lcccs
+      .C
+      .compressed_inputize(cs.namespace(|| "pub new lcccs"), &mut ecc_parity_container)?;
+
+    let ecc_compression_num = from_le_bits_to_num(
+      cs.namespace(|| "alloc ecc_compression_num"),
+      &ecc_parity_container,
+    )?;
+    ecc_compression_num.inputize(cs.namespace(|| "pub ecc_compression_num"))?;
 
     Ok(())
   }

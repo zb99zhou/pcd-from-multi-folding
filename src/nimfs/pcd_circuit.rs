@@ -610,7 +610,6 @@ where
   ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
     assert!(!U.is_empty());
     // Compute r
-    let _num_for_ro = 1 + 2 * (3 + 3 + 1 + 2 * self.params.n_limbs);
     let mut ro = G::ROCircuit::new(self.ro_consts.clone(), 0);
     ro.absorb(params);
     for (i, U) in U.iter().enumerate() {
