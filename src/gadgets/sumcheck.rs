@@ -23,50 +23,52 @@ impl<G: Group> AllocatedProof<G> {
   pub fn from_witness<CS: ConstraintSystem<G::Base>, const R: usize>(
     mut cs: CS,
     proof_witness: Option<&NIMFSProof<G>>,
+    s: usize,
+    d: usize,
+    t: usize,
   ) -> Result<Self, SynthesisError> {
-    let default_ccs = CCS::<G>::default_r1cs();
-    let point = (0..default_ccs.s)
-      .map(|i| {
-        AllocatedNum::alloc(cs.namespace(|| format!("alloc {i}th point")), || {
-          proof_witness.get().map(|n| n.point[i])
-        })
-      })
-      .collect::<Result<Vec<_>, SynthesisError>>()?;
-    let mut proofs = Vec::new();
-    for i in 0..default_ccs.s {
-      proofs.push(AllocatedIOPProverMessage {
-        evaluations: (0..default_ccs.d + 2)
-          .map(|j| {
-            AllocatedNum::alloc(
-              cs.namespace(|| format!("alloc {i}-{j}th iop message")),
-              || proof_witness.get().map(|n| n.proofs[i][j]),
-            )
+    let point = (0..s)
+        .map(|i| {
+          AllocatedNum::alloc(cs.namespace(|| format!("alloc {i}th point")), || {
+            proof_witness.get().map(|n| n.point[i])
           })
-          .collect::<Result<Vec<_>, SynthesisError>>()?,
+        })
+        .collect::<Result<Vec<_>, SynthesisError>>()?;
+    let mut proofs = Vec::new();
+    for i in 0..s {
+      proofs.push(AllocatedIOPProverMessage {
+        evaluations: (0..d + 2)
+            .map(|j| {
+              AllocatedNum::alloc(
+                cs.namespace(|| format!("alloc {i}-{j}th iop message")),
+                || proof_witness.get().map(|n| n.proofs[i][j]),
+              )
+            })
+            .collect::<Result<Vec<_>, SynthesisError>>()?,
       });
     }
     let sigmas = (0..R)
-      .map(|i| {
-        (0..default_ccs.t)
-          .map(|j| {
-            AllocatedNum::alloc(cs.namespace(|| format!("alloc {i}-{j}th sigmas")), || {
-              proof_witness.get().map(|n| n.sigmas[i][j])
-            })
-          })
-          .collect::<Result<Vec<_>, SynthesisError>>()
-      })
-      .collect::<Result<Vec<_>, SynthesisError>>()?;
+        .map(|i| {
+          (0..t)
+              .map(|j| {
+                AllocatedNum::alloc(cs.namespace(|| format!("alloc {i}-{j}th sigmas")), || {
+                  proof_witness.get().map(|n| n.sigmas[i][j])
+                })
+              })
+              .collect::<Result<Vec<_>, SynthesisError>>()
+        })
+        .collect::<Result<Vec<_>, SynthesisError>>()?;
     let thetas = (0..R)
-      .map(|i| {
-        (0..default_ccs.t)
-          .map(|j| {
-            AllocatedNum::alloc(cs.namespace(|| format!("alloc {i}-{j}th thetas")), || {
-              proof_witness.get().map(|n| n.thetas[i][j])
-            })
-          })
-          .collect::<Result<Vec<_>, SynthesisError>>()
-      })
-      .collect::<Result<Vec<_>, SynthesisError>>()?;
+        .map(|i| {
+          (0..t)
+              .map(|j| {
+                AllocatedNum::alloc(cs.namespace(|| format!("alloc {i}-{j}th thetas")), || {
+                  proof_witness.get().map(|n| n.thetas[i][j])
+                })
+              })
+              .collect::<Result<Vec<_>, SynthesisError>>()
+        })
+        .collect::<Result<Vec<_>, SynthesisError>>()?;
 
     Ok(Self {
       sum_check_proof: AllocatedIOPProof { point, proofs },

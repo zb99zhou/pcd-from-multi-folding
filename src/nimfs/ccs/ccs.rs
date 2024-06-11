@@ -96,13 +96,13 @@ fn matrix_type_convert<F: PrimeField>(
 
 impl<G: Group> CCS<G> {
   /// Create default CCS for R1CS
-  pub fn default_r1cs() -> CCS<G> {
+  pub fn default_r1cs(s: usize, s_prime: usize) -> CCS<G> {
     CCS {
       m: 128604,
       n: 128765,
       l: 1,
-      s: 17,       // TODO: Needs to be tested and then adjusted
-      s_prime: 17, // TODO: Needs to be tested and then adjusted
+      s: s,       // TODO: Needs to be tested and then adjusted
+      s_prime: s_prime, // TODO: Needs to be tested and then adjusted
       t: 3,
       q: 2,
       d: 2,

@@ -72,7 +72,7 @@ impl<G: Group> LCCCS<G> {
       C: Commitment::<G>::default(),
       u: G::Scalar::ZERO,
       x: vec![G::Scalar::ZERO],
-      r_x: vec![G::Scalar::ZERO; 17],
+      r_x: vec![G::Scalar::ZERO; ccs.s],
       v: vec![G::Scalar::ZERO; 3],
       ccs,
     }
