@@ -16,6 +16,7 @@ use crate::nimfs::pcd_aux_circuit::{
 };
 use crate::nimfs::pcd_circuit::{PCDUnitParams, PCDUnitPrimaryCircuit};
 use crate::r1cs::{RelaxedR1CSInstance, RelaxedR1CSWitness};
+use crate::spartan::math::Math;
 use crate::traits::circuit::PCDStepCircuit;
 use crate::traits::snark::{LinearCommittedCCSTrait, RelaxedR1CSSNARKTrait};
 use crate::traits::{
@@ -58,19 +59,38 @@ where
     let _ = aux_circuit_setup.synthesize(&mut cs_aux_helper);
     let (aux_r1cs_shape, ck_secondary) = cs_aux_helper.r1cs_shape();
 
-    let primary_circuit_params =
-      PCDUnitParams::<G1, ARITY, R>::default_for_pcd(BN_LIMB_WIDTH, BN_N_LIMBS);
-    let secondary_circuit_params = NovaAuxiliaryParams::new(aux_r1cs_shape, R * BN_N_LIMBS * 2);
-    let pcd_circuit_setup = PCDUnitPrimaryCircuit::<'_, G2, G1, SC, ARITY, R>::new(
-      &primary_circuit_params,
-      &secondary_circuit_params,
-      None,
-      circuit,
-      ro_consts_circuit_primary.clone(),
-      te_consts_circuit_primary.clone(),
-    );
-    let mut cs_pcd_helper: ShapeCS<G1> = ShapeCS::new();
-    let _ = pcd_circuit_setup.synthesize(&mut cs_pcd_helper);
+    let secondary_circuit_params = NovaAuxiliaryParams::new(aux_r1cs_shape, 6 * R + 4);
+
+    // find eligible s and s_prime for satisfy PCD primary circuit
+    let (mut s, mut s_prime) = (16, 16);
+    let cs_pcd_helper = loop {
+      let primary_circuit_params =
+        PCDUnitParams::<G1, ARITY, R>::default_for_pcd(BN_LIMB_WIDTH, BN_N_LIMBS, s, s_prime);
+      let pcd_circuit_setup = PCDUnitPrimaryCircuit::<'_, G2, G1, SC, ARITY, R>::new(
+        &primary_circuit_params,
+        &secondary_circuit_params,
+        None,
+        circuit,
+        ro_consts_circuit_primary.clone(),
+        te_consts_circuit_primary.clone(),
+      );
+      let mut cs_pcd_helper: ShapeCS<G1> = ShapeCS::new();
+      let _ = pcd_circuit_setup
+        .synthesize(&mut cs_pcd_helper)
+        .expect("Failed to setup PCD circuit");
+      if 2usize.pow(s as u32) >= cs_pcd_helper.num_constraints()
+        && 2usize.pow(s_prime as u32) >= cs_pcd_helper.num_vars()
+      {
+        break cs_pcd_helper;
+      }
+      if 2usize.pow(s as u32) < cs_pcd_helper.num_constraints() {
+        s = cs_pcd_helper.num_constraints().log_2();
+      }
+      if 2usize.pow(s_prime as u32) < cs_pcd_helper.num_vars() {
+        s_prime = cs_pcd_helper.num_vars().log_2();
+      }
+    };
+
     let (r1cs_shape_primary, ck_primary) = cs_pcd_helper.r1cs_shape();
     let ccs_primary = CCS::<G1>::from(r1cs_shape_primary);
     let primary_circuit_params =
@@ -274,7 +294,7 @@ where
     // check if the instances have two public outputs
     if self.r_u_primary.x.len() != 1
       || self.r_U_primary.x.len() != 1
-      || self.r_U_secondary.X.len() != 16
+      || self.r_U_secondary.X.len() != 6 * R + 4
     {
       return Err(NovaError::InvalidInputLength);
     }

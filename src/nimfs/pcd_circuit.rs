@@ -55,9 +55,9 @@ impl<G: Group, const ARITY: usize, const R: usize> PCDUnitParams<G, ARITY, R> {
     pp
   }
 
-  pub fn default_for_pcd(limb_width: usize, n_limbs: usize) -> Self {
+  pub fn default_for_pcd(limb_width: usize, n_limbs: usize, s: usize, s_prime: usize) -> Self {
     let mut pp = Self {
-      ccs: CCS::default_r1cs(),
+      ccs: CCS::default_r1cs(s, s_prime),
       limb_width,
       n_limbs,
       digest: G::Scalar::ZERO,
@@ -192,6 +192,9 @@ where
     let nimfs_proof = AllocatedProof::from_witness::<_, R>(
       cs.namespace(|| "nimfs_proof"),
       self.inputs.as_ref().and_then(|i| i.proof.as_ref()),
+      self.params.ccs.s,
+      self.params.ccs.d,
+      self.params.ccs.t,
     )?;
 
     // Allocate z0
