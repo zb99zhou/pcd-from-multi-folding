@@ -41,6 +41,11 @@ impl<G: Group> ShapeCS<G> {
   pub fn num_aux(&self) -> usize {
     self.aux
   }
+
+  /// Returns the number of variables defined for this `ShapeCS`.
+  pub fn num_vars(&self) -> usize {
+    self.aux + self.inputs + 1
+  }
 }
 
 impl<G: Group> Default for ShapeCS<G> {
