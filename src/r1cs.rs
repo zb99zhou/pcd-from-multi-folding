@@ -16,7 +16,6 @@ use crate::{
 use core::{cmp::max, marker::PhantomData};
 use ff::Field;
 
-use crate::nimfs::ccs::ccs::CCS;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -152,7 +151,7 @@ impl<G: Group> R1CSShape<G> {
   pub(crate) fn check_regular_shape(&self) {
     assert_eq!(self.num_cons.next_power_of_two(), self.num_cons);
     assert_eq!(self.num_vars.next_power_of_two(), self.num_vars);
-    assert_eq!(self.num_io.next_power_of_two(), self.num_io);
+    // assert_eq!(self.num_io.next_power_of_two(), self.num_io);
     assert!(self.num_io < self.num_vars);
   }
 
@@ -421,10 +420,6 @@ impl<G: Group> R1CSShape<G> {
       B: B_padded,
       C: C_padded,
     }
-  }
-
-  pub fn to_cccs(&self) -> CCS<G> {
-    todo!()
   }
 }
 

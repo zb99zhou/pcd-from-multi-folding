@@ -38,7 +38,6 @@ where
   pub(crate) ck_secondary: CommitmentKey<G2>,
   pub(crate) primary_circuit_params: PCDUnitParams<G1, ARITY, R>,
   pub(crate) secondary_circuit_params: NovaAuxiliaryParams<G2>,
-  // digest: G1::Scalar, // digest of everything else with this field set to G1::Scalar::ZERO
   pub(crate) _p_c: PhantomData<SC>,
 }
 
@@ -59,7 +58,7 @@ where
     let _ = aux_circuit_setup.synthesize(&mut cs_aux_helper);
     let (aux_r1cs_shape, ck_secondary) = cs_aux_helper.r1cs_shape();
 
-    let secondary_circuit_params = NovaAuxiliaryParams::new(aux_r1cs_shape, 6 * R + 4);
+    let secondary_circuit_params = NovaAuxiliaryParams::new(aux_r1cs_shape, R * 2 + 3);
 
     // find eligible s and s_prime for satisfy PCD primary circuit
     let (mut s, mut s_prime) = (16, 16);
@@ -180,6 +179,7 @@ where
   digest: G1::Scalar,
   vk_primary: S1::VerifierKey,
   vk_secondary: S2::VerifierKey,
+  secondary_io_num: usize,
 }
 
 /// A SNARK that proves the knowledge of a valid `RecursiveSNARK`
@@ -235,6 +235,7 @@ where
       digest: pp.primary_circuit_params.digest,
       vk_primary,
       vk_secondary,
+      secondary_io_num: pp.secondary_circuit_params.io_num,
     };
 
     Ok((pk, vk))
@@ -292,9 +293,9 @@ where
     z0_primary: Vec<G1::Scalar>,
   ) -> Result<Vec<G1::Scalar>, NovaError> {
     // check if the instances have two public outputs
-    if self.r_u_primary.x.len() != 1
-      || self.r_U_primary.x.len() != 1
-      || self.r_U_secondary.X.len() != 6 * R + 4
+    if self.r_u_primary.x.len() != ARITY
+      || self.r_U_primary.x.len() != ARITY
+      || self.r_U_secondary.X.len() != vk.secondary_io_num
     {
       return Err(NovaError::InvalidInputLength);
     }
@@ -393,7 +394,6 @@ mod test {
     let default_relaxed_r1cs_witness =
       RelaxedR1CSWitness::<G2>::default(&pp.secondary_circuit_params.r1cs_shape);
 
-    println!("Creating PCD node1");
     let node_1 = PCDNode::<G1, G2, IO_NUM, R>::new(
       vec![default_lcccs.clone(), default_lcccs],
       vec![default_cccs.clone(), default_cccs],

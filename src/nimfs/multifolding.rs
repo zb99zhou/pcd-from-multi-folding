@@ -381,8 +381,6 @@ impl<C: Group> MultiFolding<C> {
     new_instances: &[CCCS<C>],
     proof: Proof<C>,
   ) -> LCCCS<C> {
-    // TODO appends to transcript
-
     assert!(!running_instances.is_empty());
     assert!(!new_instances.is_empty());
 

@@ -44,6 +44,38 @@ where
   Ok(num)
 }
 
+pub fn from_le_bits_to_num<Scalar, CS>(
+  mut cs: CS,
+  bits: &[Boolean],
+) -> Result<AllocatedNum<Scalar>, SynthesisError>
+where
+  Scalar: PrimeField + PrimeFieldBits,
+  CS: ConstraintSystem<Scalar>,
+{
+  // We loop over the input bits and construct the constraint
+  // and the field element that corresponds to the result
+  let mut lc = LinearCombination::zero();
+  let mut coeff = Scalar::ONE;
+  let mut fe = Some(Scalar::ZERO);
+  for bit in bits.iter() {
+    lc = lc + &bit.lc(CS::one(), coeff);
+    fe = bit.get_value().map(|val| {
+      if val {
+        fe.unwrap() + coeff
+      } else {
+        fe.unwrap()
+      }
+    });
+    coeff = coeff.double();
+  }
+  let num = AllocatedNum::alloc(cs.namespace(|| "Field element"), || {
+    fe.ok_or(SynthesisError::AssignmentMissing)
+  })?;
+  lc = lc - num.get_variable();
+  cs.enforce(|| "compute number from bits", |lc| lc, |lc| lc, |_| lc);
+  Ok(num)
+}
+
 /// Allocate a variable that is set to zero
 pub fn alloc_zero<F: PrimeField, CS: ConstraintSystem<F>>(
   mut cs: CS,
