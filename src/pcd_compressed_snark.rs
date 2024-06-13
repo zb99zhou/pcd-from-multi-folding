@@ -63,7 +63,7 @@ where
     let mut s_prime: usize = 17;
     let (r1cs_shape_primary, ck_primary) = loop {
       let primary_circuit_params =
-          PCDUnitParams::<G1, ARITY, R>::default_for_pcd(BN_LIMB_WIDTH, BN_N_LIMBS, s, s_prime);
+        PCDUnitParams::<G1, ARITY, R>::default_for_pcd(BN_LIMB_WIDTH, BN_N_LIMBS, s, s_prime);
       let pcd_circuit_setup = PCDUnitPrimaryCircuit::<'_, G2, G1, SC, ARITY, R>::new(
         &primary_circuit_params,
         &secondary_circuit_params,
@@ -287,7 +287,7 @@ where
     // check if the instances have two public outputs
     if self.r_u_primary.x.len() != 1
       || self.r_U_primary.x.len() != 1
-      || self.r_U_secondary.X.len() != 6*R + 4
+      || self.r_U_secondary.X.len() != 6 * R + 4
     {
       return Err(NovaError::InvalidInputLength);
     }

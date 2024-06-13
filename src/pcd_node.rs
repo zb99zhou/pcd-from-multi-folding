@@ -248,7 +248,7 @@ where
     W: &RelaxedR1CSWitness<G2>,
   ) -> Result<Vec<G1::Scalar>, NovaError> {
     println!("================================PCD verify===================================");
-    if U.X.len() != 6*R+4 && lcccs.x.len() != 1 && cccs.x.len() != 1 {
+    if U.X.len() != 6 * R + 4 && lcccs.x.len() != 1 && cccs.x.len() != 1 {
       return Err(NovaError::ProofVerifyError);
     }
 
