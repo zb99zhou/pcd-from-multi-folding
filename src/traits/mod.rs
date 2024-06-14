@@ -58,14 +58,14 @@ pub trait Group:
   /// An alternate implementation of `Self::RO` in the circuit model
   type ROCircuit: ROCircuitTrait<Self::Base>;
 
-  /// A type that provides a generic Fiat-Shamir transcript to be used when externalizing proofs
-  type TE: TranscriptEngineTrait<Self>;
+  /// A type that provides a generic Fiat-Shamir transcript to be used when folding NIMFS proofs
+  type FoldTE: TranscriptEngineTrait<Self>;
 
   /// An alternate implementation of `Self::TE` in the circuit model
-  type TECircuit: TranscriptCircuitEngineTrait<Self>;
+  type FoldTECircuit: TranscriptCircuitEngineTrait<Self>;
 
   /// A type that provides a generic Fiat-Shamir transcript to be used when externalizing proofs
-  type TE1: TranscriptEngineTrait<Self>;
+  type CompressTE: TranscriptEngineTrait<Self>;
 
   /// A type that defines a commitment engine over scalars in the group
   type CE: CommitmentEngineTrait<Self>;
@@ -214,11 +214,11 @@ pub type ROConstantsCircuit<G> =
   <<G as Group>::ROCircuit as ROCircuitTrait<<G as Group>::Base>>::Constants;
 
 /// An alias for constants associated with `G::TE`
-pub type TEConstants<G> = <<G as Group>::TE as TranscriptEngineTrait<G>>::Constants;
+pub type TEConstants<G> = <<G as Group>::FoldTE as TranscriptEngineTrait<G>>::Constants;
 
 /// An alias for constants associated with `G::TECircuit`
 pub type TEConstantsCircuit<G> =
-  <<G as Group>::TECircuit as TranscriptCircuitEngineTrait<G>>::Constants;
+  <<G as Group>::FoldTECircuit as TranscriptCircuitEngineTrait<G>>::Constants;
 
 /// A helper trait for types with a group operation.
 pub trait GroupOps<Rhs = Self, Output = Self>:

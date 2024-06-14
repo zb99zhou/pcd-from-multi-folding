@@ -27,7 +27,7 @@ pub trait EvaluationEngineTrait<G: Group>: Clone + Send + Sync {
   fn prove(
     ck: &<<G as Group>::CE as CommitmentEngineTrait<G>>::CommitmentKey,
     pk: &Self::ProverKey,
-    transcript: &mut G::TE1,
+    transcript: &mut G::CompressTE,
     comm: &<<G as Group>::CE as CommitmentEngineTrait<G>>::Commitment,
     poly: &[G::Scalar],
     point: &[G::Scalar],
@@ -37,7 +37,7 @@ pub trait EvaluationEngineTrait<G: Group>: Clone + Send + Sync {
   /// A method to verify the purported evaluation of a multilinear polynomials
   fn verify(
     vk: &Self::VerifierKey,
-    transcript: &mut G::TE1,
+    transcript: &mut G::CompressTE,
     comm: &<<G as Group>::CE as CommitmentEngineTrait<G>>::Commitment,
     point: &[G::Scalar],
     eval: &G::Scalar,

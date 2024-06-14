@@ -18,7 +18,7 @@ impl<C: Group> SumCheckVerifier<C::Scalar> for IOPVerifierState<C> {
   type VPAuxInfo = VPAuxInfo<C::Scalar>;
   type ProverMessage = IOPProverMessage<C>;
   type Challenge = C::Scalar;
-  type Transcript = C::TE;
+  type Transcript = C::FoldTE;
   type SumCheckSubClaim = SumCheckSubClaim<C::Scalar>;
 
   /// Initialize the verifier's state.

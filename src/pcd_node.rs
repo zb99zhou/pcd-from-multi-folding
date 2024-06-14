@@ -86,7 +86,7 @@ where
   > {
     // First, handling PCD auxiliary secondary circuit
     println!("=================================================proving NIMFS=================================================");
-    let mut transcript_p = <G1 as Group>::TE::new(Default::default(), b"multifolding");
+    let mut transcript_p = <G1 as Group>::FoldTE::new(Default::default(), b"multifolding");
     transcript_p.squeeze(b"init").unwrap();
     let (nimfs_proof, lcccs, lcccs_witness) = NIMFS::prove::<ENABLE_SANITY_CHECK>(
       &mut transcript_p,
@@ -96,7 +96,7 @@ where
       self.w_cccs.as_ref().unwrap(),
     );
     if !IS_GENESIS && ENABLE_SANITY_CHECK {
-      let mut transcript_v = <G1 as Group>::TE::new(Default::default(), b"multifolding");
+      let mut transcript_v = <G1 as Group>::FoldTE::new(Default::default(), b"multifolding");
       transcript_v.squeeze(b"init")?;
       let verified_lcccs = NIMFS::verify(
         &mut transcript_v,

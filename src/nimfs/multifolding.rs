@@ -269,7 +269,7 @@ impl<C: Group> MultiFolding<C> {
   /// Return the final folded LCCCS, the folded witness, the sumcheck proof, and the helper
   /// sumcheck claims sigmas and thetas.
   pub fn prove<const ENABLE_SANITY_CHECK: bool>(
-    transcript: &mut C::TE,
+    transcript: &mut C::FoldTE,
     running_instances: &[LCCCS<C>],
     new_instances: &[CCCS<C>],
     w_lcccs: &[CCSWitness<C>],
@@ -376,7 +376,7 @@ impl<C: Group> MultiFolding<C> {
   ///
   /// Return the folded LCCCS instance.
   pub fn verify(
-    transcript: &mut C::TE,
+    transcript: &mut C::FoldTE,
     running_instances: &[LCCCS<C>],
     new_instances: &[CCCS<C>],
     proof: Proof<C>,
@@ -655,7 +655,7 @@ pub mod test {
 
     // Prover's transcript
     let constants = PoseidonConstantsCircuit::<Fr>::default();
-    let mut transcript_p = <Point as Group>::TE::new(constants, b"multifolding");
+    let mut transcript_p = <Point as Group>::FoldTE::new(constants, b"multifolding");
     transcript_p.squeeze(b"init").unwrap();
     // Verifier's transcript
     let mut transcript_v = transcript_p.clone();
@@ -698,7 +698,7 @@ pub mod test {
 
     let constants = PoseidonConstantsCircuit::<Fr>::default();
     // Prover's transcript
-    let mut transcript_p = <Point as Group>::TE::new(constants, b"multifolding");
+    let mut transcript_p = <Point as Group>::FoldTE::new(constants, b"multifolding");
     transcript_p.squeeze(b"init").unwrap();
     // Verifier's transcript
     let mut transcript_v = transcript_p.clone();
@@ -783,7 +783,7 @@ pub mod test {
 
     let constants = PoseidonConstantsCircuit::<Fr>::default();
     // Prover's transcript
-    let mut transcript_p = <Point as Group>::TE::new(constants, b"multifolding");
+    let mut transcript_p = <Point as Group>::FoldTE::new(constants, b"multifolding");
     transcript_p.squeeze(b"init").unwrap();
     // Verifier's transcript
     let mut transcript_v = transcript_p.clone();
@@ -817,7 +817,7 @@ pub mod test {
 
     let constants = PoseidonConstantsCircuit::<Fr>::default();
     // Prover's transcript
-    let mut transcript_p = <Point as Group>::TE::new(constants, b"multifolding");
+    let mut transcript_p = <Point as Group>::FoldTE::new(constants, b"multifolding");
     transcript_p.squeeze(b"init").unwrap();
     // Verifier's transcript
     let mut transcript_v = transcript_p.clone();

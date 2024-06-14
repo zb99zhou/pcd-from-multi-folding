@@ -153,7 +153,7 @@ impl<C: Group> SumCheck<C> for PolyIOP<C::Scalar> {
   type VPAuxInfo = VPAuxInfo<C::Scalar>;
   type MultilinearExtension = Arc<MultiLinearPolynomial<C::Scalar>>;
   type SumCheckProof = IOPProof<C>;
-  type Transcript = C::TE;
+  type Transcript = C::FoldTE;
   type SumCheckSubClaim = SumCheckSubClaim<C::Scalar>;
 
   fn extract_sum(proof: &Self::SumCheckProof) -> C::Scalar {

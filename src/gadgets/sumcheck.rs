@@ -132,7 +132,7 @@ impl<G: Group> AllocatedIOPVerifierState<G> {
     &mut self,
     mut cs: CS,
     prover_msg: &AllocatedIOPProverMessage<G>,
-    transcript: &mut G::TECircuit,
+    transcript: &mut G::FoldTECircuit,
   ) -> Result<AllocatedNum<G::Base>, SynthesisError> {
     assert!(!self.finished);
 
@@ -225,7 +225,7 @@ pub fn sumcheck_verify<CS: ConstraintSystem<<G as Group>::Base>, G: Group>(
   claimed_sum: &AllocatedNum<G::Base>,
   proof: &AllocatedIOPProof<G>,
   aux_info: &VPAuxInfo<G::Base>,
-  transcript: &mut G::TECircuit,
+  transcript: &mut G::FoldTECircuit,
 ) -> Result<(AllocatedSumCheckSubClaim<G>, AllocatedBit), SynthesisError> {
   transcript.absorb(
     cs.namespace(|| "absorb num_variables"),

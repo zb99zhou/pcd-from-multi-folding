@@ -161,9 +161,9 @@ macro_rules! impl_traits {
       type PreprocessedGroupElement = $name::Affine;
       type RO = PoseidonRO<Self::Base, Self::Scalar>;
       type ROCircuit = PoseidonROCircuit<Self::Base>;
-      type TE = PoseidonTranscript<Self>;
-      type TECircuit = PoseidonTranscriptCircuit<Self>;
-      type TE1 = Keccak256Transcript<Self>;
+      type FoldTE = PoseidonTranscript<Self>;
+      type FoldTECircuit = PoseidonTranscriptCircuit<Self>;
+      type CompressTE = Keccak256Transcript<Self>;
       type CE = CommitmentEngine<Self>;
 
       fn vartime_multiscalar_mul(
