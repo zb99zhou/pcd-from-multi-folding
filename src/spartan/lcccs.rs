@@ -91,7 +91,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
     W: &CCSWitness<G>, //
   ) -> Result<Self, NovaError> {
     let W = W.pad(&pk.S); // pad the witness
-    let mut transcript = G::TE1::new(Default::default(), b"LCCCSSNARK");
+    let mut transcript = G::CompressTE::new(Default::default(), b"LCCCSSNARK");
 
     // append the digest of vk (which includes LCCCS matrices) and the LCCCSInstance to the transcript
     transcript.absorb(b"vk", &pk.vk_digest);
@@ -208,7 +208,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
 
   /// verifies a proof of satisfiability of a `LCCCS` instance
   fn verify(&self, vk: &Self::VerifierKey, U: &LCCCS<G>) -> Result<(), NovaError> {
-    let mut transcript = G::TE1::new(Default::default(), b"LCCCSSNARK");
+    let mut transcript = G::CompressTE::new(Default::default(), b"LCCCSSNARK");
 
     // append the digest of R1CS matrices and the RelaxedR1CSInstance to the transcript
     transcript.absorb(b"vk", &vk.digest);

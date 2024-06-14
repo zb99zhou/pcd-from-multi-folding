@@ -65,7 +65,7 @@ where
   fn prove(
     ck: &CommitmentKey<G>,
     pk: &Self::ProverKey,
-    transcript: &mut G::TE1,
+    transcript: &mut G::CompressTE,
     comm: &Commitment<G>,
     poly: &[G::Scalar],
     point: &[G::Scalar],
@@ -80,7 +80,7 @@ where
   /// A method to verify purported evaluations of a batch of polynomials
   fn verify(
     vk: &Self::VerifierKey,
-    transcript: &mut G::TE1,
+    transcript: &mut G::CompressTE,
     comm: &Commitment<G>,
     point: &[G::Scalar],
     eval: &G::Scalar,
@@ -184,7 +184,7 @@ where
     ck_c: &CommitmentKey<G>,
     U: &InnerProductInstance<G>,
     W: &InnerProductWitness<G>,
-    transcript: &mut G::TE1,
+    transcript: &mut G::CompressTE,
   ) -> Result<Self, NovaError> {
     transcript.dom_sep(Self::protocol_name());
 
@@ -205,7 +205,7 @@ where
     let prove_inner = |a_vec: &[G::Scalar],
                        b_vec: &[G::Scalar],
                        ck: &CommitmentKey<G>,
-                       transcript: &mut G::TE1|
+                       transcript: &mut G::CompressTE|
      -> Result<
       (
         CompressedCommitment<G>,
@@ -297,7 +297,7 @@ where
     ck_c: &CommitmentKey<G>,
     n: usize,
     U: &InnerProductInstance<G>,
-    transcript: &mut G::TE1,
+    transcript: &mut G::CompressTE,
   ) -> Result<(), NovaError> {
     let (ck, _) = ck.split_at(U.b_vec.len());
 

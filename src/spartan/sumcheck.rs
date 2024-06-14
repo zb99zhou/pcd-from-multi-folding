@@ -26,7 +26,7 @@ impl<G: Group> SumcheckProof<G> {
     claim: G::Scalar,
     num_rounds: usize,
     degree_bound: usize,
-    transcript: &mut G::TE1,
+    transcript: &mut G::CompressTE,
   ) -> Result<(G::Scalar, Vec<G::Scalar>), NovaError> {
     let mut e = claim;
     let mut r: Vec<G::Scalar> = Vec::new();
@@ -97,7 +97,7 @@ impl<G: Group> SumcheckProof<G> {
     poly_A: &mut MultiLinearPolynomial<G::Scalar>,
     poly_B: &mut MultiLinearPolynomial<G::Scalar>,
     comb_func: F,
-    transcript: &mut G::TE1,
+    transcript: &mut G::CompressTE,
   ) -> Result<(Self, Vec<G::Scalar>, Vec<G::Scalar>), NovaError>
   where
     F: Fn(&G::Scalar, &G::Scalar) -> G::Scalar + Sync,
@@ -146,7 +146,7 @@ impl<G: Group> SumcheckProof<G> {
     poly_B_vec: &mut [MultiLinearPolynomial<G::Scalar>],
     coeffs: &[G::Scalar],
     comb_func: F,
-    transcript: &mut G::TE1,
+    transcript: &mut G::CompressTE,
   ) -> Result<(Self, Vec<G::Scalar>, (Vec<G::Scalar>, Vec<G::Scalar>)), NovaError>
   where
     F: Fn(&G::Scalar, &G::Scalar) -> G::Scalar + Sync,
@@ -251,7 +251,7 @@ impl<G: Group> SumcheckProof<G> {
     poly_C: &mut MultiLinearPolynomial<G::Scalar>,
     poly_D: &mut MultiLinearPolynomial<G::Scalar>,
     comb_func: F,
-    transcript: &mut G::TE1,
+    transcript: &mut G::CompressTE,
   ) -> Result<(Self, Vec<G::Scalar>, Vec<G::Scalar>), NovaError>
   where
     F: Fn(&G::Scalar, &G::Scalar, &G::Scalar, &G::Scalar) -> G::Scalar + Sync,

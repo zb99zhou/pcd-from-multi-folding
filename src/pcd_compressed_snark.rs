@@ -248,7 +248,7 @@ where
     recursive_snark: &PCDRecursiveSNARK<G1, G2, SC, ARITY, R>,
   ) -> Result<Self, NovaError> {
     // Prover's transcript
-    let mut transcript_p = G1::TE::new(Default::default(), b"multifolding");
+    let mut transcript_p = G1::FoldTE::new(Default::default(), b"multifolding");
     transcript_p.squeeze(Self::TRANSCRIPT_INIT_STR).unwrap();
 
     // fold the primary circuit's instance
@@ -322,7 +322,7 @@ where
     }
 
     // Verifier's transcript
-    let mut transcript_v = G1::TE::new(Default::default(), b"multifolding");
+    let mut transcript_v = G1::FoldTE::new(Default::default(), b"multifolding");
     transcript_v.squeeze(Self::TRANSCRIPT_INIT_STR).unwrap();
 
     // fold the running instance and last instance to get a folded instance

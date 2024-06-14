@@ -97,7 +97,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
     W: &RelaxedR1CSWitness<G>,
   ) -> Result<Self, NovaError> {
     let W = W.pad(&pk.S); // pad the witness
-    let mut transcript = G::TE1::new(Default::default(), b"RelaxedR1CSSNARK");
+    let mut transcript = G::CompressTE::new(Default::default(), b"RelaxedR1CSSNARK");
 
     // sanity check that R1CSShape has certain size characteristics
     pk.S.check_regular_shape();
@@ -341,7 +341,7 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
 
   /// verifies a proof of satisfiability of a `RelaxedR1CS` instance
   fn verify(&self, vk: &Self::VerifierKey, U: &RelaxedR1CSInstance<G>) -> Result<(), NovaError> {
-    let mut transcript = G::TE1::new(Default::default(), b"RelaxedR1CSSNARK");
+    let mut transcript = G::CompressTE::new(Default::default(), b"RelaxedR1CSSNARK");
 
     // append the digest of R1CS matrices and the RelaxedR1CSInstance to the transcript
     transcript.absorb(b"vk", &vk.digest);

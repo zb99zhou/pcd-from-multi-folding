@@ -509,7 +509,7 @@ where
     assert!(!lcccs.is_empty());
     assert!(!cccs.is_empty());
 
-    let mut transcript = G::TECircuit::new(
+    let mut transcript = G::FoldTECircuit::new(
       self.te_consts.clone(),
       cs.namespace(|| "init NIMFS transcript"),
       b"multifolding",
