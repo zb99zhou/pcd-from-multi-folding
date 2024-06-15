@@ -600,7 +600,7 @@ pub fn multi_folding_with_primary_part<CS: ConstraintSystem<<G as Group>::Base>,
   mut cs: CS,
   lcccs: &[AllocatedLCCCSPrimaryPart<G>],
   cccs: &[AllocatedCCCSPrimaryPart<G>],
-  rho: AllocatedNum<G::Base>,
+  rho: &AllocatedNum<G::Base>,
   sigmas: &[Vec<AllocatedNum<G::Base>>],
   thetas: &[Vec<AllocatedNum<G::Base>>],
 ) -> Result<AllocatedLCCCSPrimaryPart<G>, SynthesisError> {
@@ -613,7 +613,7 @@ pub fn multi_folding_with_primary_part<CS: ConstraintSystem<<G as Group>::Base>,
   for (i, lcccs) in lcccs.iter().enumerate().skip(1) {
     rho_i = rho_i.mul(
       cs.namespace(|| format!("alloc {}th squared rho_i in folding lcccs", i)),
-      &rho,
+      rho,
     )?;
     lcccs_folded.folding_with_lcccs_primary_part(
       cs.namespace(|| format!("folding {}th lcccs", i)),
@@ -625,7 +625,7 @@ pub fn multi_folding_with_primary_part<CS: ConstraintSystem<<G as Group>::Base>,
   for (i, cccs) in cccs.iter().enumerate() {
     rho_i = rho_i.mul(
       cs.namespace(|| format!("alloc {}th squared rho_i in folding cccs", i)),
-      &rho,
+      rho,
     )?;
     lcccs_folded.folding_with_cccs_primary_part(
       cs.namespace(|| format!("folding {}th cccs", i)),

@@ -5,4 +5,4 @@ pub(crate) mod ext_allocated_num;
 pub(crate) mod nonnative;
 pub(crate) mod r1cs;
 pub(crate) mod sumcheck;
-pub(crate) mod utils;
+pub mod utils;

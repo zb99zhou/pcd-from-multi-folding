@@ -20,10 +20,70 @@ use bellpepper::gadgets::{boolean::Boolean, num::AllocatedNum, Assignment};
 use bellpepper_core::boolean::AllocatedBit;
 use bellpepper_core::{ConstraintSystem, SynthesisError};
 use ff::Field;
-use itertools::Itertools;
+use itertools::{Either, Itertools};
 use std::fmt::{Debug, Formatter};
 
 pub const ARITY: usize = 2;
+
+/// An Allocated R1CS Instance
+#[derive(Clone)]
+pub struct AllocatedR1CSInstanceBasedSimulatedX<G: Group> {
+  pub(crate) W: AllocatedPoint<G>,
+  pub(crate) X: Vec<BigNat<G::Base>>,
+}
+
+impl<G: Group> AllocatedR1CSInstanceBasedSimulatedX<G> {
+  pub fn alloc<CS: ConstraintSystem<<G as Group>::Base>>(
+    mut cs: CS,
+    u: Option<&R1CSInstance<G>>,
+    io_num: usize,
+    limb_width: usize,
+    n_limbs: usize,
+  ) -> Result<Self, SynthesisError> {
+    // Check that the incoming instance has exactly 2 io
+    let W = AllocatedPoint::alloc(
+      cs.namespace(|| "allocate W"),
+      u.get().map_or(None, |u| Some(u.comm_W.to_coordinates())),
+    )?;
+
+    let X = (0..io_num)
+        .map(|i| {
+          BigNat::alloc_from_nat(
+            cs.namespace(|| format!("allocate X[{i}]")),
+            || Ok(f_to_nat(&u.map_or(G::Scalar::ZERO, |inst| inst.X[i]))),
+            limb_width,
+            n_limbs,
+          )
+        })
+        .collect::<Result<Vec<_>, SynthesisError>>()?;
+
+    Ok(AllocatedR1CSInstanceBasedSimulatedX { W, X })
+  }
+
+  /// Absorb the provided instance in the RO
+  pub fn absorb_in_ro<CS: ConstraintSystem<<G as Group>::Base>>(
+    &self,
+    mut cs: CS,
+    ro: &mut G::ROCircuit
+  ) -> Result<(), SynthesisError> {
+    self.W.absorb_in_ro(ro);
+    for (i, X) in self.X.iter().enumerate() {
+      let X_bn = X
+          .as_limbs()
+          .iter()
+          .enumerate()
+          .map(|(j, limb)| {
+            limb.as_allocated_num(cs.namespace(|| format!("convert limb[{j}] of X_r[{i}] to num")))
+          })
+          .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
+
+      for limb in X_bn {
+        ro.absorb(&limb);
+      }
+    }
+    Ok(())
+  }
+}
 
 /// An Allocated R1CS Instance
 #[derive(Clone)]
@@ -211,12 +271,8 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     mut cs: CS,
     ro: &mut G::ROCircuit,
   ) -> Result<(), SynthesisError> {
-    ro.absorb(&self.W.x);
-    ro.absorb(&self.W.y);
-    ro.absorb(&self.W.is_infinity);
-    ro.absorb(&self.E.x);
-    ro.absorb(&self.E.y);
-    ro.absorb(&self.E.is_infinity);
+    self.W.absorb_in_ro(ro);
+    self.E.absorb_in_ro(ro);
     ro.absorb(&self.u);
 
     // Analyze Xs as limbs
@@ -243,7 +299,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
   pub fn fold_with_r1cs<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,
-    u: &AllocatedR1CSInstance<G>,
+    u: Either<&AllocatedR1CSInstance<G>, &AllocatedR1CSInstanceBasedSimulatedX<G>>,
     T: &AllocatedPoint<G>,
     r_bits: Vec<AllocatedBit>,
     limb_width: usize,
@@ -252,7 +308,10 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     let r = le_bits_to_num(cs.namespace(|| "r"), &r_bits)?;
 
     // W_fold = self.W + r * u.W
-    let rW = u.W.scalar_mul(cs.namespace(|| "r * u.W"), &r_bits)?;
+    let rW = match u {
+      Either::Left(l) => &l.W,
+      Either::Right(r) => &r.W,
+    }.scalar_mul(cs.namespace(|| "r * u.W"), &r_bits)?;
     let W_fold = self.W.add(cs.namespace(|| "self.W + r * u.W"), &rW)?;
 
     // E_fold = self.E + r * T
@@ -287,26 +346,30 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
       n_limbs,
     )?;
 
-    let mut Xs = Vec::new();
-    for (i, (other_X, self_X)) in u.X.iter().zip_eq(self.Xs.iter()).enumerate() {
-      let mut cs = cs.namespace(|| format!("{i}th folded X"));
-      let X_bn = BigNat::from_num(
-        cs.namespace(|| "allocate X_bn"),
-        &Num::from(other_X.clone()),
+    let Xs = match u {
+      Either::Left(l) => l.X.iter().enumerate()
+          .map(|(i, x)| BigNat::from_num(
+            cs.namespace(|| format!("allocate {i}th X_bn")),
+        &Num::from(x.clone()),
         limb_width,
         n_limbs,
-      )?;
-      let (_, r) = X_bn.mult_mod(cs.namespace(|| "r*X"), &r_bn, &m_bn)?;
+      )).collect::<Result<Vec<_>, SynthesisError>>()?,
+      Either::Right(r) => r.X.clone(),
+    };
+    let mut new_Xs = Vec::new();
+    for (i, (other_X, self_X)) in Xs.into_iter().zip_eq(self.Xs.iter()).enumerate() {
+      let mut cs = cs.namespace(|| format!("{i}th folded X"));
+      let (_, r) = other_X.mult_mod(cs.namespace(|| "r*X"), &r_bn, &m_bn)?;
       let r_new = self_X.add(&r)?;
       // Now reduce
-      Xs.push(r_new.red_mod(cs.namespace(|| "reduce folded X"), &m_bn)?);
+      new_Xs.push(r_new.red_mod(cs.namespace(|| "reduce folded X"), &m_bn)?);
     }
 
     Ok(Self {
       W: W_fold,
       E: E_fold,
       u: u_fold,
-      Xs,
+      Xs: new_Xs,
     })
   }
 
@@ -332,7 +395,7 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     let r_bits = ro.squeeze(cs.namespace(|| "r bits"), NUM_CHALLENGE_BITS)?;
     self.fold_with_r1cs(
       cs.namespace(|| "fold with r1cs instance"),
-      u,
+      Either::Left(u),
       T,
       r_bits,
       limb_width,

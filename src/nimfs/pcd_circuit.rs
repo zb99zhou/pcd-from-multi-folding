@@ -5,14 +5,11 @@ use crate::gadgets::cccs::{
 };
 use crate::gadgets::ecc::{AllocatedPoint, AllocatedSimulatedPoint};
 use crate::gadgets::ext_allocated_num::ExtendFunc;
-use crate::gadgets::r1cs::{AllocatedR1CSInstance, AllocatedRelaxedR1CSInstance};
+use crate::gadgets::r1cs::{AllocatedR1CSInstanceBasedSimulatedX, AllocatedRelaxedR1CSInstance};
 use crate::gadgets::sumcheck::{
   enforce_compute_c_from_sigmas_and_thetas, sumcheck_verify, AllocatedProof,
 };
-use crate::gadgets::utils::{
-  alloc_num_equals, alloc_scalar_as_base, conditionally_select_vec_allocated_num, le_bits_to_num,
-  multi_and,
-};
+use crate::gadgets::utils::{alloc_num_equals, alloc_scalar_as_base, conditionally_select_vec_allocated_num, from_le_bits_to_num, le_bits_to_num, multi_and};
 use crate::nimfs::ccs::cccs::{CCCSForBase, PointForScalar};
 use crate::nimfs::ccs::ccs::CCS;
 use crate::nimfs::ccs::lcccs::{LCCCSForBase, LCCCS};
@@ -31,7 +28,9 @@ use bellpepper_core::boolean::{AllocatedBit, Boolean};
 use bellpepper_core::num::{AllocatedNum, Num};
 use bellpepper_core::{ConstraintSystem, SynthesisError};
 use ff::Field;
+use itertools::{Either, Itertools};
 use serde::Serialize;
+use crate::gadgets::nonnative::bignat::BigNat;
 
 // R: the number of multi-folding PCD node
 #[derive(Serialize, Clone)]
@@ -170,7 +169,7 @@ where
       Vec<AllocatedCCCS<G1>>,
       AllocatedProof<G1>,
       Vec<AllocatedRelaxedR1CSInstance<G1>>,
-      AllocatedR1CSInstance<G1>,
+      AllocatedR1CSInstanceBasedSimulatedX<G1>,
       AllocatedSimulatedPoint<G1>,
       Vec<AllocatedPoint<G1>>,
     ),
@@ -275,13 +274,15 @@ where
         )
       })
       .collect::<Result<Vec<AllocatedRelaxedR1CSInstance<G1>>, _>>()?;
-    let r1cs_inst = AllocatedR1CSInstance::alloc(
+    let r1cs_inst = AllocatedR1CSInstanceBasedSimulatedX::alloc(
       cs.namespace(|| "Allocate r1cs instance"),
       self
         .inputs
         .as_ref()
         .and_then(|inputs| inputs.r1cs_instance.as_ref()),
       self.secondary_params.io_num,
+      self.params.limb_width,
+      self.params.n_limbs,
     )?;
 
     let new_lcccs_C = AllocatedSimulatedPoint::alloc(
@@ -377,7 +378,7 @@ where
       cccs,
       nimfs_proof,
       relaxed_r1cs_inst,
-      r1cs_inst,
+      mut r1cs_inst,
       new_lcccs_second_part,
       T,
     ) = self.alloc_witness(cs.namespace(|| "allocate the circuit witness"))?;
@@ -396,18 +397,18 @@ where
       &is_base_case_flags,
     )?);
 
-    let is_correct_public_input = self.check_public_input(
-      cs.namespace(|| "is_correct_public_input"),
-      &cccs,
+    let is_correct_primary_public_input = self.check_public_input(
+      cs.namespace(|| "is correct secondary public_input"),
       &primary_params,
       &z_0,
       &z_i,
+      &cccs,
       &lcccs,
       &relaxed_r1cs_inst,
     )?;
     Boolean::enforce_equal(
-      cs.namespace(|| "is_correct_public_input or is_base case"),
-      &is_correct_public_input,
+      cs.namespace(|| "is correct secondary public_input or is base case"),
+      &is_correct_primary_public_input,
       &is_base_case.not(),
     )?;
 
@@ -419,26 +420,16 @@ where
 
     // Synthesize the circuit for the non-base case and get the new running
     // instance along with a boolean indicating if all checks have passed
-    let (new_lcccs_primary_part, check_non_base_pass) = self.synthesize_based_nimfs(
+    let (new_lcccs_primary_part, check_non_base_pass, rho) = self.synthesize_based_nimfs(
       cs.namespace(|| "generate non base case based nimfs"),
       self.params,
       &lcccs
-        .into_iter()
-        .map(|l| l.primary_part)
+        .iter()
+        .map(|l| l.primary_part.clone())
         .collect::<Vec<_>>(),
-      &cccs.into_iter().map(|l| l.primary_part).collect::<Vec<_>>(),
+      &cccs.iter().map(|l| l.primary_part.clone()).collect::<Vec<_>>(),
       &nimfs_proof,
     )?;
-    let new_lcccs = AllocatedLCCCS::new(new_lcccs_primary_part, new_lcccs_second_part);
-
-    let new_relaxed_r1cs_inst = self.synthesize_based_nifs(
-      cs.namespace(|| "generate non base case based nifs"),
-      &secondary_params,
-      relaxed_r1cs_inst,
-      &r1cs_inst,
-      T,
-    )?;
-
     // Either check_non_base_pass=true or we are in the base case
     Boolean::enforce_equal(
       cs.namespace(|| "check_non_base_pass nor base_case"),
@@ -446,15 +437,31 @@ where
       &is_base_case,
     )?;
 
-    // Update the lcccs and relaxed R1CS instance
+    let new_lcccs = AllocatedLCCCS::new(new_lcccs_primary_part, new_lcccs_second_part);
+    self.update_secondary_public_input(
+      cs.namespace(|| "is correct secondary public_input"),
+      rho,
+      &cccs,
+      &lcccs,
+      &new_lcccs,
+      &mut r1cs_inst,
+    )?;
+
     let new_lcccs = lcccs_base.conditionally_select(
       cs.namespace(|| "compute lcccs_new"),
       &new_lcccs,
       &is_base_case.clone(),
     )?;
+    let calc_relaxed_r1cs_inst = self.synthesize_based_nifs(
+      cs.namespace(|| "generate non base case based nifs"),
+      &secondary_params,
+      relaxed_r1cs_inst,
+      &r1cs_inst,
+      T,
+    )?;
     let new_relaxed_r1cs_inst = relaxed_r1cs_inst_base.conditionally_select(
       cs.namespace(|| "compute U_new"),
-      &new_relaxed_r1cs_inst,
+      &calc_relaxed_r1cs_inst,
       &is_base_case.clone(),
     )?;
 
@@ -490,7 +497,7 @@ where
       &new_lcccs,
       &new_relaxed_r1cs_inst,
     )?;
-    hash.inputize(cs.namespace(|| "output new hash of this circuit"))?; // this circuit's public input
+    hash.inputize(cs.namespace(|| "output new hash of this circuit"))?; // this circuit's unique public input
 
     Ok(new_z)
   }
@@ -505,7 +512,7 @@ where
     lcccs: &[AllocatedLCCCSPrimaryPart<G1>],
     cccs: &[AllocatedCCCSPrimaryPart<G1>],
     proof: &AllocatedProof<G1>,
-  ) -> Result<(AllocatedLCCCSPrimaryPart<G1>, AllocatedBit), SynthesisError> {
+  ) -> Result<(AllocatedLCCCSPrimaryPart<G1>, AllocatedBit, AllocatedNum<G1::Base>), SynthesisError> {
     assert!(!lcccs.is_empty());
     assert!(!cccs.is_empty());
 
@@ -582,7 +589,7 @@ where
       cs.namespace(|| "compute fold of U and u"),
       lcccs,
       cccs,
-      rho,
+      &rho,
       &proof.sigmas,
       &proof.thetas,
     )?;
@@ -594,7 +601,7 @@ where
       &check_sumcheck_v,
     )?;
 
-    Ok((new_lcccs, check_pass))
+    Ok((new_lcccs, check_pass, rho))
   }
 
   /// Synthesizes non-base case and returns the new relaxed `R1CSInstance`
@@ -605,7 +612,7 @@ where
     mut cs: CS,
     params: &AllocatedNum<G1::Base>,
     mut U: Vec<AllocatedRelaxedR1CSInstance<G1>>,
-    u: &AllocatedR1CSInstance<G1>,
+    u: &AllocatedR1CSInstanceBasedSimulatedX<G1>,
     mut T: Vec<AllocatedPoint<G1>>,
   ) -> Result<AllocatedRelaxedR1CSInstance<G1>, SynthesisError> {
     assert!(!U.is_empty());
@@ -618,18 +625,16 @@ where
         &mut ro,
       )?;
     }
-    u.absorb_in_ro(&mut ro);
+    u.absorb_in_ro(cs.namespace(|| "absorb r1cs instance in_ro"), &mut ro)?;
 
     let last_T = T.pop().unwrap();
     let mut U_folded_U = U.remove(0);
 
     // Run NIFS Verifier
-    use itertools::Itertools;
     for (i, (U, T)) in U.into_iter().zip_eq(T).enumerate() {
+      T.absorb_in_ro(&mut ro);
+
       let mut cs = cs.namespace(|| format!("{i}th folded U"));
-      ro.absorb(&T.x);
-      ro.absorb(&T.y);
-      ro.absorb(&T.is_infinity);
       let r_bits = ro.squeeze(cs.namespace(|| "r bits"), NUM_CHALLENGE_BITS)?;
       U_folded_U = U_folded_U.fold_with_relaxed_r1cs(
         cs.namespace(|| "compute fold of U and U"),
@@ -640,13 +645,11 @@ where
         self.params.n_limbs,
       )?;
     }
-    ro.absorb(&last_T.x);
-    ro.absorb(&last_T.y);
-    ro.absorb(&last_T.is_infinity);
+    last_T.absorb_in_ro(&mut ro);
     let r_bits = ro.squeeze(cs.namespace(|| "r bits"), NUM_CHALLENGE_BITS)?;
     let U_folded = U_folded_U.fold_with_r1cs(
       cs.namespace(|| "compute fold of U and u"),
-      u,
+      Either::Right(u),
       &last_T,
       r_bits,
       self.params.limb_width,
@@ -661,10 +664,10 @@ where
   pub fn check_public_input<CS: ConstraintSystem<<G1 as Group>::Base>>(
     &self,
     mut cs: CS,
-    cccs: &[AllocatedCCCS<G1>],
     params: &AllocatedNum<G1::Base>,
     z_0: &[AllocatedNum<G1::Base>],
     new_z: &[Vec<AllocatedNum<G1::Base>>],
+    cccs: &[AllocatedCCCS<G1>],
     lcccs: &[AllocatedLCCCS<G1>],
     relaxed_r1cs_inst: &[AllocatedRelaxedR1CSInstance<G1>],
   ) -> Result<Boolean, SynthesisError> {
@@ -679,6 +682,7 @@ where
         &lcccs[i],
         &relaxed_r1cs_inst[i],
       )?;
+      assert_eq!(c.primary_part.Xs.len(), 1);
       let is_eq = alloc_num_equals(
         cs.namespace(|| "check public_hash"),
         &public_hash,
@@ -687,6 +691,55 @@ where
       is_correct.push(is_eq.into())
     }
     multi_and(cs.namespace(|| "is correct public inputs"), &is_correct).map(Into::into)
+  }
+
+  /// update the secondary r1cs instance's X(public input)
+  #[allow(clippy::too_many_arguments)]
+  pub fn update_secondary_public_input<CS: ConstraintSystem<<G1 as Group>::Base>>(
+    &self,
+    mut cs: CS,
+    rho: AllocatedNum<G1::Base>,
+    cccs: &[AllocatedCCCS<G1>],
+    lcccs: &[AllocatedLCCCS<G1>],
+    new_lcccs: &AllocatedLCCCS<G1>,
+    r1cs_inst: &mut AllocatedR1CSInstanceBasedSimulatedX<G1>,
+  ) -> Result<(), SynthesisError> {
+    let mut public_inputs = Vec::new();
+    let mut ecc_parity_container = Vec::new();
+    public_inputs.push(BigNat::from_num(
+      cs.namespace(|| "convert rho from num to big_nat"),
+      &crate::gadgets::nonnative::Num::from(rho),
+      self.params.limb_width,
+      self.params.n_limbs,
+    )?);
+    for (i, c) in cccs.iter().enumerate() {
+      public_inputs.push(c.C.x.clone());
+      ecc_parity_container.push(c.C.get_y_parity(cs.namespace(|| format!("{i}th cccs.C parity")))?);
+    }
+    for (i, c) in lcccs.iter().enumerate() {
+      public_inputs.push(c.C.x.clone());
+      ecc_parity_container.push(c.C.get_y_parity(cs.namespace(|| format!("{i}th lcccs.C parity")))?);
+    }
+    public_inputs.push(new_lcccs.C.x.clone());
+    ecc_parity_container.push(new_lcccs.C.get_y_parity(cs.namespace(|| "new lcccs.C parity"))?);
+
+    let ecc_compression_num = from_le_bits_to_num(
+      cs.namespace(|| "alloc ecc_compression_num"),
+      &ecc_parity_container,
+    )?;
+    public_inputs.push(BigNat::from_num(
+      cs.namespace(|| "convert ecc_compression_num from num to big_nat"),
+      &crate::gadgets::nonnative::Num::from(ecc_compression_num),
+      self.params.limb_width,
+      self.params.n_limbs,
+    )?);
+
+    // only sanity check, replace circuit equality constraints with assignment
+    assert!(r1cs_inst.X.iter().zip_eq(public_inputs.iter()).all(|(external , internal)|
+      external.value == internal.value
+    ));
+    r1cs_inst.X = public_inputs;
+    Ok(())
   }
 
   /// Compute the new hash H(params, z0, z, lcccs, relaxed R1CS instance)

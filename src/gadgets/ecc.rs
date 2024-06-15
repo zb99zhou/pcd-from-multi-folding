@@ -77,6 +77,15 @@ where
     Ok(AllocatedPoint { x, y, is_infinity })
   }
 
+  pub fn absorb_in_ro(
+    &self,
+    ro: &mut G::ROCircuit
+  ) {
+    ro.absorb(&self.x);
+    ro.absorb(&self.y);
+    ro.absorb(&self.is_infinity);
+  }
+
   /// checks if `self` is on the curve or if it is infinity
   pub fn check_on_curve<CS>(&self, mut cs: CS) -> Result<(), SynthesisError>
   where
@@ -969,6 +978,19 @@ impl<G: Group> AllocatedSimulatedPoint<G> {
     }
 
     Ok(())
+  }
+
+  pub fn get_y_parity<CS: ConstraintSystem<<G as Group>::Base>>(
+    &self,
+    mut cs: CS
+  ) -> Result<Boolean, SynthesisError> {
+    Ok(self.y.as_limbs().first().unwrap()
+        .as_allocated_num(cs.namespace(|| "as cccs.C.y last limb"))?
+        .to_bits_le(cs.namespace(|| "first limb to bits"))?
+        .first()
+        .cloned()
+        .unwrap()
+    )
   }
 }
 
