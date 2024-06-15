@@ -253,19 +253,19 @@ pub fn sumcheck_verify<CS: ConstraintSystem<<G as Group>::Base>, G: Group>(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn enforce_compute_c_from_sigmas_and_thetas<CS: ConstraintSystem<<G as Group>::Base>, G, G1>(
+pub fn enforce_compute_c_from_sigmas_and_thetas<CS: ConstraintSystem<<G1 as Group>::Base>, G1, G2>(
   mut cs: CS,
-  ccs_params: &CCS<G1>,
-  vec_sigmas: &[Vec<AllocatedNum<G::Base>>],
-  vec_thetas: &[Vec<AllocatedNum<G::Base>>],
-  gamma: AllocatedNum<G::Base>,
-  beta: &[AllocatedNum<G::Base>],
-  vec_r_x: Vec<Vec<AllocatedNum<G::Base>>>,
-  r_x_prime: &[AllocatedNum<G::Base>],
-) -> Result<AllocatedNum<G::Base>, SynthesisError>
+  ccs_params: &CCS<G2>,
+  vec_sigmas: &[Vec<AllocatedNum<G1::Base>>],
+  vec_thetas: &[Vec<AllocatedNum<G1::Base>>],
+  gamma: AllocatedNum<G1::Base>,
+  beta: &[AllocatedNum<G1::Base>],
+  vec_r_x: Vec<Vec<AllocatedNum<G1::Base>>>,
+  r_x_prime: &[AllocatedNum<G1::Base>],
+) -> Result<AllocatedNum<G1::Base>, SynthesisError>
 where
-  G: Group<Base = <G1 as Group>::Scalar>,
-  G1: Group<Base = <G as Group>::Scalar>,
+  G1: Group<Base = <G2 as Group>::Scalar>,
+  G2: Group<Base = <G1 as Group>::Scalar>,
 {
   let mut c_lc = Num::zero();
 

@@ -116,35 +116,35 @@ impl<G: Group> PCDUnitInputs<G> {
 }
 
 #[derive(Clone)]
-pub struct PCDUnitPrimaryCircuit<'a, G, G1, SC, const ARITY: usize, const R: usize>
+pub struct PCDUnitPrimaryCircuit<'a, G1, G2, SC, const ARITY: usize, const R: usize>
 where
-  G: Group<Base = <G1 as Group>::Scalar>,
-  G1: Group<Base = <G as Group>::Scalar>,
-  SC: PCDStepCircuit<G::Base, ARITY, R>,
+  G1: Group<Base = <G2 as Group>::Scalar>,
+  G2: Group<Base = <G1 as Group>::Scalar>,
+  SC: PCDStepCircuit<G1::Base, ARITY, R>,
 {
-  params: &'a PCDUnitParams<G1, ARITY, R>,
-  secondary_params: &'a NovaAuxiliaryParams<G>,
-  ro_consts: ROConstantsCircuit<G>, // random oracle
-  te_consts: TEConstantsCircuit<G>, // Transcript Engine
-  inputs: Option<PCDUnitInputs<G>>,
+  params: &'a PCDUnitParams<G2, ARITY, R>,
+  secondary_params: &'a NovaAuxiliaryParams<G1>,
+  ro_consts: ROConstantsCircuit<G1>, // random oracle
+  te_consts: TEConstantsCircuit<G1>, // Transcript Engine
+  inputs: Option<PCDUnitInputs<G1>>,
   step_circuit: &'a SC, // The function that is applied for each step
 }
 
-impl<'a, G, G1, SC, const ARITY: usize, const R: usize>
-  PCDUnitPrimaryCircuit<'a, G, G1, SC, ARITY, R>
+impl<'a, G1, G2, SC, const ARITY: usize, const R: usize>
+  PCDUnitPrimaryCircuit<'a, G1, G2, SC, ARITY, R>
 where
-  G: Group<Base = <G1 as Group>::Scalar>,
-  G1: Group<Base = <G as Group>::Scalar>,
-  SC: PCDStepCircuit<G::Base, ARITY, R>,
+  G1: Group<Base = <G2 as Group>::Scalar>,
+  G2: Group<Base = <G1 as Group>::Scalar>,
+  SC: PCDStepCircuit<G1::Base, ARITY, R>,
 {
   /// Create a new verification circuit for the input relaxed r1cs instances
   pub const fn new(
-    params: &'a PCDUnitParams<G1, ARITY, R>,
-    secondary_params: &'a NovaAuxiliaryParams<G>,
-    inputs: Option<PCDUnitInputs<G>>,
+    params: &'a PCDUnitParams<G2, ARITY, R>,
+    secondary_params: &'a NovaAuxiliaryParams<G1>,
+    inputs: Option<PCDUnitInputs<G1>>,
     step_circuit: &'a SC,
-    ro_consts: ROConstantsCircuit<G>,
-    te_consts: TEConstantsCircuit<G>,
+    ro_consts: ROConstantsCircuit<G1>,
+    te_consts: TEConstantsCircuit<G1>,
   ) -> Self {
     Self {
       params,
@@ -157,31 +157,31 @@ where
   }
 
   /// Allocate all witnesses and return
-  fn alloc_witness<CS: ConstraintSystem<<G as Group>::Base>>(
+  fn alloc_witness<CS: ConstraintSystem<<G1 as Group>::Base>>(
     &self,
     mut cs: CS,
   ) -> Result<
     (
-      AllocatedNum<G::Base>,
-      AllocatedNum<G::Base>,
-      Vec<AllocatedNum<G::Base>>,
-      Vec<Vec<AllocatedNum<G::Base>>>,
-      Vec<AllocatedLCCCS<G>>,
-      Vec<AllocatedCCCS<G>>,
-      AllocatedProof<G>,
-      Vec<AllocatedRelaxedR1CSInstance<G>>,
-      AllocatedR1CSInstance<G>,
-      AllocatedSimulatedPoint<G>,
-      Vec<AllocatedPoint<G>>,
+      AllocatedNum<G1::Base>,
+      AllocatedNum<G1::Base>,
+      Vec<AllocatedNum<G1::Base>>,
+      Vec<Vec<AllocatedNum<G1::Base>>>,
+      Vec<AllocatedLCCCS<G1>>,
+      Vec<AllocatedCCCS<G1>>,
+      AllocatedProof<G1>,
+      Vec<AllocatedRelaxedR1CSInstance<G1>>,
+      AllocatedR1CSInstance<G1>,
+      AllocatedSimulatedPoint<G1>,
+      Vec<AllocatedPoint<G1>>,
     ),
     SynthesisError,
   > {
     // Allocate the params
-    let primary_params = alloc_scalar_as_base::<G, _>(
+    let primary_params = alloc_scalar_as_base::<G1, _>(
       cs.namespace(|| "primary_params"),
       self.inputs.get().map_or(None, |inputs| Some(inputs.params)),
     )?;
-    let secondary_params = alloc_scalar_as_base::<G, _>(
+    let secondary_params = alloc_scalar_as_base::<G1, _>(
       cs.namespace(|| "secondary_params"),
       self
         .inputs
@@ -204,7 +204,7 @@ where
           Ok(self.inputs.get()?.z0[i])
         })
       })
-      .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
+      .collect::<Result<Vec<AllocatedNum<G1::Base>>, _>>()?;
 
     // Allocate zi. If inputs.zi is not provided (base case) allocate default value 0
     let z_i = (0..R)
@@ -228,7 +228,7 @@ where
           })
           .collect::<Result<Vec<_>, SynthesisError>>()
       })
-      .collect::<Result<Vec<Vec<AllocatedNum<G::Base>>>, SynthesisError>>()?;
+      .collect::<Result<Vec<Vec<AllocatedNum<G1::Base>>>, SynthesisError>>()?;
 
     // Allocate the running instance
     let lcccs = (0..R)
@@ -244,7 +244,7 @@ where
           (self.params.limb_width, self.params.n_limbs),
         )
       })
-      .collect::<Result<Vec<AllocatedLCCCS<G>>, _>>()?;
+      .collect::<Result<Vec<AllocatedLCCCS<G1>>, _>>()?;
 
     // Allocate the instance to be folded in
     let cccs = (0..R)
@@ -260,7 +260,7 @@ where
           ARITY,
         )
       })
-      .collect::<Result<Vec<AllocatedCCCS<G>>, _>>()?;
+      .collect::<Result<Vec<AllocatedCCCS<G1>>, _>>()?;
     let relaxed_r1cs_inst = (0..R)
       .map(|i| {
         AllocatedRelaxedR1CSInstance::alloc(
@@ -274,7 +274,7 @@ where
           self.params.n_limbs,
         )
       })
-      .collect::<Result<Vec<AllocatedRelaxedR1CSInstance<G>>, _>>()?;
+      .collect::<Result<Vec<AllocatedRelaxedR1CSInstance<G1>>, _>>()?;
     let r1cs_inst = AllocatedR1CSInstance::alloc(
       cs.namespace(|| "Allocate r1cs instance"),
       self
@@ -304,7 +304,7 @@ where
             .and_then(|inputs| inputs.T.as_ref().map(|T| T[i].clone().to_coordinates())),
         )
       })
-      .collect::<Result<Vec<AllocatedPoint<G>>, _>>()?;
+      .collect::<Result<Vec<AllocatedPoint<G1>>, _>>()?;
     for (i, t) in T.iter().enumerate() {
       t.check_on_curve(cs.namespace(|| format!("check T_{i} on curve")))?;
     }
@@ -325,12 +325,12 @@ where
   }
 
   /// Synthesizes base case and returns the new `LCCCS`
-  fn synthesize_genesis_based_nimfs<CS: ConstraintSystem<<G as Group>::Base>>(
+  fn synthesize_genesis_based_nimfs<CS: ConstraintSystem<<G1 as Group>::Base>>(
     &self,
     mut cs: CS,
-  ) -> Result<AllocatedLCCCS<G>, SynthesisError> {
+  ) -> Result<AllocatedLCCCS<G1>, SynthesisError> {
     let default_lcccs =
-      LCCCSForBase::<G>::from(LCCCS::<G1>::default_for_pcd(self.params.ccs.clone()));
+      LCCCSForBase::<G1>::from(LCCCS::<G2>::default_for_pcd(self.params.ccs.clone()));
     let lcccs = AllocatedLCCCS::alloc(
       cs.namespace(|| "allocate default instance lcccs to fold"),
       Some(&default_lcccs),
@@ -342,10 +342,10 @@ where
   }
 
   /// Synthesizes base case and returns the new `relaxed r1cs instance`
-  fn synthesize_genesis_based_nifs<CS: ConstraintSystem<<G as Group>::Base>>(
+  fn synthesize_genesis_based_nifs<CS: ConstraintSystem<<G1 as Group>::Base>>(
     &self,
     mut cs: CS,
-  ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
+  ) -> Result<AllocatedRelaxedR1CSInstance<G1>, SynthesisError> {
     AllocatedRelaxedR1CSInstance::default(
       cs.namespace(|| "Allocate relaxed r1cs instance default"),
       self.params.limb_width,
@@ -355,18 +355,18 @@ where
   }
 }
 
-impl<'a, G, G1, SC, const ARITY: usize, const R: usize>
-  PCDUnitPrimaryCircuit<'a, G, G1, SC, ARITY, R>
+impl<'a, G1, G2, SC, const ARITY: usize, const R: usize>
+  PCDUnitPrimaryCircuit<'a, G1, G2, SC, ARITY, R>
 where
-  G: Group<Base = <G1 as Group>::Scalar>,
-  G1: Group<Base = <G as Group>::Scalar>,
-  SC: PCDStepCircuit<G::Base, ARITY, R>,
+  G1: Group<Base = <G2 as Group>::Scalar>,
+  G2: Group<Base = <G1 as Group>::Scalar>,
+  SC: PCDStepCircuit<G1::Base, ARITY, R>,
 {
   /// synthesize circuit giving constraint system
-  pub fn synthesize<CS: ConstraintSystem<<G as Group>::Base>>(
+  pub fn synthesize<CS: ConstraintSystem<<G1 as Group>::Base>>(
     self,
     cs: &mut CS,
-  ) -> Result<Vec<AllocatedNum<G::Base>>, SynthesisError> {
+  ) -> Result<Vec<AllocatedNum<G1::Base>>, SynthesisError> {
     // Allocate all witnesses
     let (
       primary_params,
@@ -498,18 +498,18 @@ where
   /// Synthesizes non-base case and returns the new `LCCCS`
   /// And a boolean indicating if all checks pass
   #[allow(clippy::too_many_arguments)]
-  fn synthesize_based_nimfs<CS: ConstraintSystem<<G as Group>::Base>>(
+  fn synthesize_based_nimfs<CS: ConstraintSystem<<G1 as Group>::Base>>(
     &self,
     mut cs: CS,
-    params: &PCDUnitParams<G1, ARITY, R>,
-    lcccs: &[AllocatedLCCCSPrimaryPart<G>],
-    cccs: &[AllocatedCCCSPrimaryPart<G>],
-    proof: &AllocatedProof<G>,
-  ) -> Result<(AllocatedLCCCSPrimaryPart<G>, AllocatedBit), SynthesisError> {
+    params: &PCDUnitParams<G2, ARITY, R>,
+    lcccs: &[AllocatedLCCCSPrimaryPart<G1>],
+    cccs: &[AllocatedCCCSPrimaryPart<G1>],
+    proof: &AllocatedProof<G1>,
+  ) -> Result<(AllocatedLCCCSPrimaryPart<G1>, AllocatedBit), SynthesisError> {
     assert!(!lcccs.is_empty());
     assert!(!cccs.is_empty());
 
-    let mut transcript = G::FoldTECircuit::new(
+    let mut transcript = G1::FoldTECircuit::new(
       self.te_consts.clone(),
       cs.namespace(|| "init NIMFS transcript"),
       b"multifolding",
@@ -536,15 +536,15 @@ where
     })?;
     cs.enforce(
       || "constraints final lc",
-      |_lc| sum_v_j_gamma_lc.lc(G::Base::ONE),
+      |_lc| sum_v_j_gamma_lc.lc(G1::Base::ONE),
       |lc| lc + CS::one(),
       |lc| lc + sum_v_j_gamma.get_variable(),
     );
 
-    let vp_aux_info = VPAuxInfo::<G::Base> {
+    let vp_aux_info = VPAuxInfo::<G1::Base> {
       max_degree: params.ccs.d + 1,
       num_variables: params.ccs.s,
-      phantom: std::marker::PhantomData::<G::Base>,
+      phantom: std::marker::PhantomData::<G1::Base>,
     };
     let (sumcheck_subclaim, check_sumcheck_v) = sumcheck_verify(
       cs.namespace(|| "verify sumcheck proof"),
@@ -558,7 +558,7 @@ where
     let r_x_prime = sumcheck_subclaim.point.clone();
 
     // Step 5: Finish verifying sumcheck (verify the claim c)
-    let c = enforce_compute_c_from_sigmas_and_thetas::<_, G, G1>(
+    let c = enforce_compute_c_from_sigmas_and_thetas::<_, G1, G2>(
       cs.namespace(|| "calc c"),
       &params.ccs,
       &proof.sigmas,
@@ -600,17 +600,17 @@ where
   /// Synthesizes non-base case and returns the new relaxed `R1CSInstance`
   /// And a boolean indicating if all checks pass
   #[allow(clippy::too_many_arguments)]
-  fn synthesize_based_nifs<CS: ConstraintSystem<<G as Group>::Base>>(
+  fn synthesize_based_nifs<CS: ConstraintSystem<<G1 as Group>::Base>>(
     &self,
     mut cs: CS,
-    params: &AllocatedNum<G::Base>,
-    mut U: Vec<AllocatedRelaxedR1CSInstance<G>>,
-    u: &AllocatedR1CSInstance<G>,
-    mut T: Vec<AllocatedPoint<G>>,
-  ) -> Result<AllocatedRelaxedR1CSInstance<G>, SynthesisError> {
+    params: &AllocatedNum<G1::Base>,
+    mut U: Vec<AllocatedRelaxedR1CSInstance<G1>>,
+    u: &AllocatedR1CSInstance<G1>,
+    mut T: Vec<AllocatedPoint<G1>>,
+  ) -> Result<AllocatedRelaxedR1CSInstance<G1>, SynthesisError> {
     assert!(!U.is_empty());
     // Compute r
-    let mut ro = G::ROCircuit::new(self.ro_consts.clone(), 0);
+    let mut ro = G1::ROCircuit::new(self.ro_consts.clone(), 0);
     ro.absorb(params);
     for (i, U) in U.iter().enumerate() {
       U.absorb_in_ro(
@@ -658,15 +658,15 @@ where
 
   /// check the correctness of the all cccs's X(public input)
   #[allow(clippy::too_many_arguments)]
-  pub fn check_public_input<CS: ConstraintSystem<<G as Group>::Base>>(
+  pub fn check_public_input<CS: ConstraintSystem<<G1 as Group>::Base>>(
     &self,
     mut cs: CS,
-    cccs: &[AllocatedCCCS<G>],
-    params: &AllocatedNum<G::Base>,
-    z_0: &[AllocatedNum<G::Base>],
-    new_z: &[Vec<AllocatedNum<G::Base>>],
-    lcccs: &[AllocatedLCCCS<G>],
-    relaxed_r1cs_inst: &[AllocatedRelaxedR1CSInstance<G>],
+    cccs: &[AllocatedCCCS<G1>],
+    params: &AllocatedNum<G1::Base>,
+    z_0: &[AllocatedNum<G1::Base>],
+    new_z: &[Vec<AllocatedNum<G1::Base>>],
+    lcccs: &[AllocatedLCCCS<G1>],
+    relaxed_r1cs_inst: &[AllocatedRelaxedR1CSInstance<G1>],
   ) -> Result<Boolean, SynthesisError> {
     let mut is_correct = Vec::new();
     for (i, c) in cccs.iter().enumerate() {
@@ -690,17 +690,17 @@ where
   }
 
   /// Compute the new hash H(params, z0, z, lcccs, relaxed R1CS instance)
-  pub fn commit_explicit_public_input<CS: ConstraintSystem<<G as Group>::Base>>(
+  pub fn commit_explicit_public_input<CS: ConstraintSystem<<G1 as Group>::Base>>(
     &self,
     mut cs: CS,
-    params: &AllocatedNum<G::Base>,
-    z_0: &[AllocatedNum<G::Base>],
-    new_z: &[AllocatedNum<G::Base>],
-    lcccs: &AllocatedLCCCS<G>,
-    relaxed_r1cs_inst: &AllocatedRelaxedR1CSInstance<G>,
-  ) -> Result<AllocatedNum<G::Base>, SynthesisError> {
+    params: &AllocatedNum<G1::Base>,
+    z_0: &[AllocatedNum<G1::Base>],
+    new_z: &[AllocatedNum<G1::Base>],
+    lcccs: &AllocatedLCCCS<G1>,
+    relaxed_r1cs_inst: &AllocatedRelaxedR1CSInstance<G1>,
+  ) -> Result<AllocatedNum<G1::Base>, SynthesisError> {
     let _num_absorbs = 1 + 2 * ARITY + lcccs.element_num() + relaxed_r1cs_inst.element_num();
-    let mut ro = G::ROCircuit::new(self.ro_consts.clone(), 0);
+    let mut ro = G1::ROCircuit::new(self.ro_consts.clone(), 0);
 
     ro.absorb(params);
     z_0.iter().for_each(|e| ro.absorb(e));
