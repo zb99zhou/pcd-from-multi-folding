@@ -252,7 +252,7 @@ where
       || lcccs.x.len() != ARITY
       || cccs.x.len() != ARITY
     {
-      return Err(NovaError::ProofVerifyError);
+      return Err(NovaError::InvalidInputLength);
     }
 
     let mut hasher = <G2 as Group>::RO::new(
@@ -286,9 +286,9 @@ where
         )
       },
     );
-    res_U.map_err(|_| NovaError::ProofVerifyError)?;
-    res_lcccs.map_err(|_| NovaError::ProofVerifyError)?;
-    res_cccs.map_err(|_| NovaError::ProofVerifyError)?;
+    res_U.map_err(|_| NovaError::ProofVerifyError).unwrap();
+    res_lcccs.map_err(|_| NovaError::ProofVerifyError).unwrap();
+    res_cccs.map_err(|_| NovaError::ProofVerifyError).unwrap();
     Ok(zi_primary.to_vec())
   }
 }
@@ -408,7 +408,7 @@ mod test {
       .prove_step::<_, false, false>(&pp, &test_circuit)
       .unwrap();
 
-    let res = node_3.verify(
+    let _res = node_3.verify(
       &pp,
       &node_3_zi,
       &node_3_lcccs,
@@ -417,8 +417,8 @@ mod test {
       &node_3_cccs_witness,
       &node_3_relaxed_r1cs_instance,
       &node_3_relaxed_r1cs_witness,
-    );
-    assert!(res.is_ok());
+    ).unwrap();
+    // assert!(res.is_ok());
     Ok(())
   }
 

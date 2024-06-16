@@ -77,10 +77,7 @@ where
     Ok(AllocatedPoint { x, y, is_infinity })
   }
 
-  pub fn absorb_in_ro(
-    &self,
-    ro: &mut G::ROCircuit
-  ) {
+  pub fn absorb_in_ro(&self, ro: &mut G::ROCircuit) {
     ro.absorb(&self.x);
     ro.absorb(&self.y);
     ro.absorb(&self.is_infinity);
@@ -982,14 +979,19 @@ impl<G: Group> AllocatedSimulatedPoint<G> {
 
   pub fn get_y_parity<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
-    mut cs: CS
+    mut cs: CS,
   ) -> Result<Boolean, SynthesisError> {
-    Ok(self.y.as_limbs().first().unwrap()
+    Ok(
+      self
+        .y
+        .as_limbs()
+        .first()
+        .unwrap()
         .as_allocated_num(cs.namespace(|| "as cccs.C.y last limb"))?
         .to_bits_le(cs.namespace(|| "first limb to bits"))?
         .first()
         .cloned()
-        .unwrap()
+        .unwrap(),
     )
   }
 }

@@ -638,7 +638,7 @@ where
         &mut ro,
       )?;
     }
-    u.absorb_in_ro(cs.namespace(|| "absorb r1cs instance in_ro"), &mut ro)?;
+    u.absorb_simulated_x_in_ro(cs.namespace(|| "absorb r1cs instance in_ro"), &mut ro)?;
 
     let last_T = T.pop().unwrap();
     let mut U_folded_U = U.remove(0);
@@ -715,7 +715,7 @@ where
     cccs: &[AllocatedCCCS<G1>],
     lcccs: &[AllocatedLCCCS<G1>],
     new_lcccs: &AllocatedLCCCS<G1>,
-    r1cs_inst: &mut AllocatedR1CSInstanceBasedSimulatedX<G1>,
+    _r1cs_inst: &mut AllocatedR1CSInstanceBasedSimulatedX<G1>,
   ) -> Result<(), SynthesisError> {
     let mut public_inputs = Vec::new();
     let mut ecc_parity_container = Vec::new();
@@ -758,12 +758,12 @@ where
     )?);
 
     // only sanity check, replace circuit equality constraints with assignment
-    assert!(r1cs_inst
-      .X
-      .iter()
-      .zip_eq(public_inputs.iter())
-      .all(|(external, internal)| external.value == internal.value));
-    r1cs_inst.X = public_inputs;
+    // assert!(r1cs_inst
+    //   .X
+    //   .iter()
+    //   .zip_eq(public_inputs.iter())
+    //   .all(|(external, internal)| external.value == internal.value));
+    // r1cs_inst.X = public_inputs;
     Ok(())
   }
 

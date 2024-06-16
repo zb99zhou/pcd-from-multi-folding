@@ -61,7 +61,7 @@ impl<G: Group> AllocatedR1CSInstanceBasedSimulatedX<G> {
   }
 
   /// Absorb the provided instance in the RO
-  pub fn absorb_in_ro<CS: ConstraintSystem<<G as Group>::Base>>(
+  pub fn absorb_simulated_x_in_ro<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,
     ro: &mut G::ROCircuit,

@@ -102,7 +102,7 @@ impl<G: Group> NIFS<G> {
     for U in U.iter() {
       U.absorb_in_ro(&mut ro);
     }
-    u.absorb_in_ro(&mut ro);
+    u.absorb_simulated_x_in_ro(&mut ro);
 
     let mut U_in_calc = U[0].clone();
     let mut W_in_calc = W1[0].clone();
@@ -185,7 +185,7 @@ impl<G: Group> NIFS<G> {
     for U in U.iter() {
       U.absorb_in_ro(&mut ro);
     }
-    u.absorb_in_ro(&mut ro);
+    u.absorb_simulated_x_in_ro(&mut ro);
 
     let mut U_in_calc = U[0].clone();
     for (U_now, nifs) in U.iter().skip(1).zip(&nifs_vec[..nifs_vec.len() - 1]) {
