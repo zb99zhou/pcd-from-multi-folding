@@ -5,11 +5,15 @@ use crate::gadgets::cccs::{
 };
 use crate::gadgets::ecc::{AllocatedPoint, AllocatedSimulatedPoint};
 use crate::gadgets::ext_allocated_num::ExtendFunc;
+use crate::gadgets::nonnative::bignat::BigNat;
 use crate::gadgets::r1cs::{AllocatedR1CSInstanceBasedSimulatedX, AllocatedRelaxedR1CSInstance};
 use crate::gadgets::sumcheck::{
   enforce_compute_c_from_sigmas_and_thetas, sumcheck_verify, AllocatedProof,
 };
-use crate::gadgets::utils::{alloc_num_equals, alloc_scalar_as_base, conditionally_select_vec_allocated_num, from_le_bits_to_num, le_bits_to_num, multi_and};
+use crate::gadgets::utils::{
+  alloc_num_equals, alloc_scalar_as_base, conditionally_select_vec_allocated_num,
+  from_le_bits_to_num, le_bits_to_num, multi_and,
+};
 use crate::nimfs::ccs::cccs::{CCCSForBase, PointForScalar};
 use crate::nimfs::ccs::ccs::CCS;
 use crate::nimfs::ccs::lcccs::{LCCCSForBase, LCCCS};
@@ -30,7 +34,6 @@ use bellpepper_core::{ConstraintSystem, SynthesisError};
 use ff::Field;
 use itertools::{Either, Itertools};
 use serde::Serialize;
-use crate::gadgets::nonnative::bignat::BigNat;
 
 // R: the number of multi-folding PCD node
 #[derive(Serialize, Clone)]
@@ -427,7 +430,10 @@ where
         .iter()
         .map(|l| l.primary_part.clone())
         .collect::<Vec<_>>(),
-      &cccs.iter().map(|l| l.primary_part.clone()).collect::<Vec<_>>(),
+      &cccs
+        .iter()
+        .map(|l| l.primary_part.clone())
+        .collect::<Vec<_>>(),
       &nimfs_proof,
     )?;
     // Either check_non_base_pass=true or we are in the base case
@@ -512,7 +518,14 @@ where
     lcccs: &[AllocatedLCCCSPrimaryPart<G1>],
     cccs: &[AllocatedCCCSPrimaryPart<G1>],
     proof: &AllocatedProof<G1>,
-  ) -> Result<(AllocatedLCCCSPrimaryPart<G1>, AllocatedBit, AllocatedNum<G1::Base>), SynthesisError> {
+  ) -> Result<
+    (
+      AllocatedLCCCSPrimaryPart<G1>,
+      AllocatedBit,
+      AllocatedNum<G1::Base>,
+    ),
+    SynthesisError,
+  > {
     assert!(!lcccs.is_empty());
     assert!(!cccs.is_empty());
 
@@ -708,20 +721,30 @@ where
     let mut ecc_parity_container = Vec::new();
     public_inputs.push(BigNat::from_num(
       cs.namespace(|| "convert rho from num to big_nat"),
-      &crate::gadgets::nonnative::Num::from(rho),
+      &rho.into(),
       self.params.limb_width,
       self.params.n_limbs,
     )?);
     for (i, c) in cccs.iter().enumerate() {
       public_inputs.push(c.C.x.clone());
-      ecc_parity_container.push(c.C.get_y_parity(cs.namespace(|| format!("{i}th cccs.C parity")))?);
+      ecc_parity_container.push(
+        c.C
+          .get_y_parity(cs.namespace(|| format!("{i}th cccs.C parity")))?,
+      );
     }
     for (i, c) in lcccs.iter().enumerate() {
       public_inputs.push(c.C.x.clone());
-      ecc_parity_container.push(c.C.get_y_parity(cs.namespace(|| format!("{i}th lcccs.C parity")))?);
+      ecc_parity_container.push(
+        c.C
+          .get_y_parity(cs.namespace(|| format!("{i}th lcccs.C parity")))?,
+      );
     }
     public_inputs.push(new_lcccs.C.x.clone());
-    ecc_parity_container.push(new_lcccs.C.get_y_parity(cs.namespace(|| "new lcccs.C parity"))?);
+    ecc_parity_container.push(
+      new_lcccs
+        .C
+        .get_y_parity(cs.namespace(|| "new lcccs.C parity"))?,
+    );
 
     let ecc_compression_num = from_le_bits_to_num(
       cs.namespace(|| "alloc ecc_compression_num"),
@@ -729,15 +752,17 @@ where
     )?;
     public_inputs.push(BigNat::from_num(
       cs.namespace(|| "convert ecc_compression_num from num to big_nat"),
-      &crate::gadgets::nonnative::Num::from(ecc_compression_num),
+      &ecc_compression_num.into(),
       self.params.limb_width,
       self.params.n_limbs,
     )?);
 
     // only sanity check, replace circuit equality constraints with assignment
-    assert!(r1cs_inst.X.iter().zip_eq(public_inputs.iter()).all(|(external , internal)|
-      external.value == internal.value
-    ));
+    assert!(r1cs_inst
+      .X
+      .iter()
+      .zip_eq(public_inputs.iter())
+      .all(|(external, internal)| external.value == internal.value));
     r1cs_inst.X = public_inputs;
     Ok(())
   }

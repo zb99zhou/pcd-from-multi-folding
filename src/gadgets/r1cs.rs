@@ -47,15 +47,15 @@ impl<G: Group> AllocatedR1CSInstanceBasedSimulatedX<G> {
     )?;
 
     let X = (0..io_num)
-        .map(|i| {
-          BigNat::alloc_from_nat(
-            cs.namespace(|| format!("allocate X[{i}]")),
-            || Ok(f_to_nat(&u.map_or(G::Scalar::ZERO, |inst| inst.X[i]))),
-            limb_width,
-            n_limbs,
-          )
-        })
-        .collect::<Result<Vec<_>, SynthesisError>>()?;
+      .map(|i| {
+        BigNat::alloc_from_nat(
+          cs.namespace(|| format!("allocate X[{i}]")),
+          || Ok(f_to_nat(&u.map_or(G::Scalar::ZERO, |inst| inst.X[i]))),
+          limb_width,
+          n_limbs,
+        )
+      })
+      .collect::<Result<Vec<_>, SynthesisError>>()?;
 
     Ok(AllocatedR1CSInstanceBasedSimulatedX { W, X })
   }
@@ -64,18 +64,18 @@ impl<G: Group> AllocatedR1CSInstanceBasedSimulatedX<G> {
   pub fn absorb_in_ro<CS: ConstraintSystem<<G as Group>::Base>>(
     &self,
     mut cs: CS,
-    ro: &mut G::ROCircuit
+    ro: &mut G::ROCircuit,
   ) -> Result<(), SynthesisError> {
     self.W.absorb_in_ro(ro);
     for (i, X) in self.X.iter().enumerate() {
       let X_bn = X
-          .as_limbs()
-          .iter()
-          .enumerate()
-          .map(|(j, limb)| {
-            limb.as_allocated_num(cs.namespace(|| format!("convert limb[{j}] of X_r[{i}] to num")))
-          })
-          .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
+        .as_limbs()
+        .iter()
+        .enumerate()
+        .map(|(j, limb)| {
+          limb.as_allocated_num(cs.namespace(|| format!("convert limb[{j}] of X_r[{i}] to num")))
+        })
+        .collect::<Result<Vec<AllocatedNum<G::Base>>, _>>()?;
 
       for limb in X_bn {
         ro.absorb(&limb);
@@ -311,7 +311,8 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     let rW = match u {
       Either::Left(l) => &l.W,
       Either::Right(r) => &r.W,
-    }.scalar_mul(cs.namespace(|| "r * u.W"), &r_bits)?;
+    }
+    .scalar_mul(cs.namespace(|| "r * u.W"), &r_bits)?;
     let W_fold = self.W.add(cs.namespace(|| "self.W + r * u.W"), &rW)?;
 
     // E_fold = self.E + r * T
@@ -347,13 +348,19 @@ impl<G: Group> AllocatedRelaxedR1CSInstance<G> {
     )?;
 
     let Xs = match u {
-      Either::Left(l) => l.X.iter().enumerate()
-          .map(|(i, x)| BigNat::from_num(
+      Either::Left(l) => l
+        .X
+        .iter()
+        .enumerate()
+        .map(|(i, x)| {
+          BigNat::from_num(
             cs.namespace(|| format!("allocate {i}th X_bn")),
-        &Num::from(x.clone()),
-        limb_width,
-        n_limbs,
-      )).collect::<Result<Vec<_>, SynthesisError>>()?,
+            &Num::from(x.clone()),
+            limb_width,
+            n_limbs,
+          )
+        })
+        .collect::<Result<Vec<_>, SynthesisError>>()?,
       Either::Right(r) => r.X.clone(),
     };
     let mut new_Xs = Vec::new();

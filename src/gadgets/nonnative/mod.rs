@@ -37,5 +37,3 @@ impl<Scalar: PrimeField> BitAccess for Scalar {
 
 pub mod bignat;
 pub mod util;
-
-pub use util::Num;
