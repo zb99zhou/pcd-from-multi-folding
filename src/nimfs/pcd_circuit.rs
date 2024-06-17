@@ -293,7 +293,7 @@ where
       self
         .inputs
         .as_ref()
-        .and_then(|inputs| inputs.new_lcccs_C.as_ref().map(|U| *U)),
+        .and_then(|inputs| inputs.new_lcccs_C.as_ref().map(|C| *C)),
       self.params.limb_width,
       self.params.n_limbs,
     )?;
@@ -715,7 +715,7 @@ where
     cccs: &[AllocatedCCCS<G1>],
     lcccs: &[AllocatedLCCCS<G1>],
     new_lcccs: &AllocatedLCCCS<G1>,
-    _r1cs_inst: &mut AllocatedR1CSInstanceBasedSimulatedX<G1>,
+    r1cs_inst: &mut AllocatedR1CSInstanceBasedSimulatedX<G1>,
   ) -> Result<(), SynthesisError> {
     let mut public_inputs = Vec::new();
     let mut ecc_parity_container = Vec::new();
@@ -725,18 +725,18 @@ where
       self.params.limb_width,
       self.params.n_limbs,
     )?);
-    for (i, c) in cccs.iter().enumerate() {
-      public_inputs.push(c.C.x.clone());
-      ecc_parity_container.push(
-        c.C
-          .get_y_parity(cs.namespace(|| format!("{i}th cccs.C parity")))?,
-      );
-    }
     for (i, c) in lcccs.iter().enumerate() {
       public_inputs.push(c.C.x.clone());
       ecc_parity_container.push(
         c.C
           .get_y_parity(cs.namespace(|| format!("{i}th lcccs.C parity")))?,
+      );
+    }
+    for (i, c) in cccs.iter().enumerate() {
+      public_inputs.push(c.C.x.clone());
+      ecc_parity_container.push(
+        c.C
+          .get_y_parity(cs.namespace(|| format!("{i}th cccs.C parity")))?,
       );
     }
     public_inputs.push(new_lcccs.C.x.clone());
@@ -763,7 +763,7 @@ where
     //   .iter()
     //   .zip_eq(public_inputs.iter())
     //   .all(|(external, internal)| external.value == internal.value));
-    // r1cs_inst.X = public_inputs;
+    r1cs_inst.X = public_inputs;
     Ok(())
   }
 
@@ -777,7 +777,6 @@ where
     lcccs: &AllocatedLCCCS<G1>,
     relaxed_r1cs_inst: &AllocatedRelaxedR1CSInstance<G1>,
   ) -> Result<AllocatedNum<G1::Base>, SynthesisError> {
-    let _num_absorbs = 1 + 2 * ARITY + lcccs.element_num() + relaxed_r1cs_inst.element_num();
     let mut ro = G1::ROCircuit::new(self.ro_consts.clone(), 0);
 
     ro.absorb(params);

@@ -1,8 +1,10 @@
 //! This module implements various gadgets necessary for folding R1CS types.
 use crate::gadgets::ecc::AllocatedSimulatedPoint;
 use crate::gadgets::ext_allocated_num::ExtendFunc;
+use crate::gadgets::nonnative::bignat::BigNat;
 use crate::gadgets::utils::{
-  alloc_num_equals, alloc_vec_number_equals_zero, conditionally_select_vec_allocated_num, multi_and,
+  alloc_bignat_constant, alloc_num_equals, alloc_vec_number_equals_zero,
+  conditionally_select_vec_allocated_num, multi_and,
 };
 use crate::nimfs::ccs::cccs::{CCCSForBase, CCCS};
 use crate::nimfs::ccs::lcccs::{LCCCSForBase, LCCCS};
@@ -13,9 +15,10 @@ use crate::{
   traits::Group,
 };
 use bellpepper::gadgets::{boolean::Boolean, num::AllocatedNum, Assignment};
-use bellpepper_core::boolean::AllocatedBit;
 use bellpepper_core::{ConstraintSystem, SynthesisError};
 use ff::Field;
+use num_bigint::BigInt;
+use num_traits::One;
 use std::fmt::{Debug, Formatter};
 
 // TODO: split lcccs and cccs to two file
@@ -546,7 +549,7 @@ impl<G: Group> AllocatedLCCCSSecondPart<G> {
     &mut self,
     mut cs: CS,
     lcccs: &AllocatedLCCCSSecondPart<G>,
-    rho_i: &AllocatedNum<G::Base>,
+    rho_i: &BigNat<G::Base>,
   ) -> Result<(), SynthesisError> {
     self.folding(cs.namespace(|| " folding with lcccs"), &lcccs.C, rho_i)
   }
@@ -556,7 +559,7 @@ impl<G: Group> AllocatedLCCCSSecondPart<G> {
     &mut self,
     mut cs: CS,
     cccs: &AllocatedCCCSSecondPart<G>,
-    rho_i: &AllocatedNum<G::Base>,
+    rho_i: &BigNat<G::Base>,
   ) -> Result<(), SynthesisError> {
     self.folding(cs.namespace(|| " folding with cccs"), &cccs.C, rho_i)
   }
@@ -566,16 +569,11 @@ impl<G: Group> AllocatedLCCCSSecondPart<G> {
     &mut self,
     mut cs: CS,
     C: &AllocatedPoint<G>,
-    rho_i: &AllocatedNum<G::Base>,
+    rho_i: &BigNat<G::Base>,
   ) -> Result<(), SynthesisError> {
     let rho_i_bits = rho_i
-      .to_bits_le_strict(cs.namespace(|| "poseidon hash to boolean"))?
-      .into_iter()
-      .map(|boolean| match boolean {
-        Boolean::Is(x) => x,
-        _ => panic!("Wrong type of input. We should have never reached there"),
-      })
-      .collect::<Vec<AllocatedBit>>();
+      .decompose(cs.namespace(|| "decompose bitnat to bits"))?
+      .get_bits();
 
     // C_fold = self.C + r * u.C
     let r_C = C.scalar_mul(cs.namespace(|| "r * u.C"), &rho_i_bits)?;
@@ -612,11 +610,11 @@ pub fn multi_folding_with_primary_part<CS: ConstraintSystem<<G as Group>::Base>,
   // folding
   for (i, lcccs) in lcccs.iter().enumerate().skip(1) {
     rho_i = rho_i.mul(
-      cs.namespace(|| format!("alloc {}th squared rho_i in folding lcccs", i)),
+      cs.namespace(|| format!("alloc rho_{i} in folding lcccs")),
       rho,
     )?;
     lcccs_folded.folding_with_lcccs_primary_part(
-      cs.namespace(|| format!("folding {}th lcccs", i)),
+      cs.namespace(|| format!("folding {i}th lcccs")),
       lcccs,
       &rho_i,
       &sigmas[i],
@@ -624,11 +622,11 @@ pub fn multi_folding_with_primary_part<CS: ConstraintSystem<<G as Group>::Base>,
   }
   for (i, cccs) in cccs.iter().enumerate() {
     rho_i = rho_i.mul(
-      cs.namespace(|| format!("alloc {}th squared rho_i in folding cccs", i)),
+      cs.namespace(|| format!("alloc rho_{i} in folding cccs")),
       rho,
     )?;
     lcccs_folded.folding_with_cccs_primary_part(
-      cs.namespace(|| format!("folding {}th cccs", i)),
+      cs.namespace(|| format!("folding {i}th cccs")),
       cccs,
       &rho_i,
       &thetas[i],
@@ -643,26 +641,55 @@ pub fn multi_folding_with_second_part<CS: ConstraintSystem<<G as Group>::Base>, 
   lcccs: &[AllocatedLCCCSSecondPart<G>],
   cccs: &[AllocatedCCCSSecondPart<G>],
   rho: &AllocatedNum<G::Base>,
+  limb_width: usize,
+  n_limbs: usize,
 ) -> Result<AllocatedLCCCSSecondPart<G>, SynthesisError> {
   // init
   let mut lcccs_folded = lcccs[0].clone();
-  let mut rho_i = rho.clone();
+  let rho = BigNat::from_num(
+    cs.namespace(|| "alloc rho"),
+    &rho.clone().into(),
+    limb_width,
+    n_limbs,
+  )?;
+  let mut rho_i = alloc_bignat_constant(
+    cs.namespace(|| "alloc rho_0 = one"),
+    &BigInt::one(),
+    limb_width,
+    n_limbs,
+  )?;
+  let m_bn = alloc_bignat_constant(
+    cs.namespace(|| "alloc m bignat"),
+    &G::get_curve_params().2,
+    limb_width,
+    n_limbs,
+  )?;
 
   // folding
   for (i, lcccs) in lcccs.iter().enumerate().skip(1) {
-    rho_i =
-      rho_i.square(cs.namespace(|| format!("alloc {}th squared rho_i in folding lcccs", i)))?;
+    rho_i = rho_i
+      .mult_mod(
+        cs.namespace(|| format!("calc rho_{i} in folding lcccs")),
+        &rho,
+        &m_bn,
+      )?
+      .1;
     lcccs_folded.folding_with_lcccs_second_part(
-      cs.namespace(|| format!("folding {}th lcccs", i)),
+      cs.namespace(|| format!("folding {i}th lcccs")),
       lcccs,
       &rho_i,
     )?;
   }
   for (i, cccs) in cccs.iter().enumerate() {
-    rho_i =
-      rho_i.square(cs.namespace(|| format!("alloc {}th squared rho_i in folding cccs", i)))?;
+    rho_i = rho_i
+      .mult_mod(
+        cs.namespace(|| format!("calc rho_{i} in folding cccs")),
+        &rho,
+        &m_bn,
+      )?
+      .1;
     lcccs_folded.folding_with_cccs_second_part(
-      cs.namespace(|| format!("folding {}th cccs", i)),
+      cs.namespace(|| format!("folding {i}th cccs")),
       cccs,
       &rho_i,
     )?;

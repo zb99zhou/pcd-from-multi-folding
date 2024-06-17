@@ -53,7 +53,8 @@ where
     let te_consts_circuit_primary: TEConstantsCircuit<G2> = Default::default();
 
     let aux_circuit_setup_input = NovaAuxiliaryInputs::<G1>::new(None, None, None, None, R);
-    let aux_circuit_setup = NovaAuxiliarySecondCircuit::<G1>::new(aux_circuit_setup_input);
+    let aux_circuit_setup =
+      NovaAuxiliarySecondCircuit::<G1>::new(aux_circuit_setup_input, BN_LIMB_WIDTH, BN_N_LIMBS);
     let mut cs_aux_helper: ShapeCS<G2> = ShapeCS::new();
     let _ = aux_circuit_setup.synthesize(&mut cs_aux_helper);
     let (aux_r1cs_shape, ck_secondary) = cs_aux_helper.r1cs_shape();
