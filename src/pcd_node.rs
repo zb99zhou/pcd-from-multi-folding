@@ -1,16 +1,16 @@
 use crate::bellpepper::r1cs::NovaWitness;
 use crate::bellpepper::solver::SatisfyingAssignment;
+use crate::compress_snark::PCDPublicParams;
 use crate::constants::{NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS};
 use crate::errors::NovaError;
 use crate::gadgets::utils::scalar_as_base;
+use crate::nifs::r1cs::{RelaxedR1CSInstance, RelaxedR1CSWitness};
 use crate::nifs::NIFS;
 use crate::nimfs::ccs::cccs::{CCSWitness, CCCS};
 use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::nimfs::multifolding::{ProofWitness, NIMFS};
-use crate::nimfs::pcd_aux_circuit::{NovaAuxiliaryInputs, NovaAuxiliarySecondCircuit};
-use crate::nimfs::pcd_circuit::{PCDUnitInputs, PCDUnitPrimaryCircuit};
-use crate::pcd_compressed_snark::PCDPublicParams;
-use crate::r1cs::{RelaxedR1CSInstance, RelaxedR1CSWitness};
+use crate::pcd_aux_circuit::{NovaAuxiliaryInputs, NovaAuxiliarySecondCircuit};
+use crate::pcd_circuit::{PCDUnitInputs, PCDUnitPrimaryCircuit};
 use crate::traits::circuit::PCDStepCircuit;
 use crate::traits::commitment::CommitmentTrait;
 use crate::traits::{AbsorbInROTrait, Group, ROTrait, TranscriptEngineTrait};
@@ -295,10 +295,10 @@ where
 
 #[cfg(test)]
 mod test {
+  use crate::compress_snark::PCDPublicParams;
   use crate::errors::NovaError;
-  use crate::pcd_compressed_snark::PCDPublicParams;
+  use crate::nifs::r1cs::{RelaxedR1CSInstance, RelaxedR1CSWitness};
   use crate::pcd_node::PCDNode;
-  use crate::r1cs::{RelaxedR1CSInstance, RelaxedR1CSWitness};
   use crate::traits::circuit::TrivialTestCircuit;
   use crate::traits::Group;
   use ff::Field;

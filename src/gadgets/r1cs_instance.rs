@@ -13,7 +13,7 @@ use crate::{
       conditionally_select_bignat, le_bits_to_num,
     },
   },
-  r1cs::{R1CSInstance, RelaxedR1CSInstance},
+  nifs::r1cs::{R1CSInstance, RelaxedR1CSInstance},
   traits::{commitment::CommitmentTrait, Group, ROCircuitTrait, ROConstantsCircuit},
 };
 use bellpepper::gadgets::{boolean::Boolean, num::AllocatedNum, Assignment};

@@ -1,8 +1,8 @@
 use ff::PrimeField;
+#[cfg(feature = "parallel")]
 use rayon::prelude::{ParallelIterator, ParallelSliceMut};
 
 pub mod errors;
-pub mod multilinear_polynomial;
 pub mod virtual_polynomial;
 
 pub mod sum_check;
@@ -12,13 +12,13 @@ pub fn batch_inversion<F: PrimeField>(v: &mut [F]) {
   batch_inversion_and_mul(v, &F::ONE);
 }
 
-// #[cfg(not(feature = "parallel"))]
-// // Given a vector of field elements {v_i}, compute the vector {coeff * v_i^(-1)}
-// pub fn batch_inversion_and_mul<F: Field>(v: &mut [F], coeff: &F) {
-//     serial_batch_inversion_and_mul(v, coeff);
-// }
-//
-// #[cfg(feature = "parallel")]
+#[cfg(not(feature = "parallel"))]
+// Given a vector of field elements {v_i}, compute the vector {coeff * v_i^(-1)}
+pub fn batch_inversion_and_mul<F: PrimeField>(v: &mut [F], coeff: &F) {
+  serial_batch_inversion_and_mul(v, coeff);
+}
+
+#[cfg(feature = "parallel")]
 // Given a vector of field elements {v_i}, compute the vector {coeff * v_i^(-1)}
 pub fn batch_inversion_and_mul<F: PrimeField>(v: &mut [F], coeff: &F) {
   // Divide the vector v evenly between all available cores

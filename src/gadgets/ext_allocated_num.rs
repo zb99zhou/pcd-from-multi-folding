@@ -1,4 +1,4 @@
-use crate::spartan::math::Math;
+use crate::compress_snark::math::Math;
 use bellpepper::gadgets::Assignment;
 use bellpepper_core::num::{AllocatedNum, Num};
 use bellpepper_core::{ConstraintSystem, SynthesisError};

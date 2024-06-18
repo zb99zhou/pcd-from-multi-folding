@@ -5,13 +5,13 @@
 //! an IPA-based polynomial commitment scheme.
 
 use crate::{
-  compute_digest,
-  errors::NovaError,
-  spartan::{
+  compress_snark::{
     polys::{eq::EqPolynomial, multilinear::MultiLinearPolynomial, multilinear::SparsePolynomial},
     sumcheck::SumcheckProof,
     PolyEvalInstance, PolyEvalWitness,
   },
+  compute_digest,
+  errors::NovaError,
   traits::{evaluation::EvaluationEngineTrait, Group, TranscriptEngineTrait},
   CommitmentKey,
 };

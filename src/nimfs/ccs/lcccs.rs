@@ -6,9 +6,9 @@ use std::sync::Arc;
 use crate::nimfs::ccs::cccs::CCSWitness;
 use crate::nimfs::ccs::ccs::{CCSError, CCS};
 
+use crate::compress_snark::math::Math;
 use crate::nimfs::espresso::virtual_polynomial::VirtualPolynomial;
 use crate::nimfs::util::mle::vec_to_mle;
-use crate::spartan::math::Math;
 use crate::traits::commitment::{CommitmentEngineTrait, CommitmentTrait};
 use crate::traits::{AbsorbInROTrait, Group, ROTrait, TranscriptReprTrait};
 

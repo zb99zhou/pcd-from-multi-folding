@@ -1,12 +1,14 @@
 use crate::constants::{NUM_CHALLENGE_BITS, NUM_HASH_BITS};
 use crate::gadgets::cccs::{
-  multi_folding_with_primary_part, AllocatedCCCS, AllocatedCCCSPrimaryPart, AllocatedLCCCS,
-  AllocatedLCCCSPrimaryPart,
+  multi_folding_with_primary_part, AllocatedCCCS, AllocatedCCCSPrimaryPart,
 };
 use crate::gadgets::ecc::{AllocatedPoint, AllocatedSimulatedPoint};
 use crate::gadgets::ext_allocated_num::ExtendFunc;
+use crate::gadgets::lcccs::{AllocatedLCCCS, AllocatedLCCCSPrimaryPart};
 use crate::gadgets::nonnative::bignat::BigNat;
-use crate::gadgets::r1cs::{AllocatedR1CSInstanceBasedSimulatedX, AllocatedRelaxedR1CSInstance};
+use crate::gadgets::r1cs_instance::{
+  AllocatedR1CSInstanceBasedSimulatedX, AllocatedRelaxedR1CSInstance,
+};
 use crate::gadgets::sumcheck::{
   enforce_compute_c_from_sigmas_and_thetas, sumcheck_verify, AllocatedProof,
 };
@@ -14,13 +16,13 @@ use crate::gadgets::utils::{
   alloc_num_equals, alloc_scalar_as_base, conditionally_select_vec_allocated_num,
   from_le_bits_to_num, le_bits_to_num, multi_and,
 };
+use crate::nifs::r1cs::{R1CSInstance, RelaxedR1CSInstance};
 use crate::nimfs::ccs::cccs::{CCCSForBase, PointForScalar};
 use crate::nimfs::ccs::ccs::CCS;
 use crate::nimfs::ccs::lcccs::{LCCCSForBase, LCCCS};
 use crate::nimfs::espresso::virtual_polynomial::VPAuxInfo;
 use crate::nimfs::multifolding::NIMFSProof;
-use crate::nimfs::pcd_aux_circuit::NovaAuxiliaryParams;
-use crate::r1cs::{R1CSInstance, RelaxedR1CSInstance};
+use crate::pcd_aux_circuit::NovaAuxiliaryParams;
 use crate::traits::circuit::PCDStepCircuit;
 use crate::traits::commitment::CommitmentTrait;
 use crate::traits::{

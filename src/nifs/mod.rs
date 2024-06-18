@@ -2,10 +2,12 @@
 #![allow(non_snake_case)]
 #![allow(clippy::type_complexity)]
 
+pub mod r1cs;
+
 use crate::{
   constants::{NUM_CHALLENGE_BITS, NUM_FE_FOR_RO},
   errors::NovaError,
-  r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
+  nifs::r1cs::{R1CSInstance, R1CSShape, R1CSWitness, RelaxedR1CSInstance, RelaxedR1CSWitness},
   scalar_as_base,
   traits::{commitment::CommitmentTrait, AbsorbInROTrait, Group, ROTrait},
   Commitment, CommitmentKey, CompressedCommitment,
@@ -211,7 +213,7 @@ impl<G: Group> NIFS<G> {
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::{r1cs::R1CS, traits::Group};
+  use crate::{nifs::r1cs::R1CS, traits::Group};
   use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use ff::{Field, PrimeField};
   use rand::rngs::OsRng;

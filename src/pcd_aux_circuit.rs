@@ -1,9 +1,10 @@
 use crate::compute_digest;
-use crate::gadgets::cccs::{AllocatedCCCSSecondPart, AllocatedLCCCSSecondPart};
+use crate::gadgets::cccs::AllocatedCCCSSecondPart;
+use crate::gadgets::lcccs::AllocatedLCCCSSecondPart;
 use crate::gadgets::utils::from_le_bits_to_num;
+use crate::nifs::r1cs::R1CSShape;
 use crate::nimfs::ccs::cccs::CCCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
-use crate::r1cs::R1CSShape;
 use crate::traits::Group;
 use bellpepper::gadgets::Assignment;
 use bellpepper_core::num::AllocatedNum;

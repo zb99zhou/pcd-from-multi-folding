@@ -4,6 +4,7 @@ use std::ops::{Add, Mul};
 use ff::Field;
 use serde::{Deserialize, Serialize};
 
+use crate::compress_snark::polys::eq::EqPolynomial;
 use crate::nimfs::ccs::cccs::{CCSWitness, CCCS};
 use crate::nimfs::ccs::ccs::CCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
@@ -11,7 +12,6 @@ use crate::nimfs::espresso::sum_check::structs::IOPProof as SumCheckProof;
 use crate::nimfs::espresso::sum_check::{verifier::interpolate_uni_poly, PolyIOP, SumCheck};
 use crate::nimfs::espresso::virtual_polynomial::{VPAuxInfo, VirtualPolynomial};
 use crate::nimfs::util::mle::vec_to_mle;
-use crate::spartan::polys::eq::EqPolynomial;
 use crate::traits::commitment::CommitmentEngineTrait;
 use crate::traits::{Group, TranscriptEngineTrait};
 use crate::Commitment;
