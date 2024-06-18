@@ -11,9 +11,9 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+use crate::compress_snark::polys::multilinear::MultiLinearPolynomial;
 use crate::errors::NovaError;
 use crate::nimfs::espresso::virtual_polynomial::{VPAuxInfo, VirtualPolynomial};
-use crate::spartan::polys::multilinear::MultiLinearPolynomial;
 use crate::traits::{Group, TranscriptEngineTrait};
 use structs::{IOPProof, IOPProverState, IOPVerifierState};
 

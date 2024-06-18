@@ -1,10 +1,10 @@
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::type_complexity)]
-use crate::errors::NovaError;
-use crate::spartan::polys::{
+use crate::compress_snark::polys::{
   multilinear::MultiLinearPolynomial,
   univariate::{CompressedUniPoly, UniPoly},
 };
+use crate::errors::NovaError;
 use crate::traits::{Group, TranscriptEngineTrait};
 use ff::Field;
 use rayon::prelude::*;
@@ -64,7 +64,7 @@ impl<G: Group> SumcheckProof<G> {
   }
 
   #[inline]
-  pub(in crate::spartan) fn compute_eval_points_quadratic<F>(
+  pub(in crate::compress_snark) fn compute_eval_points_quadratic<F>(
     poly_A: &MultiLinearPolynomial<G::Scalar>,
     poly_B: &MultiLinearPolynomial<G::Scalar>,
     comb_func: &F,
@@ -195,7 +195,7 @@ impl<G: Group> SumcheckProof<G> {
   }
 
   #[inline]
-  pub(in crate::spartan) fn compute_eval_points_cubic<F>(
+  pub(in crate::compress_snark) fn compute_eval_points_cubic<F>(
     poly_A: &MultiLinearPolynomial<G::Scalar>,
     poly_B: &MultiLinearPolynomial<G::Scalar>,
     poly_C: &MultiLinearPolynomial<G::Scalar>,

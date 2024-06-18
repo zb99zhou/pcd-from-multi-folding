@@ -6,12 +6,15 @@
 //!
 //! In polynomial.rs we also provide foundational types and functions for manipulating multilinear polynomials.
 pub mod direct;
-pub mod lcccs;
+pub mod lcccs_snark;
 pub(crate) mod math;
+mod pcd_compressed_snark;
 pub mod polys;
-pub mod ppsnark;
-pub mod snark;
+pub mod r1cs_ppsnark;
+pub mod r1cs_snark;
 mod sumcheck;
+
+pub use pcd_compressed_snark::*;
 
 use crate::{traits::Group, Commitment};
 use ff::Field;

@@ -1,9 +1,9 @@
 //! This module implements `EvaluationEngine` using an IPA-based polynomial commitment scheme
 #![allow(clippy::too_many_arguments)]
 use crate::{
+  compress_snark::polys::eq::EqPolynomial,
   errors::NovaError,
   provider::pedersen::CommitmentKeyExtTrait,
-  spartan::polys::eq::EqPolynomial,
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait},
     evaluation::EvaluationEngineTrait,

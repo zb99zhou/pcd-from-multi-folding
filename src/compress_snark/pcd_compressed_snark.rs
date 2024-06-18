@@ -4,19 +4,19 @@ use crate::bellpepper::r1cs::NovaShape;
 use crate::bellpepper::shape_cs::ShapeCS;
 use serde::{Deserialize, Serialize};
 
+use crate::compress_snark::math::Math;
 use crate::constants::{BN_LIMB_WIDTH, BN_N_LIMBS, NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS};
 use crate::errors::NovaError;
 use crate::gadgets::utils::scalar_as_base;
+use crate::nifs::r1cs::{RelaxedR1CSInstance, RelaxedR1CSWitness};
 use crate::nimfs::ccs::cccs::{CCSWitness, CCCS};
 use crate::nimfs::ccs::ccs::CCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::nimfs::multifolding::{MultiFolding, Proof, NIMFS};
-use crate::nimfs::pcd_aux_circuit::{
+use crate::pcd_aux_circuit::{
   NovaAuxiliaryInputs, NovaAuxiliaryParams, NovaAuxiliarySecondCircuit,
 };
-use crate::nimfs::pcd_circuit::{PCDUnitParams, PCDUnitPrimaryCircuit};
-use crate::r1cs::{RelaxedR1CSInstance, RelaxedR1CSWitness};
-use crate::spartan::math::Math;
+use crate::pcd_circuit::{PCDUnitParams, PCDUnitPrimaryCircuit};
 use crate::traits::circuit::PCDStepCircuit;
 use crate::traits::snark::{LinearCommittedCCSTrait, RelaxedR1CSSNARKTrait};
 use crate::traits::{
@@ -53,7 +53,8 @@ where
     let te_consts_circuit_primary: TEConstantsCircuit<G2> = Default::default();
 
     let aux_circuit_setup_input = NovaAuxiliaryInputs::<G1>::new(None, None, None, None, R);
-    let aux_circuit_setup = NovaAuxiliarySecondCircuit::<G1>::new(aux_circuit_setup_input);
+    let aux_circuit_setup =
+      NovaAuxiliarySecondCircuit::<G1>::new(aux_circuit_setup_input, BN_LIMB_WIDTH, BN_N_LIMBS);
     let mut cs_aux_helper: ShapeCS<G2> = ShapeCS::new();
     let _ = aux_circuit_setup.synthesize(&mut cs_aux_helper);
     let (aux_r1cs_shape, ck_secondary) = cs_aux_helper.r1cs_shape();
@@ -352,13 +353,13 @@ where
 
 #[cfg(test)]
 mod test {
-  use crate::pcd_compressed_snark::{PCDCompressedSNARK, PCDPublicParams, PCDRecursiveSNARK};
+  use crate::compress_snark::lcccs_snark::LCCCSSNARK;
+  use crate::compress_snark::r1cs_ppsnark::RelaxedR1CSSNARK;
+  use crate::compress_snark::{PCDCompressedSNARK, PCDPublicParams, PCDRecursiveSNARK};
+  use crate::nifs::r1cs::{RelaxedR1CSInstance, RelaxedR1CSWitness};
   use crate::pcd_node::PCDNode;
   use crate::provider::ipa_pc::EvaluationEngine;
   use crate::provider::pedersen::CommitmentKeyExtTrait;
-  use crate::r1cs::{RelaxedR1CSInstance, RelaxedR1CSWitness};
-  use crate::spartan::lcccs::LCCCSSNARK;
-  use crate::spartan::ppsnark::RelaxedR1CSSNARK;
   use crate::traits::circuit::TrivialTestCircuit;
   use crate::traits::commitment::CommitmentEngineTrait;
   use crate::traits::evaluation::EvaluationEngineTrait;

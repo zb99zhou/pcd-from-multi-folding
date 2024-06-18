@@ -1,18 +1,16 @@
 use crate::bellpepper::r1cs::NovaWitness;
 use crate::bellpepper::solver::SatisfyingAssignment;
+use crate::compress_snark::PCDPublicParams;
 use crate::constants::{NUM_FE_WITHOUT_IO_FOR_CRHF, NUM_HASH_BITS};
 use crate::errors::NovaError;
 use crate::gadgets::utils::scalar_as_base;
+use crate::nifs::r1cs::{RelaxedR1CSInstance, RelaxedR1CSWitness};
 use crate::nifs::NIFS;
 use crate::nimfs::ccs::cccs::{CCSWitness, CCCS};
 use crate::nimfs::ccs::lcccs::LCCCS;
 use crate::nimfs::multifolding::{ProofWitness, NIMFS};
-use crate::nimfs::pcd_aux_circuit::{
-  NovaAuxiliaryInputs, NovaAuxiliaryParams, NovaAuxiliarySecondCircuit,
-};
-use crate::nimfs::pcd_circuit::{PCDUnitInputs, PCDUnitPrimaryCircuit};
-use crate::pcd_compressed_snark::PCDPublicParams;
-use crate::r1cs::{RelaxedR1CSInstance, RelaxedR1CSWitness};
+use crate::pcd_aux_circuit::{NovaAuxiliaryInputs, NovaAuxiliarySecondCircuit};
+use crate::pcd_circuit::{PCDUnitInputs, PCDUnitPrimaryCircuit};
 use crate::traits::circuit::PCDStepCircuit;
 use crate::traits::commitment::CommitmentTrait;
 use crate::traits::{AbsorbInROTrait, Group, ROTrait, TranscriptEngineTrait};
@@ -107,17 +105,19 @@ where
       assert_eq!(verified_lcccs, lcccs);
     }
 
-    let pp_aux =
-      NovaAuxiliaryParams::<G2>::new(pp.secondary_circuit_params.r1cs_shape.clone(), ARITY);
     let rho = scalar_as_base::<G1>(transcript_p.get_last_state());
     let aux_circuit_input = NovaAuxiliaryInputs::<G1>::new(
-      Some(pp_aux.digest),
+      Some(pp.secondary_circuit_params.digest),
       Some(self.lcccs.to_vec()),
       Some(self.cccs.to_vec()),
       Some(rho),
       R,
     );
-    let aux_circuit = NovaAuxiliarySecondCircuit::<G1>::new(aux_circuit_input);
+    let aux_circuit = NovaAuxiliarySecondCircuit::<G1>::new(
+      aux_circuit_input,
+      pp.primary_circuit_params.limb_width,
+      pp.primary_circuit_params.n_limbs,
+    );
 
     if ENABLE_SANITY_CHECK {
       println!("=================================================test aux circuit satisfiability=================================================");
@@ -252,7 +252,7 @@ where
       || lcccs.x.len() != ARITY
       || cccs.x.len() != ARITY
     {
-      return Err(NovaError::ProofVerifyError);
+      return Err(NovaError::InvalidInputLength);
     }
 
     let mut hasher = <G2 as Group>::RO::new(
@@ -286,19 +286,19 @@ where
         )
       },
     );
-    res_U.map_err(|_| NovaError::ProofVerifyError)?;
-    res_lcccs.map_err(|_| NovaError::ProofVerifyError)?;
-    res_cccs.map_err(|_| NovaError::ProofVerifyError)?;
+    res_U.map_err(|_| NovaError::ProofVerifyError).unwrap();
+    res_lcccs.map_err(|_| NovaError::ProofVerifyError).unwrap();
+    res_cccs.map_err(|_| NovaError::ProofVerifyError).unwrap();
     Ok(zi_primary.to_vec())
   }
 }
 
 #[cfg(test)]
 mod test {
+  use crate::compress_snark::PCDPublicParams;
   use crate::errors::NovaError;
-  use crate::pcd_compressed_snark::PCDPublicParams;
+  use crate::nifs::r1cs::{RelaxedR1CSInstance, RelaxedR1CSWitness};
   use crate::pcd_node::PCDNode;
-  use crate::r1cs::{RelaxedR1CSInstance, RelaxedR1CSWitness};
   use crate::traits::circuit::TrivialTestCircuit;
   use crate::traits::Group;
   use ff::Field;
@@ -408,17 +408,19 @@ mod test {
       .prove_step::<_, false, false>(&pp, &test_circuit)
       .unwrap();
 
-    let res = node_3.verify(
-      &pp,
-      &node_3_zi,
-      &node_3_lcccs,
-      &node_3_lcccs_witness,
-      &node_3_cccs,
-      &node_3_cccs_witness,
-      &node_3_relaxed_r1cs_instance,
-      &node_3_relaxed_r1cs_witness,
-    );
-    assert!(res.is_ok());
+    let _res = node_3
+      .verify(
+        &pp,
+        &node_3_zi,
+        &node_3_lcccs,
+        &node_3_lcccs_witness,
+        &node_3_cccs,
+        &node_3_cccs_witness,
+        &node_3_relaxed_r1cs_instance,
+        &node_3_relaxed_r1cs_witness,
+      )
+      .unwrap();
+    // assert!(res.is_ok());
     Ok(())
   }
 

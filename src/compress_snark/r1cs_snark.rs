@@ -5,15 +5,15 @@
 //! an IPA-based polynomial commitment scheme.
 
 use crate::{
-  compute_digest,
-  errors::NovaError,
-  r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
-  spartan::{
+  compress_snark::{
     polys::{eq::EqPolynomial, multilinear::MultiLinearPolynomial, multilinear::SparsePolynomial},
     powers,
     sumcheck::SumcheckProof,
     PolyEvalInstance, PolyEvalWitness,
   },
+  compute_digest,
+  errors::NovaError,
+  nifs::r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
   traits::{
     evaluation::EvaluationEngineTrait, snark::RelaxedR1CSSNARKTrait, Group, TranscriptEngineTrait,
   },
