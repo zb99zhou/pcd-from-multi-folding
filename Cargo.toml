@@ -1,14 +1,13 @@
 [package]
-name = "nova-snark"
-version = "0.23.0"
-authors = ["Srinath Setty <srinath@microsoft.com>"]
-edition = "2021"
-description = "Recursive zkSNARKs without trusted setup"
-documentation = "https://docs.rs/nova-snark/"
+name = "pcd-from-multifolding"
+version = "0.1.0"
+authors = ["Zhiyu Zhang, Zibo Zhou <zb99.zhou@gmail.com>"]
+edition = "2023"
+description = "proof-carrying data from multi-folding schemes"
 readme = "README.md"
-repository = "https://github.com/Microsoft/Nova"
+repository = "https://github.com/zb99zhou/pcd-from-multi-folding"
 license-file = "LICENSE"
-keywords = ["zkSNARKs", "cryptography", "proofs"]
+keywords = ["proof-carrying-data", "multi-folding", "cryptography", "SNARK"]
 rust-version="1.67.1"
 
 [dependencies]
@@ -53,22 +52,6 @@ pprof = { version = "0.11" }
 cfg-if = "1.0.0"
 sha2 = "0.10.7"
 proptest = "1.2.0"
-
-[[bench]]
-name = "recursive-snark"
-harness = false
-
-[[bench]]
-name = "compressed-snark"
-harness = false
-
-[[bench]]
-name = "compute-digest"
-harness = false
-
-[[bench]]
-name = "sha256"
-harness = false
 
 [features]
 default = []
