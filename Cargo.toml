@@ -2,7 +2,7 @@
 name = "pcd-from-multifolding"
 version = "0.1.0"
 authors = ["Zhiyu Zhang, Zibo Zhou <zb99.zhou@gmail.com>"]
-edition = "2023"
+edition = "2021"
 description = "proof-carrying data from multi-folding schemes"
 readme = "README.md"
 repository = "https://github.com/zb99zhou/pcd-from-multi-folding"

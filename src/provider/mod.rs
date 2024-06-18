@@ -1,4 +1,4 @@
-//! This module implements Nova's traits using the following configuration:
+//! This module implements traits using the following configuration:
 //! `CommitmentEngine` with Pedersen's commitments
 //! `Group` with pasta curves and BN256/Grumpkin
 //! `RO` traits with Poseidon

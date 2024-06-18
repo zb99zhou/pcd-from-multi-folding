@@ -1,4 +1,4 @@
-//! This module implements various gadgets necessary for Nova and applications built with Nova.
+//! This module implements various gadgets necessary for PCD
 pub(crate) mod cccs;
 pub mod ecc;
 pub(crate) mod ext_allocated_num;

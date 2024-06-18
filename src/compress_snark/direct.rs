@@ -1,6 +1,4 @@
 //! This module provides interfaces to directly prove a step circuit by using Spartan SNARK.
-//! In particular, it supports any SNARK that implements `RelaxedR1CSSNARK` trait
-//! (e.g., with the SNARKs implemented in ppsnark.rs or snark.rs).
 use crate::{
   bellpepper::{
     r1cs::{NovaShape, NovaWitness},

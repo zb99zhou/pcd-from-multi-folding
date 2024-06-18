@@ -20,7 +20,6 @@ pub struct LCCCS<C: Group> {
   // Underlying CCS structure
   pub ccs: CCS<C>,
 
-  // TODO: Further improve the abstractions here. We should not need so many public fields
 
   // Commitment to witness
   pub C: Commitment<C>,

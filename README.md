@@ -22,4 +22,4 @@ The following paper provides theoretical details of this implementation and asso
 Zibo Zhou, Zongyang Zhang, Zhiyu Zhang, and Jin Dong  
 IACR ePrint 2023/1282
 
-Our implementation is inspired by and based on the [Nova repository](https://github.com/microsoft/Nova) and the [multifolding-poc repository](https://github.com/privacy-scaling-explorations/multifolding-poc).
+Our implementation is inspired by and adapted from the [Nova repository](https://github.com/microsoft/Nova) and the [multifolding-poc repository](https://github.com/privacy-scaling-explorations/multifolding-poc).

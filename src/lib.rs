@@ -1,4 +1,4 @@
-//! This library implements Nova, a high-speed recursive SNARK.
+//! This library implements the paper "Proof-Carrying Data from Multi-folding Schemes" (https://eprint.iacr.org/2023/1282)
 #![allow(dead_code)]
 #![deny(warnings, future_incompatible, nonstandard_style, rust_2018_idioms)]
 #![allow(non_snake_case)]
