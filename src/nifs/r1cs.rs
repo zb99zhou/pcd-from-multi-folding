@@ -455,6 +455,17 @@ impl<G: Group> R1CSInstance<G> {
       })
     }
   }
+
+  pub fn absorb_simulated_x_in_ro(&self, ro: &mut G::RO) {
+    self.comm_W.absorb_in_ro(ro);
+    // absorb each element of self.X in bignum format
+    for x in &self.X {
+      let limbs: Vec<G::Scalar> = nat_to_limbs(&f_to_nat(x), BN_LIMB_WIDTH, BN_N_LIMBS).unwrap();
+      for limb in limbs {
+        ro.absorb(scalar_as_base::<G>(limb));
+      }
+    }
+  }
 }
 
 impl<G: Group> AbsorbInROTrait<G> for R1CSInstance<G> {

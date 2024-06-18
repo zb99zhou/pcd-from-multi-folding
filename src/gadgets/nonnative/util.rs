@@ -16,9 +16,36 @@ use std::ops::Add;
 /// A representation of a bit
 pub struct Bit<Scalar: PrimeField> {
   /// The linear combination which constrain the value of the bit
-  pub bit: LinearCombination<Scalar>,
+  pub bit_lc: LinearCombination<Scalar>,
   /// The value of the bit (filled at witness-time)
   pub value: Option<bool>,
+  pub bit: AllocatedBit,
+}
+
+impl<Scalar: PrimeField> Bit<Scalar> {
+  /// Allocate a variable in the constraint system which can only be a
+  /// boolean value.
+  pub fn alloc<CS>(mut cs: CS, value: Option<bool>) -> Result<Self, SynthesisError>
+  where
+    CS: ConstraintSystem<Scalar>,
+  {
+    let bit = AllocatedBit::alloc(cs.namespace(|| "alloc bit"), value)?;
+
+    // Constrain: (1 - a) * a = 0
+    // This constrains a to be either 0 or 1.
+    cs.enforce(
+      || "boolean constraint",
+      |lc| lc + CS::one() - bit.get_variable(),
+      |lc| lc + bit.get_variable(),
+      |lc| lc,
+    );
+
+    Ok(Self {
+      bit_lc: LinearCombination::zero() + bit.get_variable(),
+      value,
+      bit,
+    })
+  }
 }
 
 #[derive(Clone)]
@@ -32,37 +59,9 @@ pub struct Bitvector<Scalar: PrimeField> {
   pub allocations: Vec<Bit<Scalar>>,
 }
 
-impl<Scalar: PrimeField> Bit<Scalar> {
-  /// Allocate a variable in the constraint system which can only be a
-  /// boolean value.
-  pub fn alloc<CS>(mut cs: CS, value: Option<bool>) -> Result<Self, SynthesisError>
-  where
-    CS: ConstraintSystem<Scalar>,
-  {
-    let var = cs.alloc(
-      || "boolean",
-      || {
-        if *value.grab()? {
-          Ok(Scalar::ONE)
-        } else {
-          Ok(Scalar::ZERO)
-        }
-      },
-    )?;
-
-    // Constrain: (1 - a) * a = 0
-    // This constrains a to be either 0 or 1.
-    cs.enforce(
-      || "boolean constraint",
-      |lc| lc + CS::one() - var,
-      |lc| lc + var,
-      |lc| lc,
-    );
-
-    Ok(Self {
-      bit: LinearCombination::zero() + var,
-      value,
-    })
+impl<Scalar: PrimeField> Bitvector<Scalar> {
+  pub fn get_bits(&self) -> Vec<AllocatedBit> {
+    self.allocations.iter().map(|b| b.bit.clone()).collect()
   }
 }
 
@@ -234,7 +233,7 @@ impl<Scalar: PrimeField> Num<Scalar> {
     let sum = allocations
       .iter()
       .fold(LinearCombination::zero(), |lc, bit| {
-        let l = lc + (f, &bit.bit);
+        let l = lc + (f, &bit.bit_lc);
         f = f.double();
         l
       });
@@ -304,7 +303,7 @@ impl<Scalar: PrimeField> Num<Scalar> {
     let sum = allocations
       .iter()
       .fold(LinearCombination::zero(), |lc, bit| {
-        let l = lc + (f, &bit.bit);
+        let l = lc + (f, &bit.bit_lc);
         f = f.double();
         l
       });
@@ -313,7 +312,7 @@ impl<Scalar: PrimeField> Num<Scalar> {
     let bits: Vec<LinearCombination<Scalar>> = allocations
       .clone()
       .into_iter()
-      .map(|a| LinearCombination::zero() + &a.bit)
+      .map(|a| LinearCombination::zero() + &a.bit_lc)
       .collect();
     Ok(Bitvector {
       allocations,

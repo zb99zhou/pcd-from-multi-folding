@@ -8,7 +8,7 @@ use crate::nimfs::ccs::ccs::CCS;
 use crate::traits::commitment::CommitmentEngineTrait;
 use crate::{
   errors::NovaError,
-  r1cs::{R1CSInstance, R1CSShape, R1CSWitness, R1CS},
+  nifs::r1cs::{R1CSInstance, R1CSShape, R1CSWitness, R1CS},
   traits::Group,
   CommitmentKey,
 };

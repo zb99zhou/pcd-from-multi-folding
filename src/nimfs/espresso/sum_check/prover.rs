@@ -14,10 +14,10 @@ use std::sync::Arc;
 use super::structs::{IOPProverMessage, IOPProverState};
 
 // #[cfg(feature = "parallel")]
+use crate::compress_snark::polys::multilinear::MultiLinearPolynomial;
 use crate::errors::NovaError;
 use crate::nimfs::espresso::batch_inversion;
 use crate::nimfs::espresso::virtual_polynomial::VirtualPolynomial;
-use crate::spartan::polys::multilinear::MultiLinearPolynomial;
 use crate::traits::Group;
 use rayon::iter::{IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
 

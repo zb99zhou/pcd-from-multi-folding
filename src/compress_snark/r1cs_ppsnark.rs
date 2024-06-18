@@ -3,10 +3,7 @@
 //! The verifier in this preprocessing SNARK maintains a commitment to R1CS matrices. This is beneficial when using a
 //! polynomial commitment scheme in which the verifier's costs is succinct.
 use crate::{
-  compute_digest,
-  errors::NovaError,
-  r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
-  spartan::{
+  compress_snark::{
     math::Math,
     polys::{
       eq::EqPolynomial,
@@ -17,6 +14,9 @@ use crate::{
     sumcheck::SumcheckProof,
     PolyEvalInstance, PolyEvalWitness, SparsePolynomial,
   },
+  compute_digest,
+  errors::NovaError,
+  nifs::r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
   traits::{
     commitment::{CommitmentEngineTrait, CommitmentTrait},
     evaluation::EvaluationEngineTrait,

@@ -15,9 +15,9 @@ use crate::nimfs::util::vec::hadamard;
 use crate::CommitmentKey;
 use thiserror::Error;
 
+use crate::compress_snark::math::Math;
+use crate::nifs::r1cs::R1CSShape;
 use crate::nimfs::util::vec::*;
-use crate::r1cs::R1CSShape;
-use crate::spartan::math::Math;
 use crate::traits::commitment::CommitmentEngineTrait;
 use crate::traits::Group;
 

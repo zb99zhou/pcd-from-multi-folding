@@ -1,9 +1,10 @@
 use crate::compute_digest;
-use crate::gadgets::cccs::{AllocatedCCCSSecondPart, AllocatedLCCCSSecondPart};
+use crate::gadgets::cccs::AllocatedCCCSSecondPart;
+use crate::gadgets::lcccs::AllocatedLCCCSSecondPart;
 use crate::gadgets::utils::from_le_bits_to_num;
+use crate::nifs::r1cs::R1CSShape;
 use crate::nimfs::ccs::cccs::CCCS;
 use crate::nimfs::ccs::lcccs::LCCCS;
-use crate::r1cs::R1CSShape;
 use crate::traits::Group;
 use bellpepper::gadgets::Assignment;
 use bellpepper_core::num::AllocatedNum;
@@ -23,6 +24,8 @@ pub struct NovaAuxiliaryInputs<G: Group> {
 #[derive(Clone)]
 pub struct NovaAuxiliarySecondCircuit<G: Group> {
   inputs: NovaAuxiliaryInputs<G>,
+  limb_width: usize,
+  n_limbs: usize,
 }
 
 impl<G: Group> NovaAuxiliaryInputs<G> {
@@ -64,8 +67,12 @@ impl<G: Group> NovaAuxiliaryParams<G> {
 }
 
 impl<G: Group> NovaAuxiliarySecondCircuit<G> {
-  pub fn new(inputs: NovaAuxiliaryInputs<G>) -> Self {
-    Self { inputs }
+  pub fn new(inputs: NovaAuxiliaryInputs<G>, limb_width: usize, n_limbs: usize) -> Self {
+    Self {
+      inputs,
+      limb_width,
+      n_limbs,
+    }
   }
 
   /// Allocate all witnesses and return
@@ -84,7 +91,7 @@ impl<G: Group> NovaAuxiliarySecondCircuit<G> {
     let lcccs = (0..self.inputs.r)
       .map(|i| {
         AllocatedLCCCSSecondPart::alloc(
-          cs.namespace(|| format!("Allocate {i}th lcccs")),
+          cs.namespace(|| format!("allocate {i}th lcccs")),
           self
             .inputs
             .lcccs
@@ -99,7 +106,7 @@ impl<G: Group> NovaAuxiliarySecondCircuit<G> {
     let cccs = (0..self.inputs.r)
       .map(|i| {
         AllocatedCCCSSecondPart::alloc(
-          cs.namespace(|| format!("Allocate {i}th cccs")),
+          cs.namespace(|| format!("allocate {i}th cccs")),
           self
             .inputs
             .cccs
@@ -132,6 +139,8 @@ impl<G: Group> NovaAuxiliarySecondCircuit<G> {
       &lcccs,
       &cccs,
       &rho,
+      self.limb_width,
+      self.n_limbs,
     )?;
 
     // public input

@@ -1,7 +1,7 @@
-use crate::nimfs::util::spare_matrix::SparseMatrix;
 /// Some basic MLE utilities
-use crate::spartan::math::Math;
-use crate::spartan::polys::multilinear::MultiLinearPolynomial;
+use crate::compress_snark::math::Math;
+use crate::compress_snark::polys::multilinear::MultiLinearPolynomial;
+use crate::nimfs::util::spare_matrix::SparseMatrix;
 use ff::PrimeField;
 
 use super::vec::Matrix;
@@ -57,8 +57,6 @@ mod tests {
   use super::*;
   use crate::nimfs::{
     ccs::ccs::test::get_test_z,
-    espresso::multilinear_polynomial::fix_variables,
-    espresso::multilinear_polynomial::testing_code::fix_last_variables,
     util::{hypercube::BooleanHypercube, vec::to_F_matrix},
   };
   use halo2curves::bn256::Fr;
@@ -119,34 +117,6 @@ mod tests {
       let mut s_i = bhc.at_i(i);
       s_i.reverse();
       assert_eq!(z_mle.evaluate(&s_i), Fr::zero());
-    }
-  }
-
-  #[test]
-  fn test_fix_variables() {
-    let A = test_matrix();
-
-    let A_mle = matrix_to_mle(&(&A).into());
-    let bhc = BooleanHypercube::new(2);
-    for (i, y) in bhc.enumerate() {
-      // First check that the arkworks and espresso funcs match
-      let expected_fix_left = fix_variables(&A_mle, &y); // try arkworks fix_variables
-      let fix_left = fix_variables(&A_mle, &y); // try espresso fix_variables
-
-      assert_eq!(fix_left, expected_fix_left);
-
-      // Check that fixing first variables pins down a column
-      // i.e. fixing x to 0 will return the first column
-      //      fixing x to 1 will return the second column etc.
-      let column_i: Vec<Fr> = A.iter().map(|x| x[i]).collect();
-      assert_eq!(fix_left.Z, column_i);
-
-      // Now check that fixing last variables pins down a row
-      // i.e. fixing y to 0 will return the first row
-      //      fixing y to 1 will return the second row etc.
-      let row_i: Vec<Fr> = A[i].clone();
-      let fix_right = fix_last_variables(&A_mle, &y);
-      assert_eq!(fix_right.Z, row_i);
     }
   }
 }

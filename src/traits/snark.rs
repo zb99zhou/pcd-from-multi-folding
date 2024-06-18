@@ -1,7 +1,7 @@
 //! This module defines a collection of traits that define the behavior of a `zkSNARK` for `RelaxedR1CS`
 use crate::{
   errors::NovaError,
-  r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
+  nifs::r1cs::{R1CSShape, RelaxedR1CSInstance, RelaxedR1CSWitness},
   traits::Group,
   CommitmentKey,
 };

@@ -7,10 +7,10 @@
 //! This module defines our main mathematical object `VirtualPolynomial`; and
 //! various functions associated with it.
 
+use crate::compress_snark::polys::eq::EqPolynomial;
+use crate::compress_snark::polys::multilinear::MultiLinearPolynomial;
 use crate::nimfs::espresso::errors::ArithErrors;
 use crate::nimfs::util::mle::vec_to_mle;
-use crate::spartan::polys::eq::EqPolynomial;
-use crate::spartan::polys::multilinear::MultiLinearPolynomial;
 use crate::traits::{Group, PrimeFieldExt};
 use bellpepper_core::num::AllocatedNum;
 use bellpepper_core::{ConstraintSystem, SynthesisError};
@@ -420,10 +420,44 @@ pub fn bit_decompose(input: u64, num_var: usize) -> Vec<bool> {
   res
 }
 
+/// Sample a random list of multilinear polynomials.
+/// Returns
+/// - the list of polynomials,
+/// - its sum of polynomial evaluations over the boolean hypercube.
+#[cfg(test)]
+pub fn random_mle_list<F: PrimeField, R: rand_core::RngCore>(
+  nv: usize,
+  degree: usize,
+  rng: &mut R,
+) -> (Vec<Arc<MultiLinearPolynomial<F>>>, F) {
+  let mut multiplicands = Vec::with_capacity(degree);
+  for _ in 0..degree {
+    multiplicands.push(Vec::with_capacity(1 << nv))
+  }
+  let mut sum = F::default();
+
+  for _ in 0..(1 << nv) {
+    let mut product = F::ONE;
+
+    for e in multiplicands.iter_mut() {
+      let val = F::random(&mut *rng);
+      e.push(val);
+      product *= val;
+    }
+    sum += product;
+  }
+
+  let list = multiplicands
+    .into_iter()
+    .map(|x| Arc::new(MultiLinearPolynomial::new(x)))
+    .collect();
+
+  (list, sum)
+}
+
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::nimfs::espresso::multilinear_polynomial::testing_code::random_mle_list;
   use ff::Field;
   use halo2curves::bn256::Fr;
   use rand::Rng;
