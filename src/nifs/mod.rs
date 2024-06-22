@@ -212,10 +212,24 @@ impl<G: Group> NIFS<G> {
 
 #[cfg(test)]
 mod tests {
+  use std::time::Instant;
+
+  use crate::{
+    bellpepper::{
+      r1cs::{NovaShape, NovaWitness},
+      shape_cs::ShapeCS,
+      solver::SatisfyingAssignment,
+    },
+    gadgets::ext_allocated_num::ExtendFunc,
+    multi_hash_circuit::MultiHashCircuit,
+    traits::circuit::PCDStepCircuit,
+  };
+
   use super::*;
-  use crate::{nifs::r1cs::R1CS, traits::Group};
+  // use crate::bellpepper::r1cs::NovaShape;
   use ::bellpepper_core::{num::AllocatedNum, ConstraintSystem, SynthesisError};
   use ff::{Field, PrimeField};
+  use r1cs::R1CS;
   use rand::rngs::OsRng;
 
   type G = pasta_curves::pallas::Point;
@@ -480,7 +494,7 @@ mod tests {
     };
 
     // create a shape object
-    let S = {
+    let S: R1CSShape<G> = {
       let res = R1CSShape::new(num_cons, num_vars, num_io, &A, &B, &C);
       assert!(res.is_ok());
       res.unwrap()
@@ -549,5 +563,117 @@ mod tests {
     test_tiny_r1cs_with::<pasta_curves::pallas::Point>();
     test_tiny_r1cs_with::<crate::provider::bn256_grumpkin::bn256::Point>();
     test_tiny_r1cs_with::<crate::provider::secp_secq::secp256k1::Point>();
+  }
+
+  pub fn test_folding_with_hash<G, const ARITY: usize, const R: usize>()
+  where
+    G: Group,
+  {
+    let multi_hash_circuit = MultiHashCircuit::<G::Scalar, ARITY, R>::new();
+    let mut test_cs: ShapeCS<G> = ShapeCS::new();
+    let hash_input = (0..R)
+      .map(|i| {
+        (0..ARITY)
+          .map(|j| {
+            AllocatedNum::alloc(test_cs.namespace(|| format!("{i}-{j}")), || {
+              Ok(G::Scalar::from(1))
+            })
+          })
+          .collect::<Result<Vec<_>, SynthesisError>>()
+      })
+      .collect::<Result<Vec<Vec<AllocatedNum<G::Scalar>>>, SynthesisError>>()
+      .unwrap();
+    let _ = multi_hash_circuit.clone().synthesize(
+      &mut test_cs,
+      &hash_input.iter().map(|z| &z[..]).collect::<Vec<_>>(),
+    );
+    let num_cs = test_cs.num_constraints();
+    // let the number of constraints to be 2^bound
+    let bound = 17;
+    for _i in 0..((1 << bound) - num_cs) {
+      let _ = AllocatedNum::one(test_cs.namespace(|| format!("pad constraints")));
+    }
+    println!("number of constraints: {}", test_cs.num_constraints());
+    // Create a R1CS structure of the MultiHashCircuit
+    let (r1cs_shape, ck) = test_cs.r1cs_shape();
+    let ro_consts =
+      <<G as Group>::RO as ROTrait<<G as Group>::Base, <G as Group>::Scalar>>::Constants::default();
+    let pp_digest = &<G as Group>::Scalar::ZERO;
+
+    let mut test_cs: SatisfyingAssignment<G> = SatisfyingAssignment::new();
+    let hash_input = (0..R)
+      .map(|i| {
+        (0..ARITY)
+          .map(|j| {
+            AllocatedNum::alloc(test_cs.namespace(|| format!("{i}-{j}")), || {
+              Ok(G::Scalar::from(1))
+            })
+          })
+          .collect::<Result<Vec<_>, SynthesisError>>()
+      })
+      .collect::<Result<Vec<Vec<AllocatedNum<G::Scalar>>>, SynthesisError>>()
+      .unwrap();
+    let _ = multi_hash_circuit.clone().synthesize(
+      &mut test_cs,
+      &hash_input.iter().map(|z| &z[..]).collect::<Vec<_>>(),
+    );
+    for _i in 0..((1 << bound) - num_cs) {
+      let _ = AllocatedNum::one(test_cs.namespace(|| format!("pad constraints")));
+    }
+    // produce a satisfied (R1CSInstance,R1CSWitness) for a R1CS structure
+    let (u, w) = test_cs.r1cs_instance_and_witness(&r1cs_shape, &ck).unwrap();
+
+    // produce a default (RelaxedR1CSInstance,RelaxedR1CSWitness)
+    let W_default = RelaxedR1CSWitness::default(&r1cs_shape);
+    let U_default = RelaxedR1CSInstance::default(&ck, &r1cs_shape);
+
+    // produce a satisfied (RelaxedR1CSInstance,RelaxedR1CSWitness)
+    let res = NIFS::prove(
+      &ck,
+      &ro_consts,
+      pp_digest,
+      &r1cs_shape,
+      &U_default,
+      &W_default,
+      &u,
+      &w,
+    );
+    assert!(res.is_ok());
+    let (_nifs, (U, W)) = res.unwrap();
+
+    // set the number of RelaxedR1CSInstance to be folded
+    let nu = 20;
+
+    let U = vec![U.clone(); nu];
+    let W = vec![W.clone(); nu];
+
+    // fold a R1CSInstance and nu RelaxedR1CSInstance
+    let start_prv = Instant::now();
+    let res =
+      NIFS::prove_with_multi_relaxed(&ck, &ro_consts, pp_digest, &r1cs_shape, &U, &W, &u, &w);
+    let duration_prv = start_prv.elapsed();
+    println!("Time elapsed in proving:{:?}", duration_prv);
+    assert!(res.is_ok());
+    let (nifs, (U_folded, W_folded)) = res.unwrap();
+
+    // verify the folded RelaxedR1CSInstance
+    let start_vry = Instant::now();
+    let res = NIFS::<G>::verify_with_multi_relaxed(&nifs, &ro_consts, pp_digest, &U, &u);
+    let duration_vry = start_vry.elapsed();
+    println!("Time elapsed in verifying:{:?}", duration_vry);
+    assert!(res.is_ok());
+    let U_folded_v = res.unwrap();
+
+    assert_eq!(U_folded, U_folded_v);
+    assert!(r1cs_shape.is_sat_relaxed(&ck, &U_folded, &W_folded).is_ok());
+  }
+
+  #[test]
+  fn test_folding_with_hash_circuit() {
+    type G = pasta_curves::pallas::Point;
+    const ARITY: usize = 1;
+    const R: usize = 1;
+
+    test_folding_with_hash::<G, ARITY, R>()
   }
 }

@@ -15,8 +15,9 @@ use crate::traits::circuit::PCDStepCircuit;
 use crate::traits::commitment::CommitmentTrait;
 use crate::traits::{AbsorbInROTrait, Group, ROTrait, TranscriptEngineTrait};
 use crate::Commitment;
+use bellpepper_core::num::AllocatedNum;
 use bellpepper_core::test_cs::TestConstraintSystem;
-use bellpepper_core::ConstraintSystem;
+use bellpepper_core::{ConstraintSystem, SynthesisError};
 
 #[derive(Clone)]
 pub struct PCDNode<G1, G2, const ARITY: usize, const R: usize>
@@ -83,7 +84,7 @@ where
     NovaError,
   > {
     // First, handling PCD auxiliary secondary circuit
-    println!("=================================================proving NIMFS=================================================");
+    // println!("=================================================proving NIMFS=================================================");
     let mut transcript_p = <G1 as Group>::FoldTE::new(Default::default(), b"multifolding");
     transcript_p.squeeze(b"init").unwrap();
     let (nimfs_proof, lcccs, lcccs_witness) = NIMFS::prove::<ENABLE_SANITY_CHECK>(
@@ -120,20 +121,25 @@ where
     );
 
     if ENABLE_SANITY_CHECK {
-      println!("=================================================test aux circuit satisfiability=================================================");
+      // println!("=================================================test aux circuit satisfiability=================================================");
       let mut test_cs = TestConstraintSystem::new();
       aux_circuit.clone().synthesize(&mut test_cs)?;
       assert!(test_cs.is_satisfied());
+      println!(
+        "number of secondary constraints: {}",
+        test_cs.num_constraints()
+      );
     }
 
-    println!("=================================================proving aux circuit=================================================");
+    // println!("=================================================proving aux circuit=================================================");
     let mut cs_secondary = SatisfyingAssignment::<G2>::new();
     aux_circuit.synthesize(&mut cs_secondary)?;
+
     let (aux_r1cs_instance, aux_r1cs_witness) = cs_secondary
       .r1cs_instance_and_witness(&pp.secondary_circuit_params.r1cs_shape, &pp.ck_secondary)?;
 
     // Then, handling the PCD primary circuit
-    println!("=================================================proving NIFS=================================================");
+    // println!("=================================================proving NIFS=================================================");
     let (nifs_proof, (relaxed_r1cs_instance, relaxed_r1cs_witness)) =
       NIFS::prove_with_multi_relaxed(
         &pp.ck_secondary,
@@ -186,13 +192,40 @@ where
     );
 
     if ENABLE_SANITY_CHECK {
-      println!("=================================================test PCD circuit satisfiability=================================================");
+      // println!("=================================================test PCD circuit satisfiability=================================================");
       let mut test_cs = TestConstraintSystem::new();
       let _ = pcd_circuit.clone().synthesize(&mut test_cs)?;
       assert!(test_cs.is_satisfied());
+      println!(
+        "number of total primary constraints: {}",
+        test_cs.num_constraints()
+      );
+
+      let mut test_cs = TestConstraintSystem::new();
+      let z = (0..R)
+        .map(|i| {
+          (0..ARITY)
+            .map(|j| {
+              AllocatedNum::alloc(test_cs.namespace(|| format!("{i}-{j}")), || {
+                Ok(G1::Scalar::from(1))
+              })
+            })
+            .collect::<Result<Vec<_>, SynthesisError>>()
+        })
+        .collect::<Result<Vec<Vec<AllocatedNum<G1::Scalar>>>, SynthesisError>>()
+        .unwrap();
+      let _ = pcd_circuit
+        .step_circuit
+        .clone()
+        .synthesize(&mut test_cs, &z.iter().map(|z| &z[..]).collect::<Vec<_>>())?;
+      assert!(test_cs.is_satisfied());
+      println!(
+        "number of function constraints: {}",
+        test_cs.num_constraints()
+      );
     }
 
-    println!("=================================================proving PCD circuit=================================================");
+    // println!("=================================================proving PCD circuit=================================================");
     let mut cs_primary = SatisfyingAssignment::<G1>::new();
     let zi_primary = pcd_circuit
       .synthesize(&mut cs_primary)?
@@ -299,10 +332,12 @@ mod test {
   use crate::errors::NovaError;
   use crate::nifs::r1cs::{RelaxedR1CSInstance, RelaxedR1CSWitness};
   use crate::pcd_node::PCDNode;
-  use crate::traits::circuit::TrivialTestCircuit;
+  // use crate::traits::circuit::TrivialTestCircuit;
+  use crate::multi_hash_circuit::MultiHashCircuit;
   use crate::traits::Group;
   use ff::Field;
   use rand_core::OsRng;
+  use std::time::Instant;
 
   fn test_pcd_with<G1, G2, const R: usize, const IO_NUM: usize>() -> Result<(), NovaError>
   where
@@ -310,11 +345,12 @@ mod test {
     G2: Group<Base = <G1 as Group>::Scalar>,
   {
     let z0 = vec![G1::Scalar::ZERO; IO_NUM];
-    let test_circuit = TrivialTestCircuit::<<G2 as Group>::Base>::default();
+    let test_circuit = MultiHashCircuit::<<G2 as Group>::Base, IO_NUM, R>::new();
+    // let test_circuit = TrivialTestCircuit::<<G2 as Group>::Base>::default();
     let pp = PCDPublicParams::<G1, G2, _, IO_NUM, R>::setup(&test_circuit);
 
     let rng = OsRng;
-    let z = vec![G1::Scalar::ZERO; pp.primary_circuit_params.ccs.n];
+    let z: Vec<<G1 as Group>::Scalar> = vec![G1::Scalar::ZERO; pp.primary_circuit_params.ccs.n];
     let (default_cccs, default_w_cccs) =
       pp.primary_circuit_params
         .ccs
@@ -328,98 +364,100 @@ mod test {
     let default_relaxed_r1cs_witness =
       RelaxedR1CSWitness::<G2>::default(&pp.secondary_circuit_params.r1cs_shape);
 
-    let node_1 = PCDNode::<G1, G2, IO_NUM, R>::new(
-      vec![default_lcccs.clone(), default_lcccs],
-      vec![default_cccs.clone(), default_cccs],
+    // define input for an initial node
+    let node_input_lcccs = vec![default_lcccs; R];
+    let node_input_cccs = vec![default_cccs; R];
+    let node_input_relaxed_r1cs_instance = vec![default_relaxed_r1cs_instance; R];
+    let node_input_lcccs_witness = vec![default_w_lcccs; R];
+    let node_input_cccs_witness = vec![default_w_cccs; R];
+    let node_input_relaxed_r1cs_witness = vec![default_relaxed_r1cs_witness; R];
+
+    // define an initial node
+    let node_initial = PCDNode::<G1, G2, IO_NUM, R>::new(
+      node_input_lcccs,
+      node_input_cccs,
       z0.clone(),
       None,
-      Some(vec![
-        default_relaxed_r1cs_instance.clone(),
-        default_relaxed_r1cs_instance,
-      ]),
-      Some(vec![default_w_lcccs.clone(), default_w_lcccs]),
-      Some(vec![default_w_cccs.clone(), default_w_cccs]),
-      Some(vec![
-        default_relaxed_r1cs_witness.clone(),
-        default_relaxed_r1cs_witness,
-      ]),
+      Some(node_input_relaxed_r1cs_instance),
+      Some(node_input_lcccs_witness),
+      Some(node_input_cccs_witness),
+      Some(node_input_relaxed_r1cs_witness),
     );
 
-    println!("=================================================Proving node1=================================================");
+    println!("=================================================Proving initial node=================================================");
+    let start_initial = Instant::now();
     let (
-      node_1_lcccs,
-      node_1_cccs,
-      node_1_relaxed_r1cs_instance,
-      node_1_lcccs_witness,
-      node_1_cccs_witness,
-      node_1_relaxed_r1cs_witness,
-      node_1_zi,
-    ) = node_1
+      node_lcccs,
+      node_cccs,
+      node_relaxed_r1cs_instance,
+      node_lcccs_witness,
+      node_cccs_witness,
+      node_relaxed_r1cs_witness,
+      node_zi,
+    ) = node_initial
       .prove_step::<_, true, false>(&pp, &test_circuit)
       .map_err(|_| NovaError::SynthesisError)?;
+    let duration_initial = start_initial.elapsed();
+    println!(
+      "Time elapsed in proving initial node:{:?}",
+      duration_initial
+    );
 
-    println!("=================================================Proving node2=================================================");
-    let node_2 = node_1.clone();
-    let (
-      node_2_lcccs,
-      node_2_cccs,
-      node_2_relaxed_r1cs_instance,
-      node_2_lcccs_witness,
-      node_2_cccs_witness,
-      node_2_folded_relaxed_r1cs_witness,
-      node_2_zi,
-    ) = node_2
-      .prove_step::<_, true, false>(&pp, &test_circuit)
-      .map_err(|_| NovaError::SynthesisError)?;
+    // define input for an intermediate node
+    let node_input_lcccs = vec![node_lcccs; R];
+    let node_input_cccs = vec![node_cccs; R];
+    let node_input_zi = vec![node_zi; R];
+    let node_input_relaxed_r1cs_instance = vec![node_relaxed_r1cs_instance; R];
+    let node_input_lcccs_witness = vec![node_lcccs_witness; R];
+    let node_input_cccs_witness = vec![node_cccs_witness; R];
+    let node_input_relaxed_r1cs_witness = vec![node_relaxed_r1cs_witness; R];
 
-    let node_3_input_lcccs = vec![node_1_lcccs, node_2_lcccs];
-    let node_3_input_cccs = vec![node_1_cccs, node_2_cccs];
-    let node_3_zi = vec![node_1_zi, node_2_zi];
-    let node_3_relaxed_r1cs_instance =
-      vec![node_1_relaxed_r1cs_instance, node_2_relaxed_r1cs_instance];
-    let node_3_lcccs_witness = vec![node_1_lcccs_witness, node_2_lcccs_witness];
-    let node_3_cccs_witness = vec![node_1_cccs_witness, node_2_cccs_witness];
-    let node_3_relaxed_r1cs_witness = vec![
-      node_1_relaxed_r1cs_witness,
-      node_2_folded_relaxed_r1cs_witness,
-    ];
-
-    let node_3 = PCDNode::<G1, G2, IO_NUM, R>::new(
-      node_3_input_lcccs,
-      node_3_input_cccs,
+    // define an intermediate node
+    let node_intermed = PCDNode::<G1, G2, IO_NUM, R>::new(
+      node_input_lcccs,
+      node_input_cccs,
       z0,
-      Some(node_3_zi),
-      Some(node_3_relaxed_r1cs_instance),
-      Some(node_3_lcccs_witness),
-      Some(node_3_cccs_witness),
-      Some(node_3_relaxed_r1cs_witness),
+      Some(node_input_zi),
+      Some(node_input_relaxed_r1cs_instance),
+      Some(node_input_lcccs_witness),
+      Some(node_input_cccs_witness),
+      Some(node_input_relaxed_r1cs_witness),
     );
 
-    println!("=================================================Proving node3=================================================");
+    println!("=================================================Proving intermediate node=================================================");
+    let start_intermed = Instant::now();
     let (
-      node_3_lcccs,
-      node_3_cccs,
-      node_3_relaxed_r1cs_instance,
-      node_3_lcccs_witness,
-      node_3_cccs_witness,
-      node_3_relaxed_r1cs_witness,
-      node_3_zi,
-    ) = node_3
-      .prove_step::<_, false, false>(&pp, &test_circuit)
+      node_lcccs,
+      node_cccs,
+      node_relaxed_r1cs_instance,
+      node_lcccs_witness,
+      node_cccs_witness,
+      node_relaxed_r1cs_witness,
+      node_zi,
+    ) = node_intermed
+      .prove_step::<_, false, true>(&pp, &test_circuit)
       .unwrap();
+    let duration_intermed = start_intermed.elapsed();
+    println!(
+      "Time elapsed in proving intermediate node:{:?}",
+      duration_intermed
+    );
 
-    let _res = node_3
+    let start_vry = Instant::now();
+    let _res = node_intermed
       .verify(
         &pp,
-        &node_3_zi,
-        &node_3_lcccs,
-        &node_3_lcccs_witness,
-        &node_3_cccs,
-        &node_3_cccs_witness,
-        &node_3_relaxed_r1cs_instance,
-        &node_3_relaxed_r1cs_witness,
+        &node_zi,
+        &node_lcccs,
+        &node_lcccs_witness,
+        &node_cccs,
+        &node_cccs_witness,
+        &node_relaxed_r1cs_instance,
+        &node_relaxed_r1cs_witness,
       )
       .unwrap();
+    let duration_vry = start_vry.elapsed();
+    println!("Time elapsed in verifying:{:?}", duration_vry);
     // assert!(res.is_ok());
     Ok(())
   }
@@ -428,8 +466,8 @@ mod test {
   fn test_pcd() {
     type G1 = pasta_curves::pallas::Point;
     type G2 = pasta_curves::vesta::Point;
+    const R: usize = 2; // arity in PCD
     const ARITY: usize = 1;
-    const R: usize = 2;
     test_pcd_with::<G1, G2, R, ARITY>().unwrap();
   }
 }

@@ -9,6 +9,7 @@
 // private modules
 mod bellpepper;
 mod constants;
+mod multi_hash_circuit;
 mod nifs;
 mod nimfs;
 mod pcd_aux_circuit;

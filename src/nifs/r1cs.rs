@@ -84,7 +84,7 @@ impl<G: Group> RelaxedR1CSInstance<G> {
       comm_W: Commitment::<G>::default(),
       comm_E: Commitment::<G>::default(),
       X: vec![G::Scalar::ZERO; num_io],
-      u: G::Scalar::ZERO,
+      u: G::Scalar::ONE,
     }
   }
 }

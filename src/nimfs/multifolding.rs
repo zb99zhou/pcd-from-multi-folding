@@ -463,16 +463,26 @@ impl<C: Group> MultiFolding<C> {
 
 #[cfg(test)]
 pub mod test {
+  use std::time::Instant;
+
   use halo2curves::bn256::Fr;
   use num_integer::Integer;
   use rand_core::OsRng;
 
+  use super::*;
+  use crate::bellpepper::solver::SatisfyingAssignment;
+  use crate::gadgets::ext_allocated_num::ExtendFunc;
   use crate::nimfs::ccs::ccs::test::{get_test_ccs, get_test_z};
   use crate::nimfs::util::hypercube::BooleanHypercube;
   use crate::provider::bn256_grumpkin::bn256::Point;
   use crate::provider::poseidon::PoseidonConstantsCircuit;
 
-  use super::*;
+  use crate::bellpepper::r1cs::NovaShape;
+  use crate::bellpepper::shape_cs::ShapeCS;
+  use crate::multi_hash_circuit::MultiHashCircuit;
+  use crate::traits::circuit::PCDStepCircuit;
+  use bellpepper_core::num::AllocatedNum;
+  use bellpepper_core::{ConstraintSystem, SynthesisError};
 
   // NIMFS: Non-interactive Multi-folding Scheme
   type NIMFS = MultiFolding<Point>;
@@ -875,5 +885,138 @@ pub mod test {
       // Check that the folded LCCCS instance is a valid instance with respect to the folded witness
       folded_lcccs.check_relation(&ck, &folded_witness).unwrap();
     }
+  }
+
+  // Test that generates mu>1 and nu>1 instances of a hash circuit, and folds them in a single multifolding step
+  pub fn test_multifolding_with_hash<G, const ARITY: usize, const R: usize>()
+  where
+    G: Group,
+  {
+    let multi_hash_circuit = MultiHashCircuit::<G::Scalar, ARITY, R>::new();
+    let mut test_cs: ShapeCS<G> = ShapeCS::new();
+    let hash_input = (0..R)
+      .map(|i| {
+        (0..ARITY)
+          .map(|j| {
+            AllocatedNum::alloc(test_cs.namespace(|| format!("{i}-{j}")), || {
+              Ok(G::Scalar::from(1))
+            })
+          })
+          .collect::<Result<Vec<_>, SynthesisError>>()
+      })
+      .collect::<Result<Vec<Vec<AllocatedNum<G::Scalar>>>, SynthesisError>>()
+      .unwrap();
+    let _ = multi_hash_circuit.clone().synthesize(
+      &mut test_cs,
+      &hash_input.iter().map(|z| &z[..]).collect::<Vec<_>>(),
+    );
+    let num_cs = test_cs.num_constraints();
+    // let the number of constraints to be 2^bound
+    let bound = 17;
+    for _i in 0..((1 << bound) - num_cs) {
+      let _ = AllocatedNum::one(test_cs.namespace(|| format!("pad constraints")));
+    }
+    println!("number of constraints: {}", test_cs.num_constraints());
+    // Create a CCS structure of the MultiHashCircuit
+    let (r1cs_shape, ck) = test_cs.r1cs_shape();
+    let ccs = CCS::<G>::from(r1cs_shape);
+
+    let mut test_cs = SatisfyingAssignment::<G>::new();
+    let hash_input = (0..R)
+      .map(|i| {
+        (0..ARITY)
+          .map(|j| {
+            AllocatedNum::alloc(test_cs.namespace(|| format!("{i}-{j}")), || {
+              Ok(G::Scalar::from(1))
+            })
+          })
+          .collect::<Result<Vec<_>, SynthesisError>>()
+      })
+      .collect::<Result<Vec<Vec<AllocatedNum<G::Scalar>>>, SynthesisError>>()
+      .unwrap();
+    let _ = multi_hash_circuit.synthesize(
+      &mut test_cs,
+      &hash_input.iter().map(|z| &z[..]).collect::<Vec<_>>(),
+    );
+    for _i in 0..((1 << bound) - num_cs) {
+      let _ = AllocatedNum::one(test_cs.namespace(|| format!("pad constraints")));
+    }
+    // Create a satisifed z for a CCS structure
+    let z = test_cs.get_z();
+
+    let rng = OsRng;
+
+    let mu = 1;
+    let nu = 20; // nu=1,2,3,4,5,6,7,8,9,10...
+
+    // Generate a mu LCCCS & nu CCCS satisfying witness
+    let mut z_lcccs = Vec::new();
+    for _i in 0..mu {
+      z_lcccs.push(z.clone());
+    }
+    let mut z_cccs = Vec::new();
+    for _i in 0..nu {
+      z_cccs.push(z.clone());
+    }
+
+    // Create the LCCCS instances out of z_lcccs
+    let mut lcccs_instance = Vec::new();
+    let mut lcccs_witness = Vec::new();
+    for z in z_lcccs.iter().take(mu) {
+      let (instance, witness) = ccs.to_lcccs(rng, &ck, z);
+      instance.check_relation(&ck, &witness).unwrap();
+      lcccs_instance.push(instance);
+      lcccs_witness.push(witness);
+    }
+    // Create the CCCS instance out of z_cccs
+    let mut cccs_instance = Vec::new();
+    let mut cccs_witness = Vec::new();
+    for z in z_cccs.iter().take(nu) {
+      let (instance, witness) = ccs.to_cccs(rng, &ck, z);
+      instance.check_relation(&ck, &witness).unwrap();
+      cccs_instance.push(instance);
+      cccs_witness.push(witness);
+    }
+
+    // Prover's transcript
+    let mut transcript_p = <G as Group>::FoldTE::new(Default::default(), b"multifolding");
+    transcript_p.squeeze(b"init").unwrap();
+    // Verifier's transcript
+    let mut transcript_v = <G as Group>::FoldTE::new(Default::default(), b"multifolding");
+    transcript_v.squeeze(b"init").unwrap();
+
+    // Run the prover side of the multi-folding
+    let start_prv = Instant::now();
+    let (proof, folded_instance, folded_witness) = MultiFolding::<G>::prove::<false>(
+      &mut transcript_p,
+      &lcccs_instance,
+      &cccs_instance,
+      &lcccs_witness,
+      &cccs_witness,
+    );
+    let duration_prv = start_prv.elapsed();
+    println!("Time elapsed in proving:{:?}", duration_prv);
+
+    // Run the verifier side of the multifolding
+    let start_vry = Instant::now();
+    let folded_instance_v =
+      MultiFolding::<G>::verify(&mut transcript_v, &lcccs_instance, &cccs_instance, proof);
+    let duration_vry = start_vry.elapsed();
+    println!("Time elapsed in verifying:{:?}", duration_vry);
+    assert_eq!(folded_instance, folded_instance_v);
+
+    // Check that the folded LCCCS instance is a valid instance with respect to the folded witness
+    folded_instance
+      .check_relation(&ck, &folded_witness)
+      .unwrap();
+  }
+
+  #[test]
+  fn test_multifolding_with_hash_circuit() {
+    type G = pasta_curves::pallas::Point;
+    const ARITY: usize = 1;
+    const R: usize = 1;
+
+    test_multifolding_with_hash::<G, ARITY, R>()
   }
 }

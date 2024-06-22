@@ -20,7 +20,6 @@ pub struct LCCCS<C: Group> {
   // Underlying CCS structure
   pub ccs: CCS<C>,
 
-
   // Commitment to witness
   pub C: Commitment<C>,
   // Relaxation factor of z for folded LCCCS

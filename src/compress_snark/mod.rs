@@ -1,6 +1,6 @@
 //! This module implements `RelaxedR1CSSNARKTrait` and `LinearCommittedCCSTrait` using Spartan that is generic
 //! over the polynomial commitment and evaluation argument (i.e., a PCS)
-//! For `RelaxedR1CSSNARKTrait`, we directly copy from the Nova repository (https://github.com/microsoft/Nova). 
+//! For `RelaxedR1CSSNARKTrait`, we directly copy from the Nova repository (https://github.com/microsoft/Nova).
 //! It provides two implementations, one in r1cs_snark.rs (which does not use any preprocessing)
 //! and another in r1cs_ppsnark.rs (which uses preprocessing to keep the verifier's state small if the PCS provides a succinct verifier)
 //! It also provides direct.rs that allows proving a step circuit directly with either of the two SNARKs.

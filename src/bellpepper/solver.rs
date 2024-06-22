@@ -151,4 +151,9 @@ impl<G: Group> SatisfyingAssignment<G> {
   pub fn scalar_aux(&self) -> Vec<G::Scalar> {
     self.aux_assignment.clone()
   }
+  pub fn get_z(&self) -> Vec<G::Scalar> {
+    let mut z = self.aux_assignment.clone();
+    z.extend(&self.input_assignment);
+    z
+  }
 }

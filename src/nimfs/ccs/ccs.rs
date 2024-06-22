@@ -384,7 +384,7 @@ pub mod test {
   /// Computes the z vector for the given input for Vitalik's equation.
   #[cfg(test)]
   pub fn get_test_z<F: PrimeField>(input: usize) -> Vec<F> {
-    // z = (1, io, w)
+    // z = (w, 1, io)
     to_F_vec(vec![
       input * input * input + input + 5, // x^3 + x + 5
       input * input,                     // x^2

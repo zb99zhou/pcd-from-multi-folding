@@ -131,7 +131,7 @@ where
   ro_consts: ROConstantsCircuit<G1>, // random oracle
   te_consts: TEConstantsCircuit<G1>, // Transcript Engine
   inputs: Option<PCDUnitInputs<G1>>,
-  step_circuit: &'a SC, // The function that is applied for each step
+  pub step_circuit: &'a SC, // The function that is applied for each step
 }
 
 impl<'a, G1, G2, SC, const ARITY: usize, const R: usize>
@@ -403,7 +403,7 @@ where
     )?);
 
     let is_correct_primary_public_input = self.check_public_input(
-      cs.namespace(|| "is correct secondary public_input"),
+      cs.namespace(|| "is correct primary public_input"),
       &primary_params,
       &z_0,
       &z_i,
