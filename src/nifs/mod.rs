@@ -231,6 +231,7 @@ mod tests {
   use ff::{Field, PrimeField};
   use r1cs::R1CS;
   use rand::rngs::OsRng;
+  use crate::bellpepper::test_shape_cs::TestShapeCS;
 
   type G = pasta_curves::pallas::Point;
 
@@ -271,12 +272,6 @@ mod tests {
   where
     G: Group,
   {
-    use crate::bellpepper::{
-      r1cs::{NovaShape, NovaWitness},
-      solver::SatisfyingAssignment,
-      test_shape_cs::TestShapeCS,
-    };
-
     // First create the shape
     let mut cs: TestShapeCS<G> = TestShapeCS::new();
     let _ = synthesize_tiny_r1cs_bellpepper(&mut cs, None);
@@ -357,12 +352,6 @@ mod tests {
   where
     G: Group,
   {
-    use crate::bellpepper::{
-      r1cs::{NovaShape, NovaWitness},
-      solver::SatisfyingAssignment,
-      test_shape_cs::TestShapeCS,
-    };
-
     // First create the shape
     let mut cs: TestShapeCS<G> = TestShapeCS::new();
     let _ = synthesize_tiny_r1cs_bellpepper(&mut cs, None);

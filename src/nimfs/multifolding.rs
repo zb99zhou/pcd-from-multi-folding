@@ -2,8 +2,9 @@ use std::marker::PhantomData;
 use std::ops::{Add, Mul};
 
 use ff::Field;
+use rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
-
+use rayon::iter::IndexedParallelIterator;
 use crate::compress_snark::polys::eq::EqPolynomial;
 use crate::nimfs::ccs::cccs::{CCSWitness, CCCS};
 use crate::nimfs::ccs::ccs::CCS;
@@ -74,19 +75,14 @@ impl<C: Group> MultiFolding<C> {
     z_cccs: &[Vec<C::Scalar>],
     r_x_prime: &[C::Scalar],
   ) -> (Vec<Vec<C::Scalar>>, Vec<Vec<C::Scalar>>) {
-    let mut sigmas: Vec<Vec<C::Scalar>> = Vec::new();
-    for z_lcccs_i in z_lcccs {
-      // sigmas
-      let sigma_i = ccs.compute_v_j(z_lcccs_i, r_x_prime);
-      sigmas.push(sigma_i);
-    }
-    let mut thetas: Vec<Vec<C::Scalar>> = Vec::new();
-    for z_cccs_i in z_cccs {
-      // thetas
-      let theta_i = ccs.compute_v_j(z_cccs_i, r_x_prime);
-      thetas.push(theta_i);
-    }
-    (sigmas, thetas)
+    rayon::join(
+      ||z_lcccs.par_iter().map(|z_lcccs_i|{
+        ccs.compute_v_j(z_lcccs_i, r_x_prime)
+      }).collect(),
+      ||z_cccs.par_iter().map(|z_cccs_i|{
+        ccs.compute_v_j(z_cccs_i, r_x_prime)
+      }).collect()
+    )
   }
 
   /// Compute the right-hand-side of step 5 of the multifolding scheme
@@ -142,6 +138,7 @@ impl<C: Group> MultiFolding<C> {
     beta: &[C::Scalar],
   ) -> VirtualPolynomial<C::Scalar> {
     let mu = running_instances.len();
+    // TODO: refactor VirtualPolynomial to satisfy Send Sync for parallel execute
     let mut vec_Ls: Vec<VirtualPolynomial<C::Scalar>> = Vec::new();
     for (i, running_instance) in running_instances.iter().enumerate() {
       let mut Ls = running_instance.compute_Ls(&z_lcccs[i]);
@@ -204,15 +201,15 @@ impl<C: Group> MultiFolding<C> {
       C_folded = C_folded.add(c.mul(rho_i));
       u_folded += rho_i * u;
       x_folded = x_folded
-        .iter()
-        .zip(x.iter().map(|x_i| *x_i * rho_i).collect::<Vec<C::Scalar>>())
-        .map(|(a_i, b_i)| *a_i + b_i)
+        .par_iter()
+        .zip(x.par_iter())
+        .map(|(a_i, b_i)| *a_i + *b_i * rho_i)
         .collect();
 
       v_folded = v_folded
-        .iter()
-        .zip(v.iter().map(|x_i| *x_i * rho_i).collect::<Vec<C::Scalar>>())
-        .map(|(a_i, b_i)| *a_i + b_i)
+        .par_iter()
+        .zip(v.par_iter())
+        .map(|(a_i, b_i)| *a_i + *b_i * rho_i)
         .collect();
     }
 
@@ -248,9 +245,9 @@ impl<C: Group> MultiFolding<C> {
       }
 
       w_folded = w_folded
-        .iter()
-        .zip(w.iter().map(|x_i| *x_i * rho_i).collect::<Vec<C::Scalar>>())
-        .map(|(a_i, b_i)| *a_i + b_i)
+        .par_iter()
+        .zip(w.par_iter())
+        .map(|(a_i, b_i)| *a_i + *b_i * rho_i)
         .collect();
 
       r_w_folded += rho_i * r_w;

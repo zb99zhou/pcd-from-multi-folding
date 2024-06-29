@@ -18,6 +18,7 @@ use crate::Commitment;
 use bellpepper_core::num::AllocatedNum;
 use bellpepper_core::test_cs::TestConstraintSystem;
 use bellpepper_core::{ConstraintSystem, SynthesisError};
+use crate::gadgets::ext_allocated_num::ExtendFunc;
 
 #[derive(Clone)]
 pub struct PCDNode<G1, G2, const ARITY: usize, const R: usize>
@@ -232,6 +233,10 @@ where
       .iter()
       .map(|v| v.get_value().unwrap())
       .collect::<Vec<_>>();
+    // let the number of constraints to be 2^bound
+    for _i in 0..pp.pad_constraints {
+      let _ = AllocatedNum::one(cs_primary.namespace(|| format!("pad constraints")));
+    }
 
     let (cccs, cccs_witness) =
       cs_primary.cccs_and_witness(pp.primary_circuit_params.ccs.clone(), &pp.ck_primary)?;
@@ -444,7 +449,7 @@ mod test {
     );
 
     let start_vry = Instant::now();
-    let _res = node_intermed
+    let res = node_intermed
       .verify(
         &pp,
         &node_zi,
@@ -454,11 +459,10 @@ mod test {
         &node_cccs_witness,
         &node_relaxed_r1cs_instance,
         &node_relaxed_r1cs_witness,
-      )
-      .unwrap();
+      );
     let duration_vry = start_vry.elapsed();
     println!("Time elapsed in verifying:{:?}", duration_vry);
-    // assert!(res.is_ok());
+    assert!(res.is_ok());
     Ok(())
   }
 

@@ -8,18 +8,16 @@
 
 use super::SumCheckProver;
 use ff::PrimeField;
-use rayon::prelude::IntoParallelRefIterator;
+use rayon::prelude::{IndexedParallelIterator, IntoParallelRefMutIterator};
 use std::sync::Arc;
 
 use super::structs::{IOPProverMessage, IOPProverState};
 
-// #[cfg(feature = "parallel")]
-use crate::compress_snark::polys::multilinear::MultiLinearPolynomial;
 use crate::errors::NovaError;
 use crate::nimfs::espresso::batch_inversion;
 use crate::nimfs::espresso::virtual_polynomial::VirtualPolynomial;
 use crate::traits::Group;
-use rayon::iter::{IntoParallelIterator, IntoParallelRefMutIterator, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 impl<C: Group> SumCheckProver<C::Scalar> for IOPProverState<C> {
   type VirtualPolynomial = VirtualPolynomial<C::Scalar>;
@@ -75,13 +73,6 @@ impl<C: Group> SumCheckProver<C::Scalar> for IOPProverState<C> {
     //    g(r_1, ..., r_{m-1}, x_m ... x_n)
     //
     // eval g over r_m, and mutate g to g(r_1, ... r_m,, x_{m+1}... x_n)
-    let mut flattened_ml_extensions: Vec<MultiLinearPolynomial<C::Scalar>> = self
-      .poly
-      .flattened_ml_extensions
-      .par_iter()
-      .map(|x| x.as_ref().clone())
-      .collect();
-
     if let Some(chal) = challenge {
       if self.round == 0 {
         return Err(NovaError::InvalidSumCheckProver(
@@ -92,9 +83,11 @@ impl<C: Group> SumCheckProver<C::Scalar> for IOPProverState<C> {
 
       let r = self.challenges[self.round - 1];
       // #[cfg(feature = "parallel")]
-      flattened_ml_extensions
+      self
+        .poly
+        .flattened_ml_extensions
         .par_iter_mut()
-        .for_each(|mle| *mle = mle.fix_variables(&[r]));
+        .for_each(|mle| *mle = Arc::new(mle.fix_variables(&[r])));
 
       // #[cfg(not(feature = "parallel"))]
       // flattened_ml_extensions
@@ -108,76 +101,49 @@ impl<C: Group> SumCheckProver<C::Scalar> for IOPProverState<C> {
 
     self.round += 1;
 
-    let products_list = self.poly.products.clone();
-    let mut products_sum = vec![C::Scalar::default(); self.poly.aux_info.max_degree + 1];
+    let i = self.round;
+    let nv = self.poly.aux_info.num_variables;
+    let degree = self.poly.aux_info.max_degree; // the degree of univariate polynomial sent by prover at this round
 
-    // Step 2: generate sum for the partial evaluated polynomial:
-    // f(r_1, ... r_m,, x_{m+1}... x_n)
+    let zeros = || (vec![C::Scalar::default(); degree + 1], vec![C::Scalar::default(); degree + 1]);
 
-    products_list.iter().for_each(|(coefficient, products)| {
-      let mut sum = (0..1 << (self.poly.aux_info.num_variables - self.round))
-        .into_par_iter()
-        .fold(
-          || {
-            (
-              vec![(C::Scalar::default(), C::Scalar::default()); products.len()],
-              vec![C::Scalar::default(); products.len() + 1],
-            )
-          },
-          |(mut buf, mut acc), b| {
-            buf
-              .iter_mut()
-              .zip(products.iter())
-              .for_each(|((left, right), f)| {
-                let table = &flattened_ml_extensions[*f];
-                *left = table[b];
-                *right = table[b + (1 << (self.poly.aux_info.num_variables - self.round))];
-              });
-            // It follows that f(x_1,x_2,...,x_l) = (1-x_1) * f(0,x_2,...,x_l) + x_1 * f(1,x_2,...,x_l)
-            // acc stores the evaluattions of a univariate polynomial at 0,1,2...
-            acc[0] += buf.iter().map(|(left, _)| left).product::<C::Scalar>();
-            acc[1..].iter_mut().enumerate().for_each(|(index, acc)| {
-              let i = index + 1;
-              *acc += buf
-                .iter()
-                .map(|(left, right)| *left + C::Scalar::from(i as u64) * (*right - *left))
-                .product::<C::Scalar>();
-            });
-            (buf, acc)
-          },
-        )
-        .map(|(_, partial)| partial)
-        .reduce(
-          || vec![C::Scalar::default(); products.len() + 1],
-          |mut sum, partial| {
-            sum
-              .iter_mut()
-              .zip(partial.iter())
-              .for_each(|(sum, partial)| *sum += partial);
-            sum
-          },
-        );
-      sum.iter_mut().for_each(|sum| *sum *= coefficient);
-      let extraploation = (0..self.poly.aux_info.max_degree - products.len()) //0
-        .into_par_iter()
-        .map(|i| {
-          let (points, weights) = &self.extrapolation_aux[products.len() - 1];
-          let at = C::Scalar::from((products.len() + 1 + i) as u64);
-          extrapolate(points, weights, &sum, &at)
-        })
-        .collect::<Vec<_>>();
-      products_sum
-        .iter_mut()
-        .zip(sum.iter().chain(extraploation.iter()))
-        .for_each(|(products_sum, sum)| *products_sum += sum);
-    });
+    // generate sum
+    let fold_result = (0..1 << (nv - i)).into_par_iter().with_min_len(1 << 10).fold(
+      zeros,
+      |(mut products_sum, mut product), b| {
+        // In effect, this fold is essentially doing simply:
+        // for b in 0..1 << (nv - i) {
+        for (coefficient, products) in &self.poly.products {
+          product.fill(*coefficient);
+          for &jth_product in products {
+            let table = &self.poly.flattened_ml_extensions[jth_product];
+            let mut start = table[b];
+            let step = table[b + (1 << (self.poly.aux_info.num_variables - self.round))] - start;
+            for p in product.iter_mut() {
+              *p *= start;
+              start += step;
+            }
+          }
+          for t in 0..degree + 1 {
+            products_sum[t] += product[t];
+          }
+        }
+        (products_sum, product)
+      },
+    );
 
-    // update prover's state to the partial evaluated polynomial
-    self.poly.flattened_ml_extensions = flattened_ml_extensions
-      .into_par_iter()
-      .map(Arc::new)
-      .collect();
-
+    // When rayon is used, the `fold` operation results in an iterator of `Vec<F>` rather than a single `Vec<F>`.
+    // In this case, we simply need to sum them.
+    let products_sum = fold_result.map(|scratch| scratch.0).reduce(
+      || vec![C::Scalar::default(); degree + 1],
+      |mut overall_products_sum, sublist_sum| {
+        overall_products_sum
+            .iter_mut()
+            .zip(sublist_sum.iter())
+            .for_each(|(f, s)| *f += s);
+        overall_products_sum
+      },
+    );
     Ok(IOPProverMessage {
       evaluations: products_sum,
     })

@@ -11,7 +11,8 @@ use crate::errors::NovaError;
 use crate::nimfs::espresso::virtual_polynomial::VPAuxInfo;
 use crate::traits::{Group, TranscriptEngineTrait};
 use ff::PrimeField;
-
+#[cfg(feature = "parallel")]
+use rayon::prelude::{ParallelIterator, IndexedParallelIterator, IntoParallelRefIterator};
 use super::structs::{IOPProverMessage, IOPVerifierState};
 
 impl<C: Group> SumCheckVerifier<C::Scalar> for IOPVerifierState<C> {
@@ -104,9 +105,8 @@ impl<C: Group> SumCheckVerifier<C::Scalar> for IOPVerifierState<C> {
     #[cfg(feature = "parallel")]
     let mut expected_vec = self
       .polynomials_received
-      .clone()
-      .into_par_iter()
-      .zip(self.challenges.clone().into_par_iter())
+      .par_iter()
+      .zip(self.challenges.par_iter())
       .map(|(evaluations, challenge)| {
         if evaluations.len() != self.max_degree + 1 {
           return Err(NovaError::InvalidSumCheckVerifier(format!(
@@ -115,16 +115,15 @@ impl<C: Group> SumCheckVerifier<C::Scalar> for IOPVerifierState<C> {
             self.max_degree + 1
           )));
         }
-        interpolate_uni_poly::<C::Scalar>(&evaluations, challenge)
+        interpolate_uni_poly::<C::Scalar>(evaluations, *challenge)
       })
       .collect::<Result<Vec<_>, NovaError>>()?;
 
     #[cfg(not(feature = "parallel"))]
     let mut expected_vec = self
       .polynomials_received
-      .clone()
-      .into_iter()
-      .zip(self.challenges.clone().into_iter())
+      .iter()
+      .zip(self.challenges.iter())
       .map(|(evaluations, challenge)| {
         if evaluations.len() != self.max_degree + 1 {
           return Err(NovaError::InvalidSumCheckVerifier(format!(
@@ -133,7 +132,7 @@ impl<C: Group> SumCheckVerifier<C::Scalar> for IOPVerifierState<C> {
             self.max_degree + 1
           )));
         }
-        interpolate_uni_poly::<C::Scalar>(&evaluations, challenge)
+        interpolate_uni_poly::<C::Scalar>(evaluations, *challenge)
       })
       .collect::<Result<Vec<_>, NovaError>>()?;
 
