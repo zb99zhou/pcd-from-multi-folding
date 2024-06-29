@@ -272,7 +272,6 @@ impl<C: Group> MultiFolding<C> {
     w_lcccs: &[CCSWitness<C>],
     w_cccs: &[CCSWitness<C>],
   ) -> (Proof<C>, LCCCS<C>, CCSWitness<C>) {
-    // TODO appends to transcript
     assert!(!running_instances.is_empty());
     assert!(!new_instances.is_empty());
 
@@ -306,6 +305,7 @@ impl<C: Group> MultiFolding<C> {
       .unwrap();
 
     // Compute g(x)
+    let timer = std::time::Instant::now();
     let g = Self::compute_g(
       running_instances,
       new_instances,
@@ -314,9 +314,11 @@ impl<C: Group> MultiFolding<C> {
       gamma,
       &beta,
     );
+    println!("Time elapsed in compute g(x): {:?}", timer.elapsed());
 
     // Step 3: Run the sumcheck prover
     let sumcheck_proof = <PolyIOP<C::Scalar> as SumCheck<C>>::prove(&g, transcript).unwrap(); // XXX unwrap
+    println!("Time elapsed in proving sumcheck: {:?}", timer.elapsed());
 
     if ENABLE_SANITY_CHECK {
       // note: this is the sum of g(x) over the whole boolean hypercube
@@ -339,6 +341,7 @@ impl<C: Group> MultiFolding<C> {
     // Step 4: compute sigmas and thetas
     let (sigmas, thetas) =
       Self::compute_sigmas_and_thetas(&running_instances[0].ccs, &z_lcccs, &z_cccs, &r_x_prime);
+    println!("Time elapsed in compute_sigmas_and_thetas: {:?}", timer.elapsed());
 
     // Step 6: Get the folding challenge
     let rho = transcript.squeeze(b"rho").unwrap();
@@ -352,9 +355,11 @@ impl<C: Group> MultiFolding<C> {
       r_x_prime,
       rho,
     );
+    println!("Time elapsed in fold lcccs: {:?}", timer.elapsed());
 
     // Step 8: Fold the witnessesG::Base
     let folded_witness = Self::fold_witness(w_lcccs, w_cccs, rho);
+    println!("Time elapsed in fold_witness: {:?}", timer.elapsed());
 
     (
       Proof::<C> {
@@ -992,14 +997,14 @@ pub mod test {
       &cccs_witness,
     );
     let duration_prv = start_prv.elapsed();
-    println!("Time elapsed in proving:{:?}", duration_prv);
+    println!("Time elapsed in proving: {:?}", duration_prv);
 
     // Run the verifier side of the multifolding
     let start_vry = Instant::now();
     let folded_instance_v =
       MultiFolding::<G>::verify(&mut transcript_v, &lcccs_instance, &cccs_instance, proof);
     let duration_vry = start_vry.elapsed();
-    println!("Time elapsed in verifying:{:?}", duration_vry);
+    println!("Time elapsed in verifying: {:?}", duration_vry);
     assert_eq!(folded_instance, folded_instance_v);
 
     // Check that the folded LCCCS instance is a valid instance with respect to the folded witness
