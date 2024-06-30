@@ -46,14 +46,14 @@ impl<F: PrimeFieldBits, const ARITY: usize, const R: usize> PCDStepCircuit<F, AR
       z_bits.append(&mut bits_temp);
     }
 
-    let mut hash_bits = sha256(cs.namespace(|| "sha256"), &z_bits)?;
+    let hash_bits = sha256(cs.namespace(|| "sha256"), &z_bits)?;
 
     // iteratively use hash to increase the size of the test circuit
-    let num_iterations = 0;
-    for i in 0..num_iterations {
-      let namespace = format!("sha256_iteration_{}", i);
-      hash_bits = sha256(cs.namespace(|| namespace), &hash_bits)?;
-    }
+    // let num_iterations = 0;
+    // for i in 0..num_iterations {
+    //   let namespace = format!("sha256_iteration_{}", i);
+    //   hash_bits = sha256(cs.namespace(|| namespace), &hash_bits)?;
+    // }
 
     for (i, hash_bits) in hash_bits.chunks(256_usize).enumerate() {
       let mut num = Num::<F>::zero();

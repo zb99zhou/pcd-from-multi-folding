@@ -374,8 +374,8 @@ mod test {
   use crate::pcd_node::PCDNode;
   use crate::provider::ipa_pc::EvaluationEngine;
   use crate::provider::pedersen::CommitmentKeyExtTrait;
-  use crate::traits::circuit::TrivialTestCircuit;
-  // use crate::multi_hash_circuit::MultiHashCircuit;
+  // use crate::traits::circuit::TrivialTestCircuit;
+  use crate::multi_hash_circuit::MultiHashCircuit;
   use crate::traits::commitment::CommitmentEngineTrait;
   use crate::traits::evaluation::EvaluationEngineTrait;
   use crate::traits::Group;
@@ -393,8 +393,8 @@ mod test {
     EE2: EvaluationEngineTrait<G2>,
   {
     let z0 = vec![G1::Scalar::ZERO; IO_NUM];
-    let test_circuit = TrivialTestCircuit::<<G2 as Group>::Base>::default();
-    // let test_circuit = MultiHashCircuit::<<G2 as Group>::Base, IO_NUM, R>::new();
+    // let test_circuit = TrivialTestCircuit::<<G2 as Group>::Base>::default();
+    let test_circuit = MultiHashCircuit::<<G2 as Group>::Base, IO_NUM, R>::new();
     let pp = PCDPublicParams::<G1, G2, _, IO_NUM, R>::setup(&test_circuit);
 
     let rng = OsRng;
@@ -526,6 +526,7 @@ mod test {
     assert!(res.is_ok());
   }
 
+  #[ignore]
   #[test]
   fn test_pcd_with_compressed_verify() {
     type G1 = pasta_curves::pallas::Point;

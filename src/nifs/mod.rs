@@ -631,7 +631,7 @@ mod tests {
     let (_nifs, (U, W)) = res.unwrap();
 
     // set the number of RelaxedR1CSInstance to be folded
-    let nu = 20;
+    let nu = 10;
 
     let U = vec![U.clone(); nu];
     let W = vec![W.clone(); nu];

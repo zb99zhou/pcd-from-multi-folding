@@ -228,7 +228,7 @@ where
 
     // println!("=================================================proving PCD circuit=================================================");
     let mut cs_primary = SatisfyingAssignment::<G1>::new();
-    let zi_primary = pcd_circuit
+    let zi_primary = pcd_circuit.clone()
       .synthesize(&mut cs_primary)?
       .iter()
       .map(|v| v.get_value().unwrap())
@@ -466,6 +466,7 @@ mod test {
     Ok(())
   }
 
+  // #[ignore]
   #[test]
   fn test_pcd() {
     type G1 = pasta_curves::pallas::Point;

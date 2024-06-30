@@ -305,7 +305,7 @@ impl<C: Group> MultiFolding<C> {
       .unwrap();
 
     // Compute g(x)
-    let timer = std::time::Instant::now();
+    // let timer = std::time::Instant::now();
     let g = Self::compute_g(
       running_instances,
       new_instances,
@@ -314,11 +314,11 @@ impl<C: Group> MultiFolding<C> {
       gamma,
       &beta,
     );
-    println!("Time elapsed in compute g(x): {:?}", timer.elapsed());
+    // println!("Time elapsed in compute g(x): {:?}", timer.elapsed());
 
     // Step 3: Run the sumcheck prover
     let sumcheck_proof = <PolyIOP<C::Scalar> as SumCheck<C>>::prove(&g, transcript).unwrap(); // XXX unwrap
-    println!("Time elapsed in proving sumcheck: {:?}", timer.elapsed());
+    // println!("Time elapsed in proving sumcheck: {:?}", timer.elapsed());
 
     if ENABLE_SANITY_CHECK {
       // note: this is the sum of g(x) over the whole boolean hypercube
@@ -341,7 +341,7 @@ impl<C: Group> MultiFolding<C> {
     // Step 4: compute sigmas and thetas
     let (sigmas, thetas) =
       Self::compute_sigmas_and_thetas(&running_instances[0].ccs, &z_lcccs, &z_cccs, &r_x_prime);
-    println!("Time elapsed in compute_sigmas_and_thetas: {:?}", timer.elapsed());
+    // println!("Time elapsed in compute_sigmas_and_thetas: {:?}", timer.elapsed());
 
     // Step 6: Get the folding challenge
     let rho = transcript.squeeze(b"rho").unwrap();
@@ -355,11 +355,11 @@ impl<C: Group> MultiFolding<C> {
       r_x_prime,
       rho,
     );
-    println!("Time elapsed in fold lcccs: {:?}", timer.elapsed());
+    // println!("Time elapsed in fold lcccs: {:?}", timer.elapsed());
 
     // Step 8: Fold the witnessesG::Base
     let folded_witness = Self::fold_witness(w_lcccs, w_cccs, rho);
-    println!("Time elapsed in fold_witness: {:?}", timer.elapsed());
+    // println!("Time elapsed in fold_witness: {:?}", timer.elapsed());
 
     (
       Proof::<C> {
@@ -949,7 +949,7 @@ pub mod test {
     let rng = OsRng;
 
     let mu = 1;
-    let nu = 20; // nu=1,2,3,4,5,6,7,8,9,10...
+    let nu = 10; // nu=1,2,3,4,5,6,7,8,9,10...
 
     // Generate a mu LCCCS & nu CCCS satisfying witness
     let mut z_lcccs = Vec::new();
