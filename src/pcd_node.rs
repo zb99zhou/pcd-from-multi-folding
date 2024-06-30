@@ -443,6 +443,8 @@ mod test {
       duration_intermed
     );
 
+    // add proof size
+
     let start_vry = Instant::now();
     let res = node_intermed
       .verify(
@@ -461,12 +463,12 @@ mod test {
     Ok(())
   }
 
-  // #[ignore]
+  #[ignore]
   #[test]
   fn test_pcd() {
     type G1 = pasta_curves::pallas::Point;
     type G2 = pasta_curves::vesta::Point;
-    const R: usize = 2; // arity in PCD
+    const R: usize = 3; // arity in PCD. R=1,2,3,4
     const ARITY: usize = 1;
     test_pcd_with::<G1, G2, R, ARITY>().unwrap();
   }

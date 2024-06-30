@@ -504,6 +504,9 @@ mod test {
     let duration_prv = start_prv.elapsed();
     println!("Time elapsed in proving compressedSNARK:{:?}", duration_prv);
 
+
+    // add proof size
+
     println!("=================================================Verifying compressedSNARK=================================================");
     let start_vry = Instant::now();
     let res = compress_snark.verify(&compressed_vk, z0);
@@ -515,7 +518,7 @@ mod test {
     assert!(res.is_ok());
   }
 
-  #[ignore]
+  // #[ignore]
   #[test]
   fn test_pcd_with_compressed_verify() {
     type G1 = pasta_curves::pallas::Point;

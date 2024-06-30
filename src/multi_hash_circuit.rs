@@ -1,14 +1,15 @@
 #![allow(non_snake_case)]
 
 use crate::traits::circuit::PCDStepCircuit;
-use bellpepper::gadgets::sha256::sha256;
-use bellpepper::gadgets::Assignment;
-use bellpepper_core::boolean::Boolean;
-use bellpepper_core::num::{AllocatedNum, Num};
+// use bellpepper::gadgets::sha256::sha256;
+// use bellpepper::gadgets::Assignment;
+// use bellpepper_core::boolean::Boolean;
+use bellpepper_core::num::AllocatedNum;
 use bellpepper_core::{ConstraintSystem, SynthesisError};
 use ff::PrimeFieldBits;
 use std::marker::PhantomData;
-use std::ops::Index;
+// use std::ops::Index;
+use crate::gadgets::ext_allocated_num::ExtendFunc;
 
 type G1 = pasta_curves::pallas::Point;
 type G2 = pasta_curves::vesta::Point;
@@ -32,6 +33,14 @@ impl<F: PrimeFieldBits, const ARITY: usize, const R: usize> PCDStepCircuit<F, AR
     cs: &mut CS,
     z: &[&[AllocatedNum<F>]],
   ) -> Result<Vec<AllocatedNum<F>>, SynthesisError> {
+    // let the number of constraints to be 2^bound
+    let bound = 16;
+    for i in 0..1<<bound {
+      let _ = AllocatedNum::one(cs.namespace(|| format!("pad {i}th constraints")));
+    }
+
+    Ok(z[0].to_vec())
+    /* 
     let mut z_out: Vec<AllocatedNum<F>> = Vec::new();
     let mut z_bits: Vec<Boolean> = Vec::new();
 
@@ -80,6 +89,7 @@ impl<F: PrimeFieldBits, const ARITY: usize, const R: usize> PCDStepCircuit<F, AR
     }
 
     Ok(z_out)
+    */
   }
 }
 
