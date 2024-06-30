@@ -1,6 +1,4 @@
 use std::marker::PhantomData;
-use bellpepper_core::ConstraintSystem;
-use bellpepper_core::num::AllocatedNum;
 
 use crate::bellpepper::r1cs::NovaShape;
 use crate::bellpepper::shape_cs::ShapeCS;
@@ -26,7 +24,6 @@ use crate::traits::{
   TranscriptEngineTrait,
 };
 use crate::CommitmentKey;
-use crate::gadgets::ext_allocated_num::ExtendFunc;
 
 pub struct PCDPublicParams<G1, G2, SC, const ARITY: usize, const R: usize>
 where
@@ -42,7 +39,6 @@ where
   pub(crate) primary_circuit_params: PCDUnitParams<G1, ARITY, R>,
   pub(crate) secondary_circuit_params: NovaAuxiliaryParams<G2>,
   pub(crate) _p_c: PhantomData<SC>,
-  pub pad_constraints: usize,
 }
 
 impl<G1, G2, SC, const ARITY: usize, const R: usize> PCDPublicParams<G1, G2, SC, ARITY, R>
@@ -67,7 +63,7 @@ where
 
     // find eligible s and s_prime for satisfy PCD primary circuit
     let (mut s, mut s_prime) = (16, 16);
-    let mut cs_pcd_helper = loop {
+    let cs_pcd_helper = loop {
       let primary_circuit_params =
         PCDUnitParams::<G1, ARITY, R>::default_for_pcd(BN_LIMB_WIDTH, BN_N_LIMBS, s, s_prime);
       let pcd_circuit_setup = PCDUnitPrimaryCircuit::<'_, G2, G1, SC, ARITY, R>::new(
@@ -94,12 +90,6 @@ where
         s_prime = cs_pcd_helper.num_vars().log_2();
       }
     };
-    let num_cs = cs_pcd_helper.num_constraints();
-    // let the number of constraints to be 2^bound
-    let pad_constraints = num_cs.next_power_of_two() - num_cs;
-    for _i in 0..pad_constraints {
-      let _ = AllocatedNum::one(cs_pcd_helper.namespace(|| "pad constraints"));
-    }
 
     let (r1cs_shape_primary, ck_primary) = cs_pcd_helper.r1cs_shape();
     let ccs_primary = CCS::<G1>::from(r1cs_shape_primary);
@@ -114,7 +104,6 @@ where
       ck_secondary,
       primary_circuit_params,
       secondary_circuit_params,
-      pad_constraints,
       _p_c: PhantomData,
     }
   }
