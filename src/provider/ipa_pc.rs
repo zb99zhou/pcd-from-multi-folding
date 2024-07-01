@@ -16,6 +16,7 @@ use ff::Field;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
+use std::mem::{size_of, size_of_val};
 
 /// Provides an implementation of the prover key
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -97,6 +98,14 @@ where
     )?;
 
     Ok(())
+  }
+
+  fn size_of_ea(ea: &Self::EvaluationArgument) -> usize {
+    let self_size = size_of::<G::Scalar>() +
+        ea.L_vec.len() * size_of_val(&ea.L_vec[0]) +
+        ea.R_vec.len() * size_of_val(&ea.R_vec[0]);
+
+    self_size
   }
 }
 

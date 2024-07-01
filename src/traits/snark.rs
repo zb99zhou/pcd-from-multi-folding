@@ -37,6 +37,8 @@ pub trait RelaxedR1CSSNARKTrait<G: Group>:
 
   /// Verifies a SNARK for a relaxed R1CS
   fn verify(&self, vk: &Self::VerifierKey, U: &RelaxedR1CSInstance<G>) -> Result<(), NovaError>;
+
+  fn size_of_this(&self) -> usize;
 }
 
 /// A trait that defines the behavior of a `LCCCSSnark`
@@ -65,4 +67,6 @@ pub trait LinearCommittedCCSTrait<G: Group>:
 
   /// Verifies a SNARK for a LCCCSSnark
   fn verify(&self, vk: &Self::VerifierKey, U: &LCCCS<G>) -> Result<(), NovaError>;
+
+  fn size_of_this(&self) -> usize;
 }

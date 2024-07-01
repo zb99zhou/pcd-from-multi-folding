@@ -1966,4 +1966,8 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> RelaxedR1CSSNARKTrait<G> for Relaxe
 
     Ok(())
   }
+
+  fn size_of_this(&self) -> usize {
+    todo!()
+  }
 }

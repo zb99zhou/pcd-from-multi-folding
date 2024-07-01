@@ -43,4 +43,6 @@ pub trait EvaluationEngineTrait<G: Group>: Clone + Send + Sync {
     eval: &G::Scalar,
     arg: &Self::EvaluationArgument,
   ) -> Result<(), NovaError>;
+
+  fn size_of_ea(ea: &Self::EvaluationArgument) -> usize;
 }

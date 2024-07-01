@@ -17,6 +17,15 @@ pub(crate) struct SumcheckProof<G: Group> {
 }
 
 impl<G: Group> SumcheckProof<G> {
+
+  pub fn size_of_this(&self) -> usize {
+    let self_size = self.compressed_polys.len() *
+        (
+            self.compressed_polys[0].size_of_this()
+            );
+
+    self_size
+  }
   pub fn new(compressed_polys: Vec<CompressedUniPoly<G::Scalar>>) -> Self {
     Self { compressed_polys }
   }

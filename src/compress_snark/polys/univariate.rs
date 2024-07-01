@@ -1,6 +1,7 @@
 //! Main components:
 //! - UniPoly: an univariate dense polynomial in coefficient form (big endian),
 //! - CompressedUniPoly: a univariate dense polynomial, compressed (omitted linear term), in coefficient form (little endian),
+use std::mem::size_of_val;
 use ff::PrimeField;
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
@@ -103,6 +104,13 @@ impl<Scalar: PrimeField> CompressedUniPoly<Scalar> {
     coeffs.extend(&self.coeffs_except_linear_term[1..]);
     assert_eq!(self.coeffs_except_linear_term.len() + 1, coeffs.len());
     UniPoly { coeffs }
+  }
+
+  pub fn size_of_this(&self) -> usize {
+    let self_size = self.coeffs_except_linear_term.len() *
+        size_of_val(&self.coeffs_except_linear_term[0]);
+
+    self_size
   }
 }
 

@@ -4,6 +4,7 @@
 //! description of R1CS matrices. This is essentially optimal for the verifier when using
 //! an IPA-based polynomial commitment scheme.
 
+use std::mem::size_of_val;
 use crate::{
   compress_snark::{
     polys::{eq::EqPolynomial, multilinear::MultiLinearPolynomial, multilinear::SparsePolynomial},
@@ -295,6 +296,14 @@ impl<G: Group, EE: EvaluationEngineTrait<G>> LinearCommittedCCSTrait<G> for LCCC
     .unwrap();
 
     Ok(())
+  }
+
+  fn size_of_this(&self) -> usize {
+    let self_size = size_of_val(&self.eval_W) +
+      EE::size_of_ea(&self.eval_arg) +
+      self.sc_proof_inner.size_of_this();
+
+    self_size
   }
 }
 

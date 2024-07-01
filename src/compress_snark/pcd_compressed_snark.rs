@@ -1,4 +1,5 @@
 use std::marker::PhantomData;
+use std::mem::size_of_val;
 
 use crate::bellpepper::r1cs::NovaShape;
 use crate::bellpepper::shape_cs::ShapeCS;
@@ -150,6 +151,51 @@ where
       zi_primary,
       _p_c: PhantomData::<SC>,
     }
+  }
+
+  pub fn size_of_this(
+    &self
+  ) -> usize {
+    let self_size =
+        (
+          self.r_u_primary.x.len() * size_of_val(&self.r_u_primary.x[0])
+              + size_of_val(&self.r_u_primary.C)
+        )
+            + (
+          size_of_val(&self.r_U_primary.C)
+              + size_of_val(&self.r_U_primary.u)
+              + self.r_U_primary.x.len()
+              * size_of_val(&self.r_U_primary.x[0])
+              + self.r_U_primary.r_x.len()
+              * size_of_val(&self.r_U_primary.r_x[0])
+              + self.r_U_primary.v.len()
+              * size_of_val(&self.r_U_primary.v[0])
+        )
+            + (
+          size_of_val(&self.r_W_primary.r_w)
+              + self.r_W_primary.w.len()
+              * size_of_val(&self.r_W_primary.w[0])
+        )
+            + (
+          size_of_val(&self.r_w_primary.r_w)
+              + self.r_w_primary.w.len()
+              * size_of_val(&self.r_w_primary.w[0])
+        )
+            + (
+          self.r_U_secondary.X.len()
+              * size_of_val(&self.r_U_secondary.X[0])
+              + size_of_val(&self.r_U_secondary.u)
+              + size_of_val(&self.r_U_secondary.comm_E)
+              + size_of_val(&self.r_U_secondary.comm_W)
+        )
+            + (
+          self.r_W_secondary.W.len()
+              * size_of_val(&self.r_W_secondary.W[0])
+              + self.r_W_secondary.E.len()
+              * size_of_val(&self.r_W_secondary.E[0])
+        );
+
+    self_size
   }
 }
 
@@ -349,6 +395,56 @@ where
 
     Ok(self.zn_primary.clone())
   }
+
+  pub fn size_of_this(
+    &self
+  ) -> usize {
+    let self_size =
+        (
+          self.r_u_primary.x.len() * size_of_val(&self.r_u_primary.x[0])
+              + size_of_val(&self.r_u_primary.C)
+        )
+            + (
+          size_of_val(&self.r_U_primary.C)
+              + size_of_val(&self.r_U_primary.u)
+              + self.r_U_primary.x.len()
+              * size_of_val(&self.r_U_primary.x[0])
+              + self.r_U_primary.r_x.len()
+              * size_of_val(&self.r_U_primary.r_x[0])
+              + self.r_U_primary.v.len()
+              * size_of_val(&self.r_U_primary.v[0])
+        )
+            + (
+          self.nimfs_proof.sigmas.len() *
+              self.nimfs_proof.sigmas[0].len() *
+              size_of_val(&self.nimfs_proof.sigmas[0][0])
+          + self.nimfs_proof.thetas.len() *
+              self.nimfs_proof.thetas[0].len() *
+              size_of_val(&self.nimfs_proof.thetas[0][0])
+          + self.nimfs_proof.sum_check_proof.point.len() *
+              size_of_val(&self.nimfs_proof.sum_check_proof.point[0])
+          + self.nimfs_proof.sum_check_proof.proofs.len() *
+              (
+                  self.nimfs_proof.sum_check_proof.proofs[0].evaluations.len() *
+                      size_of_val(&self.nimfs_proof.sum_check_proof.proofs[0].evaluations[0])
+                  )
+        )
+            + (
+          self.f_W_snark_primary.size_of_this()
+        )
+            + (
+          self.r_U_secondary.X.len()
+              * size_of_val(&self.r_U_secondary.X[0])
+              + size_of_val(&self.r_U_secondary.u)
+              + size_of_val(&self.r_U_secondary.comm_E)
+              + size_of_val(&self.r_U_secondary.comm_W)
+        )
+            + (
+          self.r_W_snark_secondary.size_of_this()
+        );
+
+    self_size
+  }
 }
 
 #[cfg(test)]
@@ -356,7 +452,7 @@ mod test {
   use std::time::Instant;
 
   use crate::compress_snark::lcccs_snark::LCCCSSNARK;
-  use crate::compress_snark::r1cs_ppsnark::RelaxedR1CSSNARK;
+  use crate::compress_snark::r1cs_snark::RelaxedR1CSSNARK;
   use crate::compress_snark::{PCDCompressedSNARK, PCDPublicParams, PCDRecursiveSNARK};
 
   use crate::nifs::r1cs::{RelaxedR1CSInstance, RelaxedR1CSWitness};
@@ -478,6 +574,9 @@ mod test {
       node_zi,
     );
 
+
+    println!("The size of recursive_snark: {} bytes", recursive_snark.size_of_this());
+
     let (compressed_pk, compressed_vk) = PCDCompressedSNARK::<
       G1,
       G2,
@@ -504,6 +603,7 @@ mod test {
     let duration_prv = start_prv.elapsed();
     println!("Time elapsed in proving compressedSNARK:{:?}", duration_prv);
 
+    println!("The size of compressed_snark: {} bytes", compress_snark.size_of_this());
 
     // add proof size
 
